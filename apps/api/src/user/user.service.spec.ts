@@ -47,6 +47,19 @@ describe('UserService', () => {
     });
   });
 
+  it('finds the public view by a normalized e-mail', async () => {
+    const user = { id: 2, email: 'bia@example.com', name: 'Bia' };
+    prisma.user.findUnique.mockResolvedValue(user);
+
+    await expect(
+      service.findPublicByEmail('  Bia@Example.com '),
+    ).resolves.toEqual(user);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'bia@example.com' },
+      select: authUserSelect,
+    });
+  });
+
   it('finds the full record by e-mail', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
 

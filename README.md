@@ -14,6 +14,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - [Autenticação](#autenticação)
 - [Dashboard](#dashboard)
 - [Extrato](#extrato)
+- [Grupos](#grupos)
 - [Testes](#testes)
 - [CI/CD](#cicd)
 - [Deploy](#deploy)
@@ -43,9 +44,10 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Metas por tipo de despesa | ✅ | ✅ | Meta em % das receitas por tipo de despesa, com termômetro do mês atual e do período acima dos cards |
 | Receitas e despesas pessoais (lançamentos) | ✅ | ✅ | Lançamentos por categoria e mês, com valor previsto e realizado. O grid do Dashboard mostra a soma dos previstos |
 | Extrato mensal (realização e recorrência) | ✅ | ✅ | Tela `/extrato`: lista do mês com navegação entre meses, marcar como realizado (com outro valor, se for o caso), lançar receitas e despesas com repetição por N meses e alterar/excluir "só este" ou "também os próximos". Veja [Extrato](#extrato) |
-| Grupos de finanças | ⏳ | ⏳ | |
-| Convites para grupos | ⏳ | ⏳ | |
-| Métodos de divisão | ⏳ | ⏳ | |
+| Grupos de finanças | ✅ | ✅ | Telas `/grupos` e `/grupos/:id` (abas Lançamentos, Balanço, Membros e Rateio): criar, renomear, excluir e sair; lançamentos do grupo com recorrência, "pago por" e balanço mensal por membro com o acerto (quem paga quem). Veja [Grupos](#grupos) |
+| Convites para grupos | ✅ | ✅ | Convite por e-mail de usuário cadastrado; o convidado aceita ou recusa em `/grupos`. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
+| Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total |
+| Rateio no extrato e no dashboard pessoais | ⏳ | ⏳ | Próximo passo: levar a cota de cada um (o balanço por membro) para o extrato e o saldo pessoais |
 | Docker / deploy em containers | ⏳ | ⏳ | Próximo passo, veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
@@ -87,7 +89,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ├── apps/
 │   ├── api/                 # Backend NestJS
 │   │   ├── prisma/          # schema.prisma e migrations
-│   │   ├── src/             # módulos (auth, budget, user, prisma), app.setup.ts
+│   │   ├── src/             # módulos (auth, budget, groups, user, prisma), app.setup.ts
 │   │   └── test/            # testes e2e (*.e2e-spec.ts)
 │   └── web/                 # Frontend React
 │       └── src/
@@ -278,6 +280,78 @@ Tela `/extrato` (menu lateral **Extrato**), com os lançamentos de um mês: abre
 | `DELETE` | `/budget/transactions/:id` | `?scope=ONE\|FOLLOWING` | `204` |
 | `PUT` | `/budget/transactions/:id/realization` | `{ amountCents }` | `200`; marca como realizado com esse valor (inteiro ≥ 0) |
 | `DELETE` | `/budget/transactions/:id/realization` | — | `200`; volta para pendente |
+
+## Grupos
+
+Menu lateral **Grupos** (`/grupos`): lista os grupos do usuário e, quando houver, os **convites recebidos**, com **Aceitar** e **Recusar**. **Novo grupo** cria o grupo (nome e descrição opcional). Quem cria vira o **dono**, e o grupo já vem com a regra **Igualitário**, que divide igualmente entre todos os membros.
+
+A página do grupo (`/grupos/:id`) tem quatro abas. A aba aberta e o mês ficam na URL, por exemplo `/grupos/3?tab=balanco&month=2026-11`.
+
+- **Lançamentos**: receitas e despesas do grupo no mês. Cada linha mostra a regra usada, a cota de cada membro e quem pagou, ou o selo **A pagar** / **A receber**.
+  - **Nova receita / Nova despesa** pede descrição, valor e regra de rateio, e mostra a prévia da divisão.
+  - É possível informar quem já pagou (ou recebeu) e repetir o lançamento por 2 a 60 meses. Na repetição, só o primeiro mês sai como pago.
+  - **Marcar como pago** registra o membro que pagou; **Desfazer pagamento** volta para pendente.
+  - Editar ou excluir um lançamento recorrente pergunta se vale **só este** ou **também os próximos**, como no extrato. Os já pagos não mudam.
+- **Balanço**: totais do mês e, por membro:
+  - **cota**: parte nas despesas menos parte nas receitas;
+  - quanto **pagou** e quanto **recebeu**;
+  - **saldo**: a receber ou deve.
+
+  O **Acerto do mês** lista as transferências que deixam todos em dia, por exemplo "Bruno paga R$ 1.400,00 para Ana". O saldo considera só o que já foi pago ou recebido; o que está em aberto aparece à parte.
+- **Membros**: membros e convites pendentes.
+  - **Convidar** envia um convite por e-mail para um usuário cadastrado.
+  - O convite pode ser cancelado enquanto estiver pendente.
+  - O dono pode **remover** membros.
+- **Rateio**: regras de divisão do grupo (criar, editar e excluir).
+
+O menu **⋯** do cabeçalho tem **Editar grupo** e **Excluir grupo** (só o dono) e **Sair do grupo**.
+
+**Regras de rateio**
+
+| Tipo | Como divide | Validação |
+| --- | --- | --- |
+| Igualitário | Partes iguais entre todos os membros (inclusive os que entrarem depois) ou entre os escolhidos | Ao menos um participante |
+| Percentual | Cada participante paga um percentual (ex.: 30% / 70%; aceita `33,33`) | Soma de 100% |
+| Pesos | Proporcional aos pesos (ex.: 2 para o quarto maior, 1 para os demais) | Pesos inteiros de 1 a 1000 |
+| Valores fixos | Cada participante paga um valor fixo | O lançamento precisa ter exatamente o total da regra |
+
+- **Centavos que sobram:** na divisão proporcional, ficam com os maiores restos; no empate, com o membro mais antigo. Assim as cotas sempre somam o total.
+- **Cotas gravadas:** as cotas ficam gravadas em cada lançamento. Alterar ou excluir uma regra não muda os lançamentos já feitos; editar o valor ou a regra de um lançamento recalcula as cotas.
+- **Saída de membro:** o histórico do membro é mantido, e ele continua aparecendo no balanço dos meses de que participou.
+  - Regras igualitárias e de pesos apenas deixam de incluí-lo.
+  - Regras percentuais e de valores fixos que o incluíam ficam **inativas** até serem ajustadas.
+  - Se o dono sai, o membro mais antigo vira dono. Se o último membro sai, o grupo é excluído.
+
+**Rotas da API**
+
+Todas as rotas exigem sessão. Quem não é membro ativo, incluindo convidados com convite ainda pendente e ex-membros, recebe `404` em todas as rotas do grupo.
+
+| Método | Rota | Corpo / query | Resposta |
+| --- | --- | --- | --- |
+| `GET` | `/groups` | — | `200` com `[{ id, name, description, role, memberCount }]` dos grupos do usuário |
+| `POST` | `/groups` | `{ name, description? }` | `201` com o grupo (`role`, `memberId` do usuário, `members`) |
+| `GET` | `/groups/:id` | — | `200` com o grupo e os membros ativos `{ id, userId, name, email, role, joinedAt }` |
+| `PATCH` | `/groups/:id` | `{ name?, description? }` | `200`; só o dono (`403` para os demais membros) |
+| `DELETE` | `/groups/:id` | — | `204`; só o dono. Apaga lançamentos, regras e convites |
+| `POST` | `/groups/:id/leave` | — | `204`; o acesso termina |
+| `DELETE` | `/groups/:id/members/:memberId` | — | `204`; só o dono, e não para si mesmo (`400`) |
+| `GET` | `/groups/:id/invitations` | — | `200` com os convites pendentes `{ id, invitee, inviter, createdAt }` |
+| `POST` | `/groups/:id/invitations` | `{ email }` | `201`. `404` se não houver usuário com o e-mail, `400` para si mesmo, `409` se já for membro ou já tiver convite pendente |
+| `DELETE` | `/groups/:id/invitations/:invId` | — | `204`; cancela um convite pendente |
+| `GET` | `/invitations` | — | `200` com os convites pendentes recebidos `{ id, group, inviter, createdAt }` |
+| `POST` | `/invitations/:id/accept` | — | `204`; entra no grupo (`404` se o convite não for do usuário ou não estiver pendente) |
+| `POST` | `/invitations/:id/decline` | — | `204` |
+| `GET` | `/groups/:id/split-methods` | — | `200` com `[{ id, name, type, active, shares: [{ memberId, value }] }]` |
+| `POST` | `/groups/:id/split-methods` | `{ name, type, shares: [{ memberId, value? }] }` | `201`. `type`: `EQUAL`, `PERCENT` (`value` em centésimos de ponto percentual, 30% = `3000`), `WEIGHT` (peso) ou `FIXED` (centavos). `EQUAL` com `shares: []` divide entre todos. `400` se a regra não fechar ou citar quem não é membro ativo; `409` em nome duplicado |
+| `PATCH` | `/groups/:id/split-methods/:methodId` | `{ name?, type?, shares? }` | `200`; mudar tipo ou participantes revalida a regra e a reativa |
+| `DELETE` | `/groups/:id/split-methods/:methodId` | — | `204`; os lançamentos que a usavam mantêm as cotas |
+| `GET` | `/groups/:id/transactions` | `?month=YYYY-MM` | `200` com `{ id, kind, description, month, amountCents, splitMethod, paidBy: { memberId, name } \| null, series, shares: [{ memberId, name, amountCents }] }` |
+| `POST` | `/groups/:id/transactions` | `{ kind, description, month, amountCents, splitMethodId, paidByMemberId?, repeatMonths? }` | `201` com os lançamentos criados. `400` se a regra estiver inativa ou não dividir o valor (ex.: valores fixos com outro total) |
+| `PATCH` | `/groups/:id/transactions/:txId` | `{ kind?, description?, amountCents?, splitMethodId?, scope? }` | `200`; novo valor ou regra recalcula as cotas. `scope` `FOLLOWING` atinge os próximos pendentes da série |
+| `DELETE` | `/groups/:id/transactions/:txId` | `?scope=ONE\|FOLLOWING` | `204` |
+| `PUT` | `/groups/:id/transactions/:txId/payment` | `{ memberId }` | `200`; registra quem pagou ou recebeu (membro ativo) |
+| `DELETE` | `/groups/:id/transactions/:txId/payment` | — | `200`; volta para pendente |
+| `GET` | `/groups/:id/balance` | `?month=YYYY-MM` | `200` com `{ month, incomeCents, expenseCents, pendingCents, members: [{ memberId, name, active, shareCents, paidCents, receivedCents, netCents }], transfers: [{ fromMemberId, toMemberId, amountCents }] }`. A soma dos `netCents` é sempre zero |
 
 ## Testes
 

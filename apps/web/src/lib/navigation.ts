@@ -1,5 +1,5 @@
 import type { LinkProps } from '@tanstack/react-router'
-import { LayoutDashboardIcon, ReceiptTextIcon, type LucideIcon } from 'lucide-react'
+import { LayoutDashboardIcon, ReceiptTextIcon, UsersIcon, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   label: string
@@ -11,4 +11,5 @@ export interface NavItem {
 export const appNavItems: NavItem[] = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboardIcon },
   { label: 'Extrato', to: '/extrato', icon: ReceiptTextIcon },
+  { label: 'Grupos', to: '/grupos', icon: UsersIcon },
 ]

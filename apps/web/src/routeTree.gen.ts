@@ -14,6 +14,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppExtratoRouteImport } from './routes/_app/extrato'
+import { Route as AppGruposIndexRouteImport } from './routes/_app/grupos/index'
+import { Route as AppGruposGroupIdRouteImport } from './routes/_app/grupos/$groupId'
 import { Route as AppSettingsPasswordRouteImport } from './routes/_app/settings/password'
 import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/profile'
 
@@ -41,6 +43,16 @@ const AppExtratoRoute = AppExtratoRouteImport.update({
   path: '/extrato',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGruposIndexRoute = AppGruposIndexRouteImport.update({
+  id: '/grupos/',
+  path: '/grupos/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGruposGroupIdRoute = AppGruposGroupIdRouteImport.update({
+  id: '/grupos/$groupId',
+  path: '/grupos/$groupId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsPasswordRoute = AppSettingsPasswordRouteImport.update({
   id: '/settings/password',
   path: '/settings/password',
@@ -57,16 +69,20 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/extrato': typeof AppExtratoRoute
+  '/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
+  '/grupos/': typeof AppGruposIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/extrato': typeof AppExtratoRoute
   '/': typeof AppIndexRoute
+  '/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
+  '/grupos': typeof AppGruposIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -75,8 +91,10 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_app/extrato': typeof AppExtratoRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/_app/settings/password': typeof AppSettingsPasswordRoute
   '/_app/settings/profile': typeof AppSettingsProfileRoute
+  '/_app/grupos/': typeof AppGruposIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -85,16 +103,20 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/extrato'
+    | '/grupos/$groupId'
     | '/settings/password'
     | '/settings/profile'
+    | '/grupos/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/signup'
     | '/extrato'
     | '/'
+    | '/grupos/$groupId'
     | '/settings/password'
     | '/settings/profile'
+    | '/grupos'
   id:
     | '__root__'
     | '/_app'
@@ -102,8 +124,10 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_app/extrato'
     | '/_app/'
+    | '/_app/grupos/$groupId'
     | '/_app/settings/password'
     | '/_app/settings/profile'
+    | '/_app/grupos/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -149,6 +173,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppExtratoRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/grupos/': {
+      id: '/_app/grupos/'
+      path: '/grupos'
+      fullPath: '/grupos/'
+      preLoaderRoute: typeof AppGruposIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/grupos/$groupId': {
+      id: '/_app/grupos/$groupId'
+      path: '/grupos/$groupId'
+      fullPath: '/grupos/$groupId'
+      preLoaderRoute: typeof AppGruposGroupIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/password': {
       id: '/_app/settings/password'
       path: '/settings/password'
@@ -169,15 +207,19 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppExtratoRoute: typeof AppExtratoRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppGruposGroupIdRoute: typeof AppGruposGroupIdRoute
   AppSettingsPasswordRoute: typeof AppSettingsPasswordRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
+  AppGruposIndexRoute: typeof AppGruposIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppExtratoRoute: AppExtratoRoute,
   AppIndexRoute: AppIndexRoute,
+  AppGruposGroupIdRoute: AppGruposGroupIdRoute,
   AppSettingsPasswordRoute: AppSettingsPasswordRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
+  AppGruposIndexRoute: AppGruposIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

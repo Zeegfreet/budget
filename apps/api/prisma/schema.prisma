@@ -12,9 +12,9 @@ datasource db {
 }
 
 model User {
-  id                  Int             @id @default(autoincrement())
+  id                  Int               @id @default(autoincrement())
   /// Always stored trimmed and lowercased
-  email               String          @unique
+  email               String            @unique
   name                String
   passwordHash        String
   /// Calendar date, stored as midnight UTC
@@ -24,17 +24,20 @@ model User {
   city                String
   /// UF, e.g. `SP`
   state               String
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
   /// Balance the user had before the first month in the budget (may be negative)
-  initialBalanceCents Int             @default(0)
+  initialBalanceCents Int               @default(0)
   /// Set once the default categories were created, so deleting them all
   /// doesn't bring the defaults back
-  budgetSeeded        Boolean         @default(false)
+  budgetSeeded        Boolean           @default(false)
   sessions            Session[]
   categoryGroups      CategoryGroup[]
   categories          Category[]
   transactions        Transaction[]
+  groupMemberships    GroupMember[]
+  invitationsSent     GroupInvitation[] @relation("InvitationInviter")
+  invitationsReceived GroupInvitation[] @relation("InvitationInvitee")
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -128,4 +131,144 @@ model Transaction {
   @@index([userId, month])
   @@index([categoryId, month])
   @@index([seriesId])
+}
+
+enum GroupRole {
+  OWNER
+  MEMBER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELED
+}
+
+/// How a split method divides an amount among members.
+enum SplitType {
+  /// Same share for each participant (no participants = every active member)
+  EQUAL
+  /// `value` in basis points (100% = 10000); they add up to 10000
+  PERCENT
+  /// `value` is a weight >= 1; shares are proportional to it
+  WEIGHT
+  /// `value` in cents; the amount must equal their sum
+  FIXED
+}
+
+/// Shared finances (e.g. a "república") with their own incomes and expenses.
+/// Visible only to its active members.
+model FinanceGroup {
+  id           Int                @id @default(autoincrement())
+  name         String
+  description  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  members      GroupMember[]
+  invitations  GroupInvitation[]
+  splitMethods SplitMethod[]
+  transactions GroupTransaction[]
+}
+
+/// A user's membership. Leaving sets `leftAt` (history keeps pointing to it);
+/// accepting a new invitation reactivates the same row.
+model GroupMember {
+  id          Int                     @id @default(autoincrement())
+  groupId     Int
+  group       FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        GroupRole               @default(MEMBER)
+  joinedAt    DateTime                @default(now())
+  /// `null` while active; only active members can access the group
+  leftAt      DateTime?
+  splitShares SplitMethodShare[]
+  paid        GroupTransaction[]
+  shares      GroupTransactionShare[]
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model GroupInvitation {
+  id          Int              @id @default(autoincrement())
+  groupId     Int
+  group       FinanceGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviterId   Int
+  inviter     User             @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviteeId   Int
+  invitee     User             @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  status      InvitationStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  respondedAt DateTime?
+
+  @@index([inviteeId, status])
+  @@index([groupId, status])
+}
+
+/// A rule for dividing the group's incomes and expenses among members.
+model SplitMethod {
+  id           Int                @id @default(autoincrement())
+  groupId      Int
+  group        FinanceGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name         String
+  type         SplitType
+  /// Turned off when a member it names leaves; inactive rules can't be used
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  shares       SplitMethodShare[]
+  transactions GroupTransaction[]
+
+  @@unique([groupId, name])
+}
+
+model SplitMethodShare {
+  splitMethodId Int
+  splitMethod   SplitMethod @relation(fields: [splitMethodId], references: [id], onDelete: Cascade)
+  memberId      Int
+  member        GroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  /// Meaning depends on the method's type (see `SplitType`)
+  value         Int
+
+  @@id([splitMethodId, memberId])
+}
+
+/// An income or expense of a group in a month, divided among members.
+model GroupTransaction {
+  id             Int                     @id @default(autoincrement())
+  groupId        Int
+  group          FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  kind           EntryKind
+  description    String
+  /// `YYYY-MM`
+  month          String
+  /// Always > 0; the sign comes from `kind`
+  amountCents    Int
+  splitMethodId  Int?
+  splitMethod    SplitMethod?            @relation(fields: [splitMethodId], references: [id], onDelete: SetNull)
+  /// Who paid the expense or received the income; `null` while pending
+  paidByMemberId Int?
+  paidBy         GroupMember?            @relation(fields: [paidByMemberId], references: [id], onDelete: SetNull)
+  createdById    Int
+  /// Shared by the occurrences created by one recurring launch
+  seriesId       String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  /// Snapshot of each member's share; always adds up to `amountCents`
+  shares         GroupTransactionShare[]
+
+  @@index([groupId, month])
+  @@index([seriesId])
+}
+
+model GroupTransactionShare {
+  transactionId Int
+  transaction   GroupTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  memberId      Int
+  member        GroupMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amountCents   Int
+
+  @@id([transactionId, memberId])
+  @@index([memberId])
 }

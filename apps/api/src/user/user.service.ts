@@ -25,6 +25,14 @@ export class UserService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
+  /** Public view by e-mail (normalized like at sign-up), e.g. to invite someone. */
+  async findPublicByEmail(email: string): Promise<AuthUser | null> {
+    return this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: authUserSelect,
+    });
+  }
+
   async findById(id: number): Promise<AuthUser | null> {
     return this.prisma.user.findUnique({
       where: { id },
