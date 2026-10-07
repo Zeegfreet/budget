@@ -50,6 +50,7 @@ export class GroupStatementService {
         group: { select: { id: true, name: true } },
         expenseCategory: { select: categorySelect },
         incomeCategory: { select: categorySelect },
+        paymentMethod: { select: { id: true, name: true, dueDay: true } },
       },
     });
     if (memberships.length === 0) return [];
@@ -137,6 +138,7 @@ export class GroupStatementService {
         link: {
           expenseCategory: linkRef(me.expenseCategory),
           incomeCategory: linkRef(me.incomeCategory),
+          paymentMethod: me.paymentMethod,
         },
         expenseCents: balance.expenseCents,
         incomeCents: balance.incomeCents,

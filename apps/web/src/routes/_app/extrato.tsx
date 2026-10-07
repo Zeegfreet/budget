@@ -23,6 +23,7 @@ import { transactionErrorMessage } from '@/features/transactions/errors'
 import { useTransactionActions } from '@/features/transactions/hooks'
 import { transactionQueries } from '@/features/transactions/queries'
 import { buildStatement, hasFollowing } from '@/features/transactions/statement'
+import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
 
@@ -68,6 +69,8 @@ function StatementPage() {
   const groupActions = useGroupActions()
   const [dialog, setDialog] = useState<TransactionDialog>(null)
   const [linking, setLinking] = useState<GroupStatement | null>(null)
+  const linkMethods = usePaymentMethodOptions(month, linking !== null)
+  const formMethods = usePaymentMethodOptions(month, dialog?.type === 'create' || dialog?.type === 'edit')
 
   async function toggleRealized({ id, realizedCents, plannedCents }: StatementAction['transaction']) {
     try {
@@ -138,6 +141,7 @@ function StatementPage() {
         onDialogChange={setDialog}
         month={month}
         groups={groups}
+        paymentMethods={formMethods}
         actions={actions}
       />
 
@@ -146,7 +150,8 @@ function StatementPage() {
         onOpenChange={(open) => !open && setLinking(null)}
         groupName={linking?.group.name ?? ''}
         categories={groups}
-        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null }}
+        paymentMethods={linkMethods}
+        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null }}
         onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
         errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />

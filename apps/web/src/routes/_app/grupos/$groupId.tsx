@@ -45,6 +45,7 @@ import {
 import { groupQueries } from '@/features/groups/queries'
 import { hasFollowing } from '@/features/groups/series'
 import { ApiError } from '@/lib/api/client'
+import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
 const TABS = ['lancamentos', 'balanco', 'membros', 'rateio'] as const
@@ -99,6 +100,7 @@ function GroupPage() {
   const ruleActions = useSplitMethodActions(id)
   const transactionActions = useGroupTransactionActions(id)
   const [dialog, setDialog] = useState<GroupDialog>(null)
+  const linkMethods = usePaymentMethodOptions(month, dialog?.type === 'link')
   // The user's categories, only once the link dialog opens
   const { data: categories } = useQuery({ ...budgetQueries.categories(), enabled: dialog?.type === 'link' })
   const [transactionDialog, setTransactionDialog] = useState<GroupTransactionDialog>(null)
@@ -257,6 +259,7 @@ function GroupPage() {
         }}
         onRemoveMember={(member) => groupActions.removeMember(id, member.id)}
         categories={categories ?? []}
+        paymentMethods={linkMethods}
         onSetLink={(link) => groupActions.setLink(id, link)}
         invitations={invitationActions}
         rules={ruleActions}

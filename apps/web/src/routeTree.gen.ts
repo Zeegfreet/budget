@@ -16,6 +16,8 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppExtratoRouteImport } from './routes/_app/extrato'
 import { Route as AppGruposIndexRouteImport } from './routes/_app/grupos/index'
 import { Route as AppGruposGroupIdRouteImport } from './routes/_app/grupos/$groupId'
+import { Route as AppMeiosDePagamentoIndexRouteImport } from './routes/_app/meios-de-pagamento/index'
+import { Route as AppMeiosDePagamentoMethodIdRouteImport } from './routes/_app/meios-de-pagamento/$methodId'
 import { Route as AppSettingsPasswordRouteImport } from './routes/_app/settings/password'
 import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/profile'
 
@@ -53,6 +55,18 @@ const AppGruposGroupIdRoute = AppGruposGroupIdRouteImport.update({
   path: '/grupos/$groupId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMeiosDePagamentoIndexRoute =
+  AppMeiosDePagamentoIndexRouteImport.update({
+    id: '/meios-de-pagamento/',
+    path: '/meios-de-pagamento/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppMeiosDePagamentoMethodIdRoute =
+  AppMeiosDePagamentoMethodIdRouteImport.update({
+    id: '/meios-de-pagamento/$methodId',
+    path: '/meios-de-pagamento/$methodId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppSettingsPasswordRoute = AppSettingsPasswordRouteImport.update({
   id: '/settings/password',
   path: '/settings/password',
@@ -70,9 +84,11 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/extrato': typeof AppExtratoRoute
   '/grupos/$groupId': typeof AppGruposGroupIdRoute
+  '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
   '/grupos/': typeof AppGruposIndexRoute
+  '/meios-de-pagamento/': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -80,9 +96,11 @@ export interface FileRoutesByTo {
   '/extrato': typeof AppExtratoRoute
   '/': typeof AppIndexRoute
   '/grupos/$groupId': typeof AppGruposGroupIdRoute
+  '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
   '/grupos': typeof AppGruposIndexRoute
+  '/meios-de-pagamento': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -92,9 +110,11 @@ export interface FileRoutesById {
   '/_app/extrato': typeof AppExtratoRoute
   '/_app/': typeof AppIndexRoute
   '/_app/grupos/$groupId': typeof AppGruposGroupIdRoute
+  '/_app/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
   '/_app/settings/password': typeof AppSettingsPasswordRoute
   '/_app/settings/profile': typeof AppSettingsProfileRoute
   '/_app/grupos/': typeof AppGruposIndexRoute
+  '/_app/meios-de-pagamento/': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -104,9 +124,11 @@ export interface FileRouteTypes {
     | '/signup'
     | '/extrato'
     | '/grupos/$groupId'
+    | '/meios-de-pagamento/$methodId'
     | '/settings/password'
     | '/settings/profile'
     | '/grupos/'
+    | '/meios-de-pagamento/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -114,9 +136,11 @@ export interface FileRouteTypes {
     | '/extrato'
     | '/'
     | '/grupos/$groupId'
+    | '/meios-de-pagamento/$methodId'
     | '/settings/password'
     | '/settings/profile'
     | '/grupos'
+    | '/meios-de-pagamento'
   id:
     | '__root__'
     | '/_app'
@@ -125,9 +149,11 @@ export interface FileRouteTypes {
     | '/_app/extrato'
     | '/_app/'
     | '/_app/grupos/$groupId'
+    | '/_app/meios-de-pagamento/$methodId'
     | '/_app/settings/password'
     | '/_app/settings/profile'
     | '/_app/grupos/'
+    | '/_app/meios-de-pagamento/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -187,6 +213,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGruposGroupIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/meios-de-pagamento/': {
+      id: '/_app/meios-de-pagamento/'
+      path: '/meios-de-pagamento'
+      fullPath: '/meios-de-pagamento/'
+      preLoaderRoute: typeof AppMeiosDePagamentoIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/meios-de-pagamento/$methodId': {
+      id: '/_app/meios-de-pagamento/$methodId'
+      path: '/meios-de-pagamento/$methodId'
+      fullPath: '/meios-de-pagamento/$methodId'
+      preLoaderRoute: typeof AppMeiosDePagamentoMethodIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/password': {
       id: '/_app/settings/password'
       path: '/settings/password'
@@ -208,18 +248,22 @@ interface AppRouteChildren {
   AppExtratoRoute: typeof AppExtratoRoute
   AppIndexRoute: typeof AppIndexRoute
   AppGruposGroupIdRoute: typeof AppGruposGroupIdRoute
+  AppMeiosDePagamentoMethodIdRoute: typeof AppMeiosDePagamentoMethodIdRoute
   AppSettingsPasswordRoute: typeof AppSettingsPasswordRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
   AppGruposIndexRoute: typeof AppGruposIndexRoute
+  AppMeiosDePagamentoIndexRoute: typeof AppMeiosDePagamentoIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppExtratoRoute: AppExtratoRoute,
   AppIndexRoute: AppIndexRoute,
   AppGruposGroupIdRoute: AppGruposGroupIdRoute,
+  AppMeiosDePagamentoMethodIdRoute: AppMeiosDePagamentoMethodIdRoute,
   AppSettingsPasswordRoute: AppSettingsPasswordRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
   AppGruposIndexRoute: AppGruposIndexRoute,
+  AppMeiosDePagamentoIndexRoute: AppMeiosDePagamentoIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

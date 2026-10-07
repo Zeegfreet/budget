@@ -35,6 +35,8 @@ export interface GroupMember {
 export interface GroupLink {
   expenseCategoryId: number | null
   incomeCategoryId: number | null
+  /** The user's payment method for their expense shares (its invoice shows them) */
+  paymentMethodId: number | null
 }
 
 export interface FinanceGroup extends FinanceGroupSummary {

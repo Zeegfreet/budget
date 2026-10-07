@@ -111,7 +111,7 @@ describe('Statement route (/extrato) with finance groups', () => {
     stubBudgetApi({
       groupStatements: [
         makeGroupStatement({
-          link: { expenseCategory: null, incomeCategory: null },
+          link: { expenseCategory: null, incomeCategory: null, paymentMethod: null },
           items: [makeStatementItem(10, { category: null })],
         }),
       ],
@@ -127,7 +127,7 @@ describe('Statement route (/extrato) with finance groups', () => {
     await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: 'Despesas do grupo' }), 'Moradia')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
-    await waitFor(() => expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null }))
+    await waitFor(() => expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null, paymentMethodId: null }))
     await waitFor(() => expect(fetchGroupStatements).toHaveBeenCalled())
   })
 })

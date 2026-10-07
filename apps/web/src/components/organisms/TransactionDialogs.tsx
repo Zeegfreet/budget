@@ -7,6 +7,7 @@ import {
   type TransactionFormValues,
 } from '@/components/molecules'
 import type { CategoryGroup, EntryKind, Month } from '@/features/budget/types'
+import type { PaymentMethod } from '@/features/payment-methods/types'
 import { transactionErrorMessage } from '@/features/transactions/errors'
 import type { useTransactionActions } from '@/features/transactions/hooks'
 import { hasFollowing, transactionTitle } from '@/features/transactions/statement'
@@ -27,13 +28,22 @@ interface TransactionDialogsProps {
   onDialogChange: (dialog: TransactionDialog) => void
   month: Month
   groups: CategoryGroup[]
+  /** Offered in the expense forms */
+  paymentMethods?: PaymentMethod[]
   actions: ReturnType<typeof useTransactionActions>
 }
 
 const message = (fallback: string) => (error: unknown) => transactionErrorMessage(error, fallback)
 
 /** Create, edit, realize and delete dialogs of the statement. */
-export function TransactionDialogs({ dialog, onDialogChange, month, groups, actions }: TransactionDialogsProps) {
+export function TransactionDialogs({
+  dialog,
+  onDialogChange,
+  month,
+  groups,
+  paymentMethods,
+  actions,
+}: TransactionDialogsProps) {
   const close = (open: boolean) => {
     if (!open) onDialogChange(null)
   }
@@ -46,8 +56,13 @@ export function TransactionDialogs({ dialog, onDialogChange, month, groups, acti
     afterEdit.current = null
   }
 
-  async function saveEdit(t: Transaction, { categoryId, description, plannedCents }: TransactionFormValues) {
+  async function saveEdit(
+    t: Transaction,
+    { categoryId, description, plannedCents, paymentMethodId }: TransactionFormValues,
+  ) {
     const patch: TransactionPatch = { categoryId, description, plannedCents }
+    // Sent only when it changes, so editing other fields keeps it as is
+    if (paymentMethodId !== (t.paymentMethod?.id ?? null)) patch.paymentMethodId = paymentMethodId
     if (hasFollowing(t)) {
       // The form closes and the scope question takes over
       afterEdit.current = { type: 'update-scope', transaction: t, patch }
@@ -64,8 +79,14 @@ export function TransactionDialogs({ dialog, onDialogChange, month, groups, acti
         kind={dialog?.type === 'create' ? dialog.kind : 'EXPENSE'}
         groups={groups}
         month={month}
-        onSubmit={({ repeatMonths, ...values }) =>
-          actions.create({ ...values, month, ...(repeatMonths > 1 ? { repeatMonths } : {}) })
+        paymentMethods={paymentMethods}
+        onSubmit={({ repeatMonths, paymentMethodId, ...values }) =>
+          actions.create({
+            ...values,
+            month,
+            ...(repeatMonths > 1 ? { repeatMonths } : {}),
+            ...(paymentMethodId !== null ? { paymentMethodId } : {}),
+          })
         }
         errorMessage={message('Não foi possível lançar.')}
       />
@@ -75,12 +96,14 @@ export function TransactionDialogs({ dialog, onDialogChange, month, groups, acti
         kind={transaction?.category.group.kind ?? 'EXPENSE'}
         groups={groups}
         month={transaction?.month ?? month}
+        paymentMethods={paymentMethods}
         initial={
           transaction
             ? {
                 categoryId: transaction.category.id,
                 description: transaction.description,
                 plannedCents: transaction.plannedCents,
+                paymentMethodId: transaction.paymentMethod?.id ?? null,
               }
             : undefined
         }

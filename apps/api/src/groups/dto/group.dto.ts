@@ -105,7 +105,8 @@ export class GroupMemberDto {
 
 /**
  * Body of `PUT /groups/:id/link` and the current member's link in the group:
- * the personal categories that receive their shares (`null` = not counted).
+ * the personal categories that receive their shares (`null` = not counted)
+ * and the payment method their expense shares are paid with.
  */
 export class GroupLinkDto {
   @ApiProperty({
@@ -131,6 +132,18 @@ export class GroupLinkDto {
   @IsInt()
   @Min(1)
   incomeCategoryId: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 2,
+    description:
+      'Own payment method for the expense shares (`null` = none). Omitted in the body keeps the current one; always present in responses.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  paymentMethodId?: number | null;
 }
 
 export class FinanceGroupDto extends FinanceGroupSummaryDto {

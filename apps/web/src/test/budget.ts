@@ -92,7 +92,7 @@ export const makeGroupStatement = (extra: Partial<GroupStatement> = {}): GroupSt
   group: { id: 7, name: 'República' },
   active: true,
   memberId: 1,
-  link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: null },
+  link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: null, paymentMethod: null },
   expenseCents: 200000,
   incomeCents: 4000,
   pendingCents: 4000,

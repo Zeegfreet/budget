@@ -5,7 +5,8 @@ import { TransactionService } from './transaction.service.js';
 describe('TransactionService', () => {
   const prisma = {
     $transaction: vi.fn(),
-    category: { findMany: vi.fn() },
+    category: { findMany: vi.fn(), findFirst: vi.fn() },
+    paymentMethod: { findFirst: vi.fn() },
     transaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -33,6 +34,7 @@ describe('TransactionService', () => {
     plannedCents: 1000,
     realizedCents: null,
     seriesId: null,
+    paymentMethod: null,
     category: {
       id: 1,
       name: 'Moradia',
@@ -86,6 +88,8 @@ describe('TransactionService', () => {
         plannedCents: 1000,
         realizedCents: null,
         series: null,
+        paymentMethod: null,
+        dueDay: 5,
         category: {
           id: 4,
           name: 'Moradia',
@@ -99,6 +103,32 @@ describe('TransactionService', () => {
           },
         },
       });
+    });
+
+    it('uses the payment method’s due day over the category’s', async () => {
+      const card = {
+        id: 2,
+        name: 'Cartão',
+        type: 'CREDIT_CARD',
+        dueDay: 12,
+        active: true,
+      };
+      const withDay = (id: number, dueDay: number | null) =>
+        row(id, { category: { ...row(id).category, id, dueDay } });
+      prisma.transaction.findMany.mockResolvedValueOnce([
+        { ...withDay(1, 5), paymentMethod: card },
+        withDay(2, 10),
+        { ...withDay(3, 20), paymentMethod: { ...card, dueDay: null } },
+      ]);
+
+      const result = await service.list(7, '2026-10');
+
+      expect(result.map((t) => [t.id, t.dueDay])).toEqual([
+        [2, 10],
+        [1, 12],
+        [3, 20],
+      ]);
+      expect(result[1].paymentMethod).toEqual(card);
     });
 
     it('tells the position of each occurrence in its series', async () => {
@@ -141,7 +171,59 @@ describe('TransactionService', () => {
         description: null,
         plannedCents: 1000,
         seriesId: null,
+        paymentMethodId: null,
       });
+    });
+
+    it('takes an active payment method of the user for an expense', async () => {
+      prisma.category.findMany.mockResolvedValue([active]);
+      prisma.category.findFirst.mockResolvedValue({
+        group: { kind: 'EXPENSE' },
+      });
+      prisma.paymentMethod.findFirst.mockResolvedValue({ active: true });
+      prisma.$transaction.mockResolvedValue([row(1)]);
+
+      await service.create(7, {
+        categoryId: 1,
+        month: '2026-10',
+        plannedCents: 1000,
+        paymentMethodId: 2,
+      });
+
+      expect(prisma.paymentMethod.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 2, userId: 7 } }),
+      );
+      expect(
+        prisma.$transaction.mock.calls[0][0][0].create.data.paymentMethodId,
+      ).toBe(2);
+    });
+
+    it('rejects a payment method on an income, of another user or inactive', async () => {
+      const input = {
+        categoryId: 1,
+        month: '2026-10',
+        plannedCents: 1,
+        paymentMethodId: 2,
+      };
+      prisma.category.findMany.mockResolvedValue([active]);
+      prisma.category.findFirst.mockResolvedValueOnce({
+        group: { kind: 'INCOME' },
+      });
+      await expect(service.create(7, input)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      prisma.category.findFirst.mockResolvedValue({
+        group: { kind: 'EXPENSE' },
+      });
+      prisma.paymentMethod.findFirst.mockResolvedValueOnce(null);
+      await expect(service.create(7, input)).rejects.toThrow(NotFoundException);
+
+      prisma.paymentMethod.findFirst.mockResolvedValueOnce({ active: false });
+      await expect(service.create(7, input)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('creates one occurrence per month sharing a series', async () => {
@@ -227,8 +309,58 @@ describe('TransactionService', () => {
           categoryId: undefined,
           description: undefined,
           plannedCents: 2000,
+          paymentMethodId: undefined,
         },
       });
+    });
+
+    it('sets, keeps or clears the payment method', async () => {
+      const card = {
+        id: 2,
+        name: 'Cartão',
+        type: 'CREDIT_CARD',
+        dueDay: 12,
+        active: false,
+      };
+      prisma.transaction.findFirst.mockResolvedValue(
+        row(5, { paymentMethod: card }),
+      );
+      prisma.$transaction.mockResolvedValue([row(5)]);
+
+      // Keeping a method inactivated afterwards doesn't look it up again
+      await service.update(7, 5, { paymentMethodId: 2, plannedCents: 1 });
+      await service.update(7, 5, { paymentMethodId: null });
+      expect(prisma.paymentMethod.findFirst).not.toHaveBeenCalled();
+
+      prisma.paymentMethod.findFirst.mockResolvedValueOnce({ active: false });
+      await expect(
+        service.update(7, 5, { paymentMethodId: 3 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects moving a transaction with a payment method to an income', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(
+        row(5, {
+          paymentMethod: {
+            id: 2,
+            name: 'Cartão',
+            type: 'CREDIT_CARD',
+            dueDay: 12,
+            active: true,
+          },
+        }),
+      );
+      prisma.category.findMany.mockResolvedValue([active]);
+      prisma.category.findFirst.mockResolvedValue({
+        group: { kind: 'INCOME' },
+      });
+
+      await expect(service.update(7, 5, { categoryId: 8 })).rejects.toThrow(
+        BadRequestException,
+      );
+      // Clearing it in the same change is fine
+      prisma.$transaction.mockResolvedValue([row(5)]);
+      await service.update(7, 5, { categoryId: 8, paymentMethodId: null });
     });
 
     it('ignores FOLLOWING for a transaction without series', async () => {

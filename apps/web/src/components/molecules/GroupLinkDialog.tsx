@@ -13,6 +13,8 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from '@/components/ui/native-select'
 import type { CategoryGroup, EntryKind } from '@/features/budget/types'
 import type { GroupLink } from '@/features/groups/types'
+import type { PaymentMethod } from '@/features/payment-methods/types'
+import { PaymentMethodSelect } from './PaymentMethodSelect'
 
 interface GroupLinkDialogProps {
   open: boolean
@@ -20,6 +22,8 @@ interface GroupLinkDialogProps {
   groupName: string
   /** The user's category tree */
   categories: CategoryGroup[]
+  /** The user's payment methods, for the expense shares (none hides the field) */
+  paymentMethods?: PaymentMethod[]
   /** The current link */
   initial: GroupLink
   /** Rejects to show `errorMessage(error)` */
@@ -27,7 +31,10 @@ interface GroupLinkDialogProps {
   errorMessage: (error: unknown) => string
 }
 
-/** Chooses the personal categories where the user's shares of a group count. */
+/**
+ * Chooses the personal categories where the user's shares of a group count,
+ * and the payment method whose invoice shows the expense shares.
+ */
 export function GroupLinkDialog({ open, onOpenChange, ...props }: GroupLinkDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,6 +49,7 @@ const toId = (value: string) => (value === '' ? null : Number(value))
 function GroupLinkForm({
   groupName,
   categories,
+  paymentMethods = [],
   initial,
   onSubmit,
   errorMessage,
@@ -49,6 +57,8 @@ function GroupLinkForm({
 }: Omit<GroupLinkDialogProps, 'open' | 'onOpenChange'> & { onDone: () => void }) {
   const [expense, setExpense] = useState(toValue(initial.expenseCategoryId))
   const [income, setIncome] = useState(toValue(initial.incomeCategoryId))
+  const [paymentMethodId, setPaymentMethodId] = useState(initial.paymentMethodId)
+  const showMethods = paymentMethods.some((m) => m.active || m.id === initial.paymentMethodId)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -57,7 +67,7 @@ function GroupLinkForm({
     setPending(true)
     setError(null)
     try {
-      await onSubmit({ expenseCategoryId: toId(expense), incomeCategoryId: toId(income) })
+      await onSubmit({ expenseCategoryId: toId(expense), incomeCategoryId: toId(income), paymentMethodId })
       onDone()
     } catch (e) {
       setError(errorMessage(e))
@@ -91,6 +101,16 @@ function GroupLinkForm({
         value={income}
         onChange={setIncome}
       />
+      {showMethods && (
+        <PaymentMethodSelect
+          label="Meio de pagamento das despesas"
+          methods={paymentMethods}
+          current={initial.paymentMethodId}
+          value={paymentMethodId}
+          onChange={setPaymentMethodId}
+          emptyHint="Escolha um cartão ou conta para a sua parte das despesas entrar na fatura dele."
+        />
+      )}
       {error && <FormAlert>{error}</FormAlert>}
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onDone}>

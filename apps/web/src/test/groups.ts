@@ -37,7 +37,7 @@ export const makeGroup = (extra: Partial<FinanceGroup> = {}): FinanceGroup => {
     memberId: ana.id,
     memberCount: members.length,
     members,
-    link: { expenseCategoryId: null, incomeCategoryId: null },
+    link: { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null },
     ...extra,
   }
 }

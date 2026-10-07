@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { assertWritableCategories } from '../budget/category-access.js';
+import { assertUsablePaymentMethod } from '../payment-methods/payment-method-access.js';
 import type { EntryKind } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -97,6 +98,7 @@ export class GroupService {
       link: {
         expenseCategoryId: me.expenseCategoryId,
         incomeCategoryId: me.incomeCategoryId,
+        paymentMethodId: me.paymentMethodId,
       },
       memberCount: group.members.length,
       members: group.members.map(({ user, ...member }) => ({
@@ -128,9 +130,17 @@ export class GroupService {
   async setLink(
     userId: number,
     id: number,
-    { expenseCategoryId, incomeCategoryId }: GroupLinkDto,
+    { expenseCategoryId, incomeCategoryId, paymentMethodId }: GroupLinkDto,
   ): Promise<FinanceGroupDto> {
     const me = await assertMember(this.prisma, userId, id);
+    // A new method must be the user's and active; keeping an inactive one is fine
+    if (
+      paymentMethodId !== undefined &&
+      paymentMethodId !== null &&
+      paymentMethodId !== me.paymentMethodId
+    ) {
+      await assertUsablePaymentMethod(this.prisma, userId, paymentMethodId);
+    }
     const wanted: [number | null, EntryKind][] = [
       [expenseCategoryId, 'EXPENSE'],
       [incomeCategoryId, 'INCOME'],
@@ -164,7 +174,7 @@ export class GroupService {
     }
     await this.prisma.groupMember.update({
       where: { id: me.id },
-      data: { expenseCategoryId, incomeCategoryId },
+      data: { expenseCategoryId, incomeCategoryId, paymentMethodId },
     });
     return this.get(userId, id);
   }

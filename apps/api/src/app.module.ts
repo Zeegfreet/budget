@@ -8,6 +8,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module.js';
 import { BudgetModule } from './budget/budget.module.js';
 import { GroupsModule } from './groups/groups.module.js';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { validateEnv } from './config/env.validation.js';
 import { UserModule } from './user/user.module.js';
@@ -33,6 +34,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuthModule,
     BudgetModule,
     GroupsModule,
+    PaymentMethodsModule,
   ],
   controllers: [AppController],
   providers: [

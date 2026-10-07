@@ -21,12 +21,30 @@ export class LinkedCategoryDto {
   name: string;
 }
 
+export class LinkedPaymentMethodDto {
+  @ApiProperty({ example: 2 })
+  id: number;
+
+  @ApiProperty({ example: 'Cartão Americanas' })
+  name: string;
+
+  @ApiProperty({ type: Number, nullable: true, example: 12 })
+  dueDay: number | null;
+}
+
 export class GroupStatementLinkDto {
   @ApiProperty({ type: LinkedCategoryDto, nullable: true })
   expenseCategory: LinkedCategoryDto | null;
 
   @ApiProperty({ type: LinkedCategoryDto, nullable: true })
   incomeCategory: LinkedCategoryDto | null;
+
+  @ApiProperty({
+    type: LinkedPaymentMethodDto,
+    nullable: true,
+    description: 'Where the expense shares are paid (its invoice shows them)',
+  })
+  paymentMethod: LinkedPaymentMethodDto | null;
 }
 
 /** The user's share of one group transaction. */

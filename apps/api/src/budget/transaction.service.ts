@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '../prisma/generated/client.js';
+import { assertUsablePaymentMethod } from '../payment-methods/payment-method-access.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { assertWritableCategories } from './category-access.js';
 import type {
@@ -22,6 +23,9 @@ const transactionSelect = {
   plannedCents: true,
   realizedCents: true,
   seriesId: true,
+  paymentMethod: {
+    select: { id: true, name: true, type: true, dueDay: true, active: true },
+  },
   category: {
     select: {
       id: true,
@@ -46,9 +50,13 @@ type TransactionRow = Prisma.TransactionGetPayload<{
   select: typeof transactionSelect;
 }>;
 
+/** The payment method's due day, or else the category's ("régua normal"). */
+const effectiveDueDay = (t: TransactionRow) =>
+  t.paymentMethod?.dueDay ?? t.category.dueDay;
+
 /** Due day first (none last), then the grid's order. */
 function byStatementOrder(a: TransactionRow, b: TransactionRow): number {
-  const day = (t: TransactionRow) => t.category.dueDay ?? 32;
+  const day = (t: TransactionRow) => effectiveDueDay(t) ?? 32;
   return (
     day(a) - day(b) ||
     a.category.group.position - b.category.group.position ||
@@ -75,6 +83,19 @@ export class TransactionService {
     return this.present(userId, rows.sort(byStatementOrder));
   }
 
+  /** The month's transactions paid with a payment method (its invoice). */
+  async listByPaymentMethod(
+    userId: number,
+    paymentMethodId: number,
+    month: string,
+  ): Promise<TransactionDto[]> {
+    const rows = await this.prisma.transaction.findMany({
+      where: { userId, paymentMethodId, month },
+      select: transactionSelect,
+    });
+    return this.present(userId, rows.sort(byStatementOrder));
+  }
+
   /** Creates one occurrence per month; several share a new series. */
   async create(
     userId: number,
@@ -84,9 +105,14 @@ export class TransactionService {
       description,
       plannedCents,
       repeatMonths = 1,
+      paymentMethodId = null,
     }: CreateTransactionDto,
   ): Promise<TransactionDto[]> {
     await assertWritableCategories(this.prisma, userId, [categoryId]);
+    if (paymentMethodId !== null) {
+      await this.assertExpense(userId, categoryId);
+      await assertUsablePaymentMethod(this.prisma, userId, paymentMethodId);
+    }
     const seriesId = repeatMonths > 1 ? randomUUID() : null;
     const rows = await this.prisma.$transaction(
       Array.from({ length: repeatMonths }, (_, i) =>
@@ -98,6 +124,7 @@ export class TransactionService {
             description: description ?? null,
             plannedCents,
             seriesId,
+            paymentMethodId,
           },
           select: transactionSelect,
         }),
@@ -118,17 +145,33 @@ export class TransactionService {
       categoryId,
       description,
       plannedCents,
+      paymentMethodId,
     }: UpdateTransactionDto,
   ): Promise<TransactionDto> {
     const current = await this.find(userId, id);
     if (!current.category.active || !current.category.group.active) {
       throw new BadRequestException('Category is inactive');
     }
-    if (categoryId !== undefined && categoryId !== current.category.id) {
+    const categoryChanges =
+      categoryId !== undefined && categoryId !== current.category.id;
+    if (categoryChanges) {
       await assertWritableCategories(this.prisma, userId, [categoryId]);
     }
-    // `undefined` leaves a field as is, `null` clears the description
-    const data = { categoryId, description, plannedCents };
+    const currentMethodId = current.paymentMethod?.id ?? null;
+    const methodId =
+      paymentMethodId === undefined ? currentMethodId : paymentMethodId;
+    if (methodId !== null) {
+      if (categoryChanges) await this.assertExpense(userId, categoryId);
+      else if (current.category.group.kind !== 'EXPENSE') {
+        throw new BadRequestException('Only expenses have a payment method');
+      }
+      // Keeping a method that was inactivated afterwards is fine
+      if (methodId !== currentMethodId) {
+        await assertUsablePaymentMethod(this.prisma, userId, methodId);
+      }
+    }
+    // `undefined` leaves a field as is, `null` clears the description/method
+    const data = { categoryId, description, plannedCents, paymentMethodId };
     const [updated] = await this.prisma.$transaction([
       this.prisma.transaction.update({
         where: { id },
@@ -170,6 +213,17 @@ export class TransactionService {
       select: transactionSelect,
     });
     return (await this.present(userId, [updated]))[0];
+  }
+
+  /** Payment methods are for expenses only (400 for an income category). */
+  private async assertExpense(userId: number, categoryId: number) {
+    const category = await this.prisma.category.findFirst({
+      where: { id: categoryId, userId },
+      select: { group: { select: { kind: true } } },
+    });
+    if (category?.group.kind !== 'EXPENSE') {
+      throw new BadRequestException('Only expenses have a payment method');
+    }
   }
 
   private async find(userId: number, id: number): Promise<TransactionRow> {
@@ -223,7 +277,8 @@ export class TransactionService {
       ]);
     }
 
-    return rows.map(({ seriesId, category, ...row }) => {
+    return rows.map((full) => {
+      const { seriesId, category, ...row } = full;
       const ids = seriesId ? idsBySeries.get(seriesId) : undefined;
       const { position: _position, group, ...categoryFields } = category;
       const { position: _groupPosition, ...groupFields } = group;
@@ -234,6 +289,7 @@ export class TransactionService {
             ? { index: ids.indexOf(row.id) + 1, count: ids.length }
             : null,
         category: { ...categoryFields, group: groupFields },
+        dueDay: effectiveDueDay(full),
       };
     });
   }

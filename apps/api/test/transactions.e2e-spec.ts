@@ -128,6 +128,8 @@ describe('Transactions (e2e)', () => {
           plannedCents: 4500,
           realizedCents: null,
           series: null,
+          paymentMethod: null,
+          dueDay: null,
           category: {
             id: ids.leisure,
             name: 'Lazer',

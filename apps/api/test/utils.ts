@@ -27,6 +27,7 @@ export async function resetDatabase(app: INestApplication) {
   await prisma.groupMember.deleteMany();
   await prisma.financeGroup.deleteMany();
   await prisma.transaction.deleteMany();
+  await prisma.paymentMethod.deleteMany();
   await prisma.category.deleteMany();
   await prisma.categoryGroup.deleteMany();
   await prisma.session.deleteMany();
@@ -54,4 +55,29 @@ export async function signUp(
   const client = request.agent(app.getHttpServer());
   await client.post('/auth/register').send(userBody(name, email)).expect(201);
   return client;
+}
+
+export interface PaymentMethodBody {
+  id: number;
+  name: string;
+  type: 'CREDIT_CARD' | 'ACCOUNT' | 'OTHER';
+  dueDay: number | null;
+  active: boolean;
+}
+
+/** Creates a payment method of `client` (a credit card due on the 12th by default). */
+export async function createPaymentMethod(
+  client: Agent,
+  body: Record<string, unknown> = {},
+) {
+  const res = await client
+    .post('/payment-methods')
+    .send({
+      name: 'Cartão Americanas',
+      type: 'CREDIT_CARD',
+      dueDay: 12,
+      ...body,
+    })
+    .expect(201);
+  return res.body as PaymentMethodBody;
 }

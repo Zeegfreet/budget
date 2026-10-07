@@ -28,6 +28,7 @@ import { groupErrorMessage } from '@/features/groups/errors'
 import { useGroupActions } from '@/features/groups/hooks'
 import { statementLink } from '@/features/groups/link'
 import { ApiError } from '@/lib/api/client'
+import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 
 /** The grid shows the current month and the 11 after it */
 const WINDOW_MONTHS = 12
@@ -74,6 +75,7 @@ function DashboardPage() {
   const [showInactive, setShowInactive] = useState(false)
   const [dialog, setDialog] = useState<BudgetDialog>(null)
   const [linking, setLinking] = useState<GroupStatement | null>(null)
+  const linkMethods = usePaymentMethodOptions(month, linking !== null)
   const groupActions = useGroupActions()
   const actions = useCategoryActions((categoryIds) => draft.dispatch({ type: 'forget', categoryIds }))
 
@@ -222,7 +224,8 @@ function DashboardPage() {
         onOpenChange={(open) => !open && setLinking(null)}
         groupName={linking?.group.name ?? ''}
         categories={groups}
-        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null }}
+        paymentMethods={linkMethods}
+        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null }}
         onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
         errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />

@@ -10,7 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { EntryKind } from '../../prisma/generated/enums.js';
+import { EntryKind, PaymentMethodType } from '../../prisma/generated/enums.js';
 import { MAX_REPEAT_MONTHS, MONTH_PATTERN } from '../month.js';
 import {
   IsPresent,
@@ -67,6 +67,17 @@ export class CreateTransactionDto {
   @Min(1)
   @Max(MAX_REPEAT_MONTHS)
   repeatMonths?: number;
+
+  @ApiPropertyOptional({
+    example: 2,
+    nullable: true,
+    description:
+      'Own active payment method (expenses only); its due day overrides the category’s',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  paymentMethodId?: number | null;
 }
 
 /** Body of `PATCH /budget/transactions/:id`. `null` clears the description. */
@@ -90,6 +101,16 @@ export class UpdateTransactionDto {
   @Min(1)
   @Max(MAX_AMOUNT_CENTS)
   plannedCents?: number;
+
+  @ApiPropertyOptional({
+    example: 2,
+    nullable: true,
+    description: 'Payment method (expenses only); `null` removes it',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  paymentMethodId?: number | null;
 
   @ApiPropertyOptional({
     enum: RECURRENCE_SCOPES,
@@ -158,6 +179,23 @@ export class TransactionCategoryDto {
   group: TransactionGroupDto;
 }
 
+export class TransactionPaymentMethodDto {
+  @ApiProperty({ example: 2 })
+  id: number;
+
+  @ApiProperty({ example: 'Cartão Americanas' })
+  name: string;
+
+  @ApiProperty({ enum: PaymentMethodType })
+  type: PaymentMethodType;
+
+  @ApiProperty({ type: Number, nullable: true, example: 12 })
+  dueDay: number | null;
+
+  @ApiProperty()
+  active: boolean;
+}
+
 export class SeriesPositionDto {
   @ApiProperty({ example: 3, description: '1-based position by month' })
   index: number;
@@ -192,4 +230,16 @@ export class TransactionDto {
 
   @ApiProperty({ type: TransactionCategoryDto })
   category: TransactionCategoryDto;
+
+  @ApiProperty({ type: TransactionPaymentMethodDto, nullable: true })
+  paymentMethod: TransactionPaymentMethodDto | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description:
+      'Effective due day: the payment method’s, or else the category’s',
+  })
+  dueDay: number | null;
 }

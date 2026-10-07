@@ -38,6 +38,7 @@ model User {
   groupMemberships    GroupMember[]
   invitationsSent     GroupInvitation[] @relation("InvitationInviter")
   invitationsReceived GroupInvitation[] @relation("InvitationInvitee")
+  paymentMethods      PaymentMethod[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -114,27 +115,58 @@ model Category {
 /// One planned income or expense of a category in a month (a "lançamento").
 /// A category may have several in the same month; the grid shows their sum.
 model Transaction {
-  id            Int      @id @default(autoincrement())
+  id              Int            @id @default(autoincrement())
   /// Denormalized owner so every query can be scoped by user
-  userId        Int
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoryId    Int
-  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId          Int
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId      Int
+  category        Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   /// `YYYY-MM`, so string order is chronological order
-  month         String
-  description   String?
+  month           String
+  description     String?
   /// Always >= 0; the sign comes from the category's kind
-  plannedCents  Int
+  plannedCents    Int
   /// `null` while pending; once realized, the amount actually paid or received
-  realizedCents Int?
+  realizedCents   Int?
   /// Shared by the occurrences created by one recurring launch
-  seriesId      String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  seriesId        String?
+  /// Card or account the expense is paid with; its due day overrides the
+  /// category's. Expenses only. `null` follows the category's due day.
+  paymentMethodId Int?
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([userId, month])
   @@index([categoryId, month])
   @@index([seriesId])
+  @@index([paymentMethodId, month])
+}
+
+enum PaymentMethodType {
+  CREDIT_CARD
+  ACCOUNT
+  OTHER
+}
+
+/// Where the user pays expenses (e.g. "Cartão Americanas", due every 12th).
+/// Its transactions of a month make up that month's invoice.
+model PaymentMethod {
+  id           Int               @id @default(autoincrement())
+  userId       Int
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  type         PaymentMethodType
+  /// Day of the month the invoice is due (1–31); overrides the category's
+  dueDay       Int?
+  /// Inactive methods can't be picked for new launches; their history stays
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  transactions Transaction[]
+  /// Group memberships whose expense shares are paid with it
+  groupMembers GroupMember[]
+
+  @@unique([userId, name])
 }
 
 enum GroupRole {
@@ -194,6 +226,10 @@ model GroupMember {
   /// Same for the incomes
   incomeCategoryId  Int?
   incomeCategory    Category?               @relation("MemberIncomeCategory", fields: [incomeCategoryId], references: [id], onDelete: SetNull)
+  /// The member's own payment method for their expense shares (its invoice
+  /// shows them); `null` keeps them out of every invoice
+  paymentMethodId   Int?
+  paymentMethod     PaymentMethod?          @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   splitShares       SplitMethodShare[]
   paid              GroupTransaction[]
   shares            GroupTransactionShare[]

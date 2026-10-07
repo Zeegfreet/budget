@@ -58,12 +58,12 @@ describe('Group route (/grupos/$groupId): link to the budget', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null })
+    expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null, paymentMethodId: null })
     expect(fetchGroup).toHaveBeenCalledTimes(2)
   })
 
   it('keeps a linked category that was inactivated as an option', async () => {
-    stubGroupsApi({ group: makeGroup({ link: { expenseCategoryId: 6, incomeCategoryId: null } }) })
+    stubGroupsApi({ group: makeGroup({ link: { expenseCategoryId: 6, incomeCategoryId: null, paymentMethodId: null } }) })
     stubBudgetApi({
       groups: [
         ...budgetGroups,

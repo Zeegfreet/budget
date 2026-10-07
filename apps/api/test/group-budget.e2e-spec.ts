@@ -31,6 +31,7 @@ interface GroupStatement {
   link: {
     expenseCategory: { id: number; name: string } | null;
     incomeCategory: { id: number; name: string } | null;
+    paymentMethod: { id: number; name: string; dueDay: number | null } | null;
   };
   expenseCents: number;
   incomeCents: number;
@@ -145,12 +146,14 @@ describe('Groups in the personal budget (e2e)', () => {
       expect(res.body.link).toEqual({
         expenseCategoryId: moradia,
         incomeCategoryId: extra,
+        paymentMethodId: null,
       });
       // Only Ana's membership changes
       const forBruno = await bruno.get(`/groups/${group.id}`).expect(200);
       expect(forBruno.body.link).toEqual({
         expenseCategoryId: null,
         incomeCategoryId: null,
+        paymentMethodId: null,
       });
 
       const cleared = await link(ana, {
@@ -160,6 +163,7 @@ describe('Groups in the personal budget (e2e)', () => {
       expect(cleared.body.link).toEqual({
         expenseCategoryId: null,
         incomeCategoryId: null,
+        paymentMethodId: null,
       });
     });
 
@@ -466,6 +470,7 @@ describe('Groups in the personal budget (e2e)', () => {
       expect(statement.link).toEqual({
         expenseCategory: null,
         incomeCategory: null,
+        paymentMethod: null,
       });
       expect(await entries(bruno)).toEqual([]);
     });

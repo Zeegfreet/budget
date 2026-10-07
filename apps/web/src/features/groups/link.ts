@@ -5,4 +5,5 @@ import type { GroupLink } from './types'
 export const statementLink = ({ link }: GroupStatement): GroupLink => ({
   expenseCategoryId: link.expenseCategory?.id ?? null,
   incomeCategoryId: link.incomeCategory?.id ?? null,
+  paymentMethodId: link.paymentMethod?.id ?? null,
 })

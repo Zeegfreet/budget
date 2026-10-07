@@ -118,6 +118,8 @@ export interface GroupStatement {
   link: {
     expenseCategory: { id: number; name: string } | null
     incomeCategory: { id: number; name: string } | null
+    /** Where the expense shares are paid */
+    paymentMethod: { id: number; name: string; dueDay: number | null } | null
   }
   /** The group's totals in the month */
   expenseCents: number

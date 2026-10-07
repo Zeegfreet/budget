@@ -1,3 +1,4 @@
+import { knownPaymentMethodMessage } from '@/features/payment-methods/errors'
 import { ApiError } from '@/lib/api/client'
 
 /** The API's messages for group rules the user can fix, in Portuguese */
@@ -22,6 +23,8 @@ const MESSAGES: Record<string, string> = {
 
 /** Message for a failed change in a group */
 export function groupErrorMessage(error: unknown, fallback: string): string {
+  const method = knownPaymentMethodMessage(error)
+  if (method) return method
   if (!(error instanceof ApiError)) return fallback
   const known = error.messages.map((m) => MESSAGES[m]).filter(Boolean)
   if (known.length > 0) return known.join(' ')

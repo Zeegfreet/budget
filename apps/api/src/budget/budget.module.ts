@@ -23,5 +23,6 @@ import { TransactionService } from './transaction.service.js';
     TransactionService,
     GroupStatementService,
   ],
+  exports: [TransactionService],
 })
 export class BudgetModule {}

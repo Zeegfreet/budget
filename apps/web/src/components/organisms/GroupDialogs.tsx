@@ -16,6 +16,7 @@ import type {
   GroupMember,
   SplitMethod,
 } from '@/features/groups/types'
+import type { PaymentMethod } from '@/features/payment-methods/types'
 
 /** The dialog open on a group's page for the group itself, its members or its rules */
 export type GroupDialog =
@@ -36,6 +37,8 @@ interface GroupDialogsProps {
   onRemoveMember: (member: GroupMember) => Promise<void>
   /** The user's category tree, for the link dialog (empty while loading) */
   categories: CategoryGroup[]
+  /** Offered in the link dialog */
+  paymentMethods?: PaymentMethod[]
   onSetLink: (link: GroupLink) => Promise<void>
   invitations: ReturnType<typeof useInvitationActions>
   rules: ReturnType<typeof useSplitMethodActions>
@@ -56,6 +59,7 @@ export function GroupDialogs({
   onLeave,
   onRemoveMember,
   categories,
+  paymentMethods,
   onSetLink,
   invitations,
   rules,
@@ -82,6 +86,7 @@ export function GroupDialogs({
         onOpenChange={close}
         groupName={group.name}
         categories={categories}
+        paymentMethods={paymentMethods}
         initial={group.link}
         onSubmit={onSetLink}
         errorMessage={message('Não foi possível salvar o vínculo.')}

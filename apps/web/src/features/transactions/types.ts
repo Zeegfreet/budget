@@ -1,4 +1,5 @@
 import type { EntryKind, Month } from '@/features/budget/types'
+import type { PaymentMethod } from '@/features/payment-methods/types'
 
 /** Which occurrences of a recurring transaction a change applies to */
 export type RecurrenceScope = 'ONE' | 'FOLLOWING'
@@ -21,6 +22,10 @@ export interface Transaction {
     active: boolean
     group: { id: number; name: string; kind: EntryKind; active: boolean }
   }
+  /** The card or account it is paid with (expenses only) */
+  paymentMethod: Pick<PaymentMethod, 'id' | 'name' | 'type' | 'dueDay' | 'active'> | null
+  /** Effective due day: the payment method's, or else the category's */
+  dueDay: number | null
 }
 
 export interface TransactionInput {
@@ -31,7 +36,11 @@ export interface TransactionInput {
   plannedCents: number
   /** Creates one occurrence per month, starting at `month` (1–60) */
   repeatMonths?: number
+  /** Expenses only; `null` follows the category's due day */
+  paymentMethodId?: number | null
 }
 
-/** Fields to change; `null` clears the description */
-export type TransactionPatch = Partial<Pick<TransactionInput, 'categoryId' | 'description' | 'plannedCents'>>
+/** Fields to change; `null` clears the description or the payment method */
+export type TransactionPatch = Partial<
+  Pick<TransactionInput, 'categoryId' | 'description' | 'plannedCents' | 'paymentMethodId'>
+>

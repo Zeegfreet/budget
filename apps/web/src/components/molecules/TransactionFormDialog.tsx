@@ -14,8 +14,11 @@ import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from '@/compon
 import { Switch } from '@/components/ui/switch'
 import { addMonths, formatMonthLabel, formatMonthLong } from '@/features/budget/months'
 import type { CategoryGroup, EntryKind, Month } from '@/features/budget/types'
+import { selectableMethods } from '@/features/payment-methods/labels'
+import type { PaymentMethod } from '@/features/payment-methods/types'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
 import { FormField } from './FormField'
+import { PaymentMethodSelect } from './PaymentMethodSelect'
 
 export const MAX_TRANSACTION_DESCRIPTION_LENGTH = 120
 export const MAX_REPEAT_MONTHS = 60
@@ -27,6 +30,8 @@ export interface TransactionFormValues {
   plannedCents: number
   /** 1 when not recurring */
   repeatMonths: number
+  /** Expenses only; always `null` for incomes */
+  paymentMethodId: number | null
 }
 
 interface TransactionFormDialogProps {
@@ -37,6 +42,8 @@ interface TransactionFormDialogProps {
   groups: CategoryGroup[]
   /** Month of the launch (fixed; recurrence starts here) */
   month: Month
+  /** The user's payment methods, offered for expenses (none hides the field) */
+  paymentMethods?: PaymentMethod[]
   /** Editing: the current values, and no recurrence fields */
   initial?: Omit<TransactionFormValues, 'repeatMonths'>
   /** Rejects to show `errorMessage(error)` */
@@ -64,6 +71,7 @@ function TransactionForm({
   kind,
   groups,
   month,
+  paymentMethods = [],
   initial,
   onSubmit,
   errorMessage,
@@ -80,6 +88,9 @@ function TransactionForm({
   const [amount, setAmount] = useState(initial ? formatAmount(initial.plannedCents) : '')
   const [repeat, setRepeat] = useState(false)
   const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
+  const currentMethodId = initial?.paymentMethodId ?? null
+  const [paymentMethodId, setPaymentMethodId] = useState(currentMethodId)
+  const showMethods = kind === 'EXPENSE' && selectableMethods(paymentMethods, currentMethodId).length > 0
   const [errors, setErrors] = useState<Errors>({})
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -110,6 +121,7 @@ function TransactionForm({
         description,
         plannedCents: plannedCents!,
         repeatMonths: repeat ? times : 1,
+        paymentMethodId: kind === 'EXPENSE' ? paymentMethodId : null,
       })
       onDone()
     } catch (e) {
@@ -179,6 +191,15 @@ function TransactionForm({
         />
         {errors.plannedCents && <FieldError>{errors.plannedCents}</FieldError>}
       </Field>
+
+      {showMethods && (
+        <PaymentMethodSelect
+          methods={paymentMethods}
+          current={currentMethodId}
+          value={paymentMethodId}
+          onChange={setPaymentMethodId}
+        />
+      )}
 
       {!editing && (
         <div className="flex flex-col gap-3 rounded-lg border p-3">

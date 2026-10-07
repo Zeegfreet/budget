@@ -13,6 +13,7 @@ describe('GroupService', () => {
   const prisma = {
     groupMember: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     category: { findMany: vi.fn() },
+    paymentMethod: { findFirst: vi.fn() },
     financeGroup: {
       create: vi.fn(),
       findUniqueOrThrow: vi.fn(),
@@ -28,6 +29,7 @@ describe('GroupService', () => {
     role: 'OWNER',
     expenseCategoryId: null,
     incomeCategoryId: null,
+    paymentMethodId: null,
   };
   const member = { id: 2, groupId: 5, userId: 8, role: 'MEMBER' };
 
@@ -200,6 +202,7 @@ describe('GroupService', () => {
       expect(group.link).toEqual({
         expenseCategoryId: null,
         incomeCategoryId: null,
+        paymentMethodId: null,
       });
     });
 
@@ -250,6 +253,42 @@ describe('GroupService', () => {
         }),
       ).rejects.toThrow(NotFoundException);
       expect(prisma.groupMember.update).not.toHaveBeenCalled();
+    });
+
+    it('sets the payment method of the expense shares, checking a new one', async () => {
+      prisma.groupMember.findFirst.mockResolvedValue(owner);
+      prisma.category.findMany.mockResolvedValue([]);
+      const clear = { expenseCategoryId: null, incomeCategoryId: null };
+
+      prisma.paymentMethod.findFirst.mockResolvedValueOnce({ active: true });
+      await service.setLink(7, 5, { ...clear, paymentMethodId: 2 });
+      expect(prisma.paymentMethod.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 2, userId: 7 } }),
+      );
+      expect(prisma.groupMember.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { ...clear, paymentMethodId: 2 },
+      });
+
+      prisma.paymentMethod.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.setLink(7, 5, { ...clear, paymentMethodId: 3 }),
+      ).rejects.toThrow(NotFoundException);
+
+      prisma.paymentMethod.findFirst.mockResolvedValueOnce({ active: false });
+      await expect(
+        service.setLink(7, 5, { ...clear, paymentMethodId: 3 }),
+      ).rejects.toThrow(BadRequestException);
+
+      // Keeping the current one (even inactive) or omitting it skips the check
+      prisma.paymentMethod.findFirst.mockClear();
+      prisma.groupMember.findFirst.mockResolvedValue({
+        ...owner,
+        paymentMethodId: 3,
+      });
+      await service.setLink(7, 5, { ...clear, paymentMethodId: 3 });
+      await service.setLink(7, 5, clear);
+      expect(prisma.paymentMethod.findFirst).not.toHaveBeenCalled();
     });
   });
 });

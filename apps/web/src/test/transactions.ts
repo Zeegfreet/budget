@@ -25,7 +25,7 @@ export const categories = {
   salary: category(4, 'Salário', salaryGroup, 5),
 }
 
-/** A pending, single transaction of October 2026 */
+/** A pending, single transaction of October 2026 (due on its method's day, or else its category's) */
 export const makeTransaction = (
   id: number,
   extra: Partial<Transaction> & Pick<Transaction, 'category'>,
@@ -36,6 +36,8 @@ export const makeTransaction = (
   plannedCents: 10000,
   realizedCents: null,
   series: null,
+  paymentMethod: null,
+  dueDay: extra.paymentMethod?.dueDay ?? extra.category.dueDay,
   ...extra,
 })
 

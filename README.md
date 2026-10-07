@@ -16,6 +16,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - [Extrato](#extrato)
 - [Grupos](#grupos)
 - [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal)
+- [Meios de pagamento](#meios-de-pagamento)
 - [Testes](#testes)
 - [CI/CD](#cicd)
 - [Deploy](#deploy)
@@ -49,6 +50,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Convites para grupos | ✅ | ✅ | Convite por e-mail de usuário cadastrado; o convidado aceita ou recusa em `/grupos`. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
+| Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
 | Docker / deploy em containers | ⏳ | ⏳ | Próximo passo, veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
@@ -90,7 +92,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ├── apps/
 │   ├── api/                 # Backend NestJS
 │   │   ├── prisma/          # schema.prisma e migrations
-│   │   ├── src/             # módulos (auth, budget, groups, user, prisma), app.setup.ts
+│   │   ├── src/             # módulos (auth, budget, groups, payment-methods, user, prisma), app.setup.ts
 │   │   └── test/            # testes e2e (*.e2e-spec.ts)
 │   └── web/                 # Frontend React
 │       └── src/
@@ -265,19 +267,19 @@ Os valores são sempre centavos inteiros. O sinal vem do tipo da categoria (rece
 Tela `/extrato` (menu lateral **Extrato**), com os lançamentos de um mês: abre no mês atual e navega com **‹ ›** (ou **Mês atual**). O mês fica na URL (`/extrato?month=2026-11`).
 
 - **Resumo do mês**: um card compacto com o saldo final em destaque e, ao lado, receitas e despesas do mês (com o quanto já foi realizado e o quanto falta realizar), saldo de abertura e saldo do mês.
-- **Lista**: Receitas em cima e Despesas embaixo, cada seção com o total e o quanto falta realizar, separada pelos **tipos** (na mesma ordem da tabela do painel), cada um com seu subtotal. Dentro do tipo, os lançamentos seguem o dia de vencimento. Cada linha mostra o vencimento, a descrição (ou o nome da categoria, que aparece embaixo quando há descrição), o selo **3/12** quando o lançamento é recorrente e o valor.
+- **Lista**: Receitas em cima e Despesas embaixo, cada seção com o total e o quanto falta realizar, separada pelos **tipos** (na mesma ordem da tabela do painel), cada um com seu subtotal. Dentro do tipo, os lançamentos seguem o dia de vencimento. Cada linha mostra o vencimento (o do meio de pagamento, quando houver, ou o da categoria), a descrição (ou o nome da categoria, que aparece embaixo quando há descrição), o selo **3/12** quando o lançamento é recorrente, o selo do meio de pagamento (link para a fatura) e o valor.
 - **Celular**: a tela é de uma coluna só, com caixa de "realizado" fácil de tocar e o menu **⋯** de cada linha sempre visível em telas de toque.
 - **Realizado**: marcar a caixa da linha registra o lançamento como realizado com o valor previsto; desmarcar volta para pendente. Para informar **outro valor**, use **Informar valor realizado** no menu da linha (⋯ ou botão direito) ou clique no valor realizado. Quando o realizado difere do previsto, a linha mostra os dois.
-- **Nova receita / Nova despesa**: categoria (só as ativas do tipo escolhido), descrição opcional e valor previsto. Com **Repetir nos próximos meses**, informe quantos meses (2 a 60, padrão 12, contando o mês atual); cada mês ganha um lançamento da mesma série.
+- **Nova receita / Nova despesa**: categoria (só as ativas do tipo escolhido), descrição opcional, valor previsto e, nas despesas, o **meio de pagamento** (opcional; só os ativos). Com **Repetir nos próximos meses**, informe quantos meses (2 a 60, padrão 12, contando o mês atual); cada mês ganha um lançamento da mesma série.
 - **Editar / Excluir** um lançamento recorrente pergunta o que fazer com os próximos: **Manter os próximos** / **Excluir só este**, ou **Alterar também os próximos** / **Excluir também os próximos**. A opção "também os próximos" atinge os lançamentos da série deste mês em diante que ainda não foram realizados; meses anteriores e lançamentos já realizados não mudam. Lançamentos de categorias inativas podem ser realizados e excluídos, mas não editados.
 
 **Rotas da API** (todas exigem sessão; lançamento de outro usuário responde `404`)
 
 | Método | Rota | Corpo / query | Resposta |
 | --- | --- | --- | --- |
-| `GET` | `/budget/transactions` | `?month=YYYY-MM` | `200` com os lançamentos do mês: `{ id, month, description, plannedCents, realizedCents, series: { index, count } \| null, category: { id, name, dueDay, active, group: { id, name, kind, active } } }` |
-| `POST` | `/budget/transactions` | `{ categoryId, month, description?, plannedCents, repeatMonths? }` | `201` com os lançamentos criados (um por mês a partir de `month`; `repeatMonths` de 1 a 60). `404` se a categoria não for do usuário, `400` se estiver inativa |
-| `PATCH` | `/budget/transactions/:id` | `{ categoryId?, description?, plannedCents?, scope? }` | `200` com o lançamento. `scope` é `ONE` (padrão) ou `FOLLOWING` (também os próximos pendentes da série). O mês não é editável |
+| `GET` | `/budget/transactions` | `?month=YYYY-MM` | `200` com os lançamentos do mês: `{ id, month, description, plannedCents, realizedCents, series: { index, count } \| null, category: { id, name, dueDay, active, group: { id, name, kind, active } }, paymentMethod: { id, name, type, dueDay, active } \| null, dueDay }` (`dueDay` é o vencimento efetivo: o do meio de pagamento ou, sem ele, o da categoria) |
+| `POST` | `/budget/transactions` | `{ categoryId, month, description?, plannedCents, repeatMonths?, paymentMethodId? }` | `201` com os lançamentos criados (um por mês a partir de `month`; `repeatMonths` de 1 a 60). `404` se a categoria ou o meio de pagamento não for do usuário, `400` se estiver inativo ou se o meio for usado numa receita |
+| `PATCH` | `/budget/transactions/:id` | `{ categoryId?, description?, plannedCents?, paymentMethodId?, scope? }` (`paymentMethodId: null` tira o meio) | `200` com o lançamento. `scope` é `ONE` (padrão) ou `FOLLOWING` (também os próximos pendentes da série). O mês não é editável |
 | `DELETE` | `/budget/transactions/:id` | `?scope=ONE\|FOLLOWING` | `204` |
 | `PUT` | `/budget/transactions/:id/realization` | `{ amountCents }` | `200`; marca como realizado com esse valor (inteiro ≥ 0) |
 | `DELETE` | `/budget/transactions/:id/realization` | — | `200`; volta para pendente |
@@ -364,14 +366,41 @@ A sua parte nos grupos aparece no Dashboard e no Extrato.
 - **O que entra no saldo**: só a **sua parte** já rateada (a cota gravada em cada lançamento), não importa quem pagou. O acerto entre os membros fica no grupo. A parte é calculada na leitura, então editar o valor, a regra, o pagamento ou excluir o lançamento do grupo reflete na hora.
 - **Dashboard**: a parte soma no valor da categoria vinculada (a célula fica somente leitura, com link para o Extrato), nos totais, nas metas e nos cards de saldo.
 - **Extrato**: a parte aparece no tipo da categoria vinculada, somente leitura, com o selo do grupo e o total do lançamento. Paga no grupo conta como **realizada**; pendente, como **a realizar**. O menu da linha tem **Abrir no grupo**.
+- **Meio de pagamento**: no mesmo vínculo, escolha um cartão ou conta para a sua parte das despesas do grupo entrar na fatura dele (veja [Meios de pagamento](#meios-de-pagamento)).
 - **Histórico**: excluir a categoria vinculada desfaz o vínculo. Quem sai do grupo mantém as partes dos meses em que participou (o saldo passado não muda), e o grupo aparece com o selo **Você saiu** nos meses em que você tem parte nele.
 
 **Rotas da API**
 
 | Método | Rota | Corpo / query | Resposta |
 | --- | --- | --- | --- |
-| `PUT` | `/groups/:id/link` | `{ expenseCategoryId, incomeCategoryId }` | Veja [Grupos](#grupos) |
-| `GET` | `/budget/group-statements` | `?month=YYYY-MM` | `200` com os grupos do usuário no mês: `{ group, active, memberId, link: { expenseCategory, incomeCategory }, expenseCents, incomeCents, pendingCents, expenseShareCents, incomeShareCents, paidCents, receivedCents, netCents, transfers: [{ fromMemberId, fromName, toMemberId, toName, amountCents }], items: [{ transactionId, kind, description, month, shareCents, totalCents, paid, paidByName, series, category }] }`. `transfers` só traz as que envolvem o usuário; `category` é a categoria vinculada (`null` = fora do orçamento) |
+| `PUT` | `/groups/:id/link` | `{ expenseCategoryId, incomeCategoryId, paymentMethodId? }` | Veja [Grupos](#grupos). `paymentMethodId` é o meio de pagamento da sua parte nas despesas (omitido mantém o atual, `null` tira) |
+| `GET` | `/budget/group-statements` | `?month=YYYY-MM` | `200` com os grupos do usuário no mês: `{ group, active, memberId, link: { expenseCategory, incomeCategory, paymentMethod }, expenseCents, incomeCents, pendingCents, expenseShareCents, incomeShareCents, paidCents, receivedCents, netCents, transfers: [{ fromMemberId, fromName, toMemberId, toName, amountCents }], items: [{ transactionId, kind, description, month, shareCents, totalCents, paid, paidByName, series, category }] }`. `transfers` só traz as que envolvem o usuário; `category` é a categoria vinculada (`null` = fora do orçamento) |
+
+## Meios de pagamento
+
+Tela `/meios-de-pagamento` (menu lateral **Meios de pagamento**), para cartões e contas onde as despesas são pagas, por exemplo "Cartão Americanas, vence todo dia 12".
+
+- **Cadastro**: nome (único por usuário), tipo (**Cartão de crédito**, **Conta / débito** ou **Outro**) e dia de vencimento opcional (1 a 31). Pelo menu **⋯** do card dá para **Editar**, **Inativar/Reativar** e **Excluir**. Um meio inativo some das opções de novos lançamentos, mas os lançamentos que já usam ele continuam como estão. Excluir mantém os lançamentos, sem meio de pagamento.
+- **Vencimento**: a despesa lançada num meio de pagamento vence no dia dele; sem meio (ou num meio sem dia), vale o vencimento da categoria. O extrato ordena e mostra os lançamentos pelo vencimento efetivo.
+- **Fatura = mês do lançamento**: não há dia de fechamento; as despesas de outubro no cartão formam a fatura de outubro, com vencimento no dia do meio dentro do mês (dia 31 em fevereiro cai no último dia).
+- **Lista**: cada card mostra o tipo, o vencimento, o total da fatura do mês escolhido e quanto falta pagar. Inativos ficam escondidos atrás de **Mostrar inativos**.
+- **Fatura** (`/meios-de-pagamento/:id?month=YYYY-MM`): total, pago, a pagar e data de vencimento; os lançamentos do mês (dá para marcar como realizado, editar e excluir como no Extrato); a sua parte nas despesas dos grupos ligados a esse meio (somente leitura, o "pago" vem do grupo); e o histórico de 12 meses (5 antes, 6 depois), clicável.
+- **Pagar fatura**: realiza de uma vez todos os lançamentos pendentes do meio no mês, pelo valor previsto (os já realizados mantêm o valor). **Desfazer pagamento** volta todos os lançamentos do meio no mês para pendente. As partes de grupos não mudam.
+- **Grupos**: em **Vincular ao orçamento**, escolha o meio de pagamento das suas partes nas despesas do grupo.
+- **Isolamento**: meio de pagamento de outro usuário responde `404` (ler, alterar, pagar, usar num lançamento ou no vínculo de grupo).
+
+**Rotas da API** (todas exigem sessão)
+
+| Método | Rota | Corpo / query | Resposta |
+| --- | --- | --- | --- |
+| `GET` | `/payment-methods` | `?month=YYYY-MM` | `200` com todos os meios (inativos também), por nome: `{ id, name, type, dueDay, active, invoice: { plannedCents, realizedCents, pendingCents, effectiveCents, count } }` |
+| `POST` | `/payment-methods` | `{ name, type: CREDIT_CARD\|ACCOUNT\|OTHER, dueDay? }` | `201`; `409` se o nome já existir |
+| `PATCH` | `/payment-methods/:id` | `{ name?, type?, dueDay?, active? }` (`dueDay: null` tira o dia) | `200`; `409` em nome duplicado |
+| `DELETE` | `/payment-methods/:id` | — | `204`; os lançamentos ficam sem meio |
+| `GET` | `/payment-methods/:id/invoice` | `?month=YYYY-MM` | `200`: `{ paymentMethod, month, dueDate, plannedCents, realizedCents, pendingCents, effectiveCents, count, transactions: [lançamento], shares: [{ transactionId, group, description, shareCents, paid }] }` |
+| `GET` | `/payment-methods/:id/invoices` | `?from=YYYY-MM&to=YYYY-MM` (até 24 meses) | `200` com os totais de cada mês: `[{ month, plannedCents, realizedCents, pendingCents, effectiveCents, count }]` |
+| `PUT` | `/payment-methods/:id/invoice/payment` | `?month=YYYY-MM` | `200` com a fatura; realiza os pendentes pelo valor previsto |
+| `DELETE` | `/payment-methods/:id/invoice/payment` | `?month=YYYY-MM` | `200` com a fatura; volta os lançamentos para pendente |
 
 ## Testes
 
