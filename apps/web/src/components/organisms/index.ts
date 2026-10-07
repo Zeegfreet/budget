@@ -1,4 +1,4 @@
-export { AppHeader } from './AppHeader'
+export { AppSidebar } from './AppSidebar'
 export { LoginCard } from './LoginCard'
 export { LoginForm } from './LoginForm'
 export { SignupCard } from './SignupCard'

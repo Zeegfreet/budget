@@ -32,6 +32,9 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Fundação do frontend (Tailwind, shadcn/ui, Router, Query, Atomic Design) | — | ✅ | |
 | Pipeline de CI (lint, build, testes unitários e e2e) | ✅ | ✅ | |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
+| Layout autenticado (menu lateral recolhível) | — | ✅ | Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
+| Editar perfil | ⏳ | 🚧 | Rota `/settings/profile` criada como página "Em breve" |
+| Alterar senha | ⏳ | 🚧 | Rota `/settings/password` criada como página "Em breve" |
 | Login com GitHub e Google (OAuth) | ⏳ | 🚧 | Web já tem os botões; a API ainda não implementa `/auth/github` e `/auth/google` |
 | Receitas e despesas pessoais | ⏳ | ⏳ | |
 | Grupos de finanças | ⏳ | ⏳ | |
@@ -84,7 +87,8 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 │       └── src/
 │           ├── components/  # ui → atoms → molecules → organisms → templates
 │           ├── features/    # <feature>/{types,api,queries}.ts
-│           ├── lib/         # cliente Axios, QueryClient, formatação de dinheiro
+│           ├── hooks/       # hooks compartilhados (ex.: useIsMobile)
+│           ├── lib/         # cliente Axios, QueryClient, dinheiro, itens do menu lateral
 │           └── routes/      # páginas (TanStack Router file-based)
 ├── plans/                   # planos de implementação
 └── .github/workflows/ci.yml # pipeline de CI

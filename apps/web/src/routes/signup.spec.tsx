@@ -83,7 +83,7 @@ describe('Sign-up route (/signup)', () => {
       expect(field('CEP')).toHaveAttribute('inputmode', 'numeric')
       expect(field('Cidade')).toHaveAttribute('readonly')
       expect(field('UF')).toHaveAttribute('readonly')
-      expect(screen.queryByRole('banner')).not.toBeInTheDocument()
+      expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).not.toBeInTheDocument()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
@@ -243,7 +243,7 @@ describe('Sign-up route (/signup)', () => {
       )
       expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
       expect(router.state.location.pathname).toBe('/')
-      expect(screen.getByRole('banner')).toHaveTextContent('ana@example.com')
+      expect(screen.getByRole('button', { name: /menu da conta/i })).toHaveTextContent('ana@example.com')
     })
 
     it('returns to the internal page in ?redirect', async () => {
