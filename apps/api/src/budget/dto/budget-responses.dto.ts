@@ -10,6 +10,19 @@ export class CategoryDto {
 
   @ApiProperty({ example: 0 })
   position: number;
+
+  @ApiProperty({ description: 'Inactive categories keep their values' })
+  active: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Apartamento do centro',
+  })
+  description: string | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 10 })
+  dueDay: number | null;
 }
 
 export class CategoryGroupDto {
@@ -24,6 +37,17 @@ export class CategoryGroupDto {
 
   @ApiProperty({ example: 0 })
   position: number;
+
+  @ApiProperty({ description: 'Inactive types keep their values' })
+  active: boolean;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 50,
+    description: 'Share of the income, in percent (expense types)',
+  })
+  goalPercent: number | null;
 
   @ApiProperty({ type: [CategoryDto] })
   categories: CategoryDto[];

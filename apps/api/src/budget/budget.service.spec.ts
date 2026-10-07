@@ -8,8 +8,8 @@ describe('BudgetService', () => {
   const prisma = {
     $transaction: vi.fn(),
     user: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
-    category: { count: vi.fn(), findMany: vi.fn() },
-    categoryGroup: { count: vi.fn(), create: vi.fn(), findMany: vi.fn() },
+    category: { findMany: vi.fn() },
+    categoryGroup: { create: vi.fn(), findMany: vi.fn() },
     monthlyEntry: {
       findMany: vi.fn(),
       upsert: vi.fn(),
@@ -26,6 +26,7 @@ describe('BudgetService', () => {
     prisma.categoryGroup.create.mockImplementation((args) => ({
       create: args,
     }));
+    prisma.user.update.mockImplementation((args) => ({ update: args }));
     prisma.monthlyEntry.upsert.mockImplementation((args) => ({ upsert: args }));
     prisma.monthlyEntry.deleteMany.mockImplementation((args) => ({
       deleteMany: args,
@@ -33,13 +34,19 @@ describe('BudgetService', () => {
   });
 
   describe('categories', () => {
-    it('creates the default tree for a user without categories', async () => {
-      prisma.categoryGroup.count.mockResolvedValue(0);
+    const seeded = (budgetSeeded: boolean) =>
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ budgetSeeded });
+
+    it('creates the default tree once and flags the user as seeded', async () => {
+      seeded(false);
       prisma.categoryGroup.findMany.mockResolvedValue([]);
 
       await service.categories(7);
 
-      const ops = prisma.$transaction.mock.calls[0][0];
+      const [flag, ...ops] = prisma.$transaction.mock.calls[0][0];
+      expect(flag).toEqual({
+        update: { where: { id: 7 }, data: { budgetSeeded: true } },
+      });
       expect(ops).toHaveLength(DEFAULT_CATEGORIES.length);
       expect(ops[0].create.data).toMatchObject({
         userId: 7,
@@ -57,16 +64,16 @@ describe('BudgetService', () => {
       );
     });
 
-    it('does not recreate defaults once the user has categories', async () => {
-      prisma.categoryGroup.count.mockResolvedValue(5);
-      prisma.categoryGroup.findMany.mockResolvedValue([{ id: 1 }]);
+    it('does not recreate defaults for a seeded user, even with no types left', async () => {
+      seeded(true);
+      prisma.categoryGroup.findMany.mockResolvedValue([]);
 
-      await expect(service.categories(7)).resolves.toEqual([{ id: 1 }]);
+      await expect(service.categories(7)).resolves.toEqual([]);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('tolerates a concurrent request creating the defaults first', async () => {
-      prisma.categoryGroup.count.mockResolvedValue(0);
+      seeded(false);
       prisma.categoryGroup.findMany.mockResolvedValue([]);
       prisma.$transaction.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('dup', {
@@ -79,7 +86,7 @@ describe('BudgetService', () => {
     });
 
     it('rethrows other database errors', async () => {
-      prisma.categoryGroup.count.mockResolvedValue(0);
+      seeded(false);
       prisma.$transaction.mockRejectedValue(new Error('disk full'));
 
       await expect(service.categories(7)).rejects.toThrow('disk full');
@@ -111,8 +118,10 @@ describe('BudgetService', () => {
   });
 
   describe('saveEntries', () => {
+    const active = { active: true, group: { active: true } };
+
     it('upserts amounts and deletes zeros, last duplicate winning', async () => {
-      prisma.category.count.mockResolvedValue(2);
+      prisma.category.findMany.mockResolvedValue([active, active]);
 
       await service.saveEntries(7, [
         { categoryId: 1, month: '2026-10', amountCents: 100 },
@@ -120,9 +129,9 @@ describe('BudgetService', () => {
         { categoryId: 2, month: '2026-11', amountCents: 0 },
       ]);
 
-      expect(prisma.category.count).toHaveBeenCalledWith({
-        where: { userId: 7, id: { in: [1, 2] } },
-      });
+      expect(prisma.category.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 7, id: { in: [1, 2] } } }),
+      );
       expect(prisma.$transaction.mock.calls[0][0]).toEqual([
         {
           upsert: {
@@ -145,7 +154,7 @@ describe('BudgetService', () => {
     });
 
     it('fails with 404 and writes nothing when a category is not the user’s', async () => {
-      prisma.category.count.mockResolvedValue(1);
+      prisma.category.findMany.mockResolvedValue([active]);
 
       await expect(
         service.saveEntries(7, [
@@ -153,6 +162,21 @@ describe('BudgetService', () => {
           { categoryId: 99, month: '2026-10', amountCents: 100 },
         ]),
       ).rejects.toThrow(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the category', { active: false, group: { active: true } }],
+      ['its type', { active: true, group: { active: false } }],
+    ])('fails with 400 when %s is inactive', async (_case, category) => {
+      prisma.category.findMany.mockResolvedValue([active, category]);
+
+      await expect(
+        service.saveEntries(7, [
+          { categoryId: 1, month: '2026-10', amountCents: 100 },
+          { categoryId: 2, month: '2026-10', amountCents: 100 },
+        ]),
+      ).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });

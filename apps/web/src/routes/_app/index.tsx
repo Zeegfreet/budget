@@ -1,14 +1,25 @@
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { useState } from 'react'
 import { toast } from 'sonner'
-import { EmptyState } from '@/components/molecules'
-import { BalanceSummary, BudgetGrid, SaveBar } from '@/components/organisms'
+import { BudgetGridToolbar, EmptyState } from '@/components/molecules'
+import {
+  BalanceSummary,
+  BudgetDialogs,
+  BudgetGrid,
+  GoalsPanel,
+  SaveBar,
+  type BudgetDialog,
+  type GridAction,
+} from '@/components/organisms'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { authQueries } from '@/features/auth/queries'
 import { saveEntries, updateInitialBalance } from '@/features/budget/api'
-import { useBudgetDraft, useUnsavedChangesGuard } from '@/features/budget/hooks'
-import { currentMonth, endOfYear, formatMonthLong, monthWindow } from '@/features/budget/months'
+import { categoryErrorMessage } from '@/features/budget/errors'
+import { buildGoalsOverview } from '@/features/budget/goals'
+import { useBudgetDraft, useCategoryActions, useUnsavedChangesGuard } from '@/features/budget/hooks'
+import { currentMonth, endOfYear, formatMonthLabel, formatMonthLong, monthWindow } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
 import { buildBudgetTable } from '@/features/budget/rows'
 import { ApiError } from '@/lib/api/client'
@@ -47,6 +58,38 @@ function DashboardPage() {
 
   const table = buildBudgetTable(groups, months, draft.value, summary.openingBalanceCents)
   const [expenses, incomes] = [table.expenses[0], table.incomes[0]]
+  const goals = buildGoalsOverview(table)
+
+  const [showInactive, setShowInactive] = useState(false)
+  const [dialog, setDialog] = useState<BudgetDialog>(null)
+  const actions = useCategoryActions((categoryIds) => draft.dispatch({ type: 'forget', categoryIds }))
+
+  async function toggleActive(run: () => Promise<void>, active: boolean, name: string) {
+    try {
+      await run()
+      toast.success(active ? `${name} reativado(a)` : `${name} inativado(a)`)
+    } catch (error) {
+      toast.error(categoryErrorMessage(error, 'Não foi possível alterar.'))
+    }
+  }
+
+  function handleGridAction(action: GridAction) {
+    switch (action.type) {
+      case 'toggle-group': {
+        const { group } = action
+        const active = !group.active
+        const ids = group.categories.map((c) => c.id)
+        return toggleActive(() => actions.updateGroup(group.id, { active }, ids), active, group.name)
+      }
+      case 'toggle-category': {
+        const { category } = action
+        const active = !category.active
+        return toggleActive(() => actions.updateCategory(category.id, { active }), active, category.name)
+      }
+      default:
+        setDialog(action)
+    }
+  }
 
   const save = useMutation({
     mutationFn: () => saveEntries(draft.changes),
@@ -74,6 +117,13 @@ function DashboardPage() {
         </p>
       </div>
 
+      <GoalsPanel
+        overview={goals}
+        monthLabel={formatMonthLong(month)}
+        periodLabel={`${formatMonthLabel(months[0])} a ${formatMonthLabel(months[months.length - 1])}`}
+        onEditGoals={() => setDialog({ type: 'goals' })}
+      />
+
       <BalanceSummary
         openingCents={summary.openingBalanceCents}
         incomeCents={incomes}
@@ -87,13 +137,23 @@ function DashboardPage() {
           <CardTitle>Planejamento mensal</CardTitle>
           <CardDescription>
             Clique em um valor para editar. Use o menu da célula (ou o botão direito) para replicar
-            para os meses seguintes. As alterações só valem depois de salvar.
+            para os meses seguintes. Passe o mouse sobre um tipo ou categoria para editar, inativar
+            ou excluir. As alterações nos valores só valem depois de salvar.
           </CardDescription>
+          <CardAction>
+            <BudgetGridToolbar
+              showInactive={showInactive}
+              onShowInactiveChange={setShowInactive}
+              onCreateGroup={(kind) => setDialog({ type: 'create-group', kind })}
+            />
+          </CardAction>
         </CardHeader>
         <CardContent className="border-t px-0">
           <BudgetGrid
             table={table}
             months={months}
+            showInactive={showInactive}
+            onAction={handleGridAction}
             isChanged={draft.isChanged}
             onChange={(categoryId, m, amountCents) =>
               draft.dispatch({ type: 'set', categoryId, month: m, amountCents })
@@ -126,6 +186,15 @@ function DashboardPage() {
           save.reset()
           draft.dispatch({ type: 'discard' })
         }}
+      />
+
+      <BudgetDialogs
+        dialog={dialog}
+        onClose={() => setDialog(null)}
+        actions={actions}
+        goalTargets={groups
+          .filter((g) => g.kind === 'EXPENSE' && g.active)
+          .map(({ id, name, goalPercent }) => ({ id, name, goalPercent }))}
       />
     </div>
   )

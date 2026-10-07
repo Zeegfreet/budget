@@ -37,8 +37,9 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Editar perfil | ⏳ | 🚧 | Rota `/settings/profile` criada como página "Em breve" |
 | Alterar senha | ⏳ | 🚧 | Rota `/settings/password` criada como página "Em breve" |
 | Login com GitHub e Google (OAuth) | ⏳ | 🚧 | Web já tem os botões; a API ainda não implementa `/auth/github` e `/auth/google` |
-| Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`). Veja [Dashboard](#dashboard) |
-| Categorias de receitas e despesas | 🚧 | ⏳ | Tipos e categorias padrão criados no primeiro acesso; a tela de edição ainda não existe |
+| Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`), com coluna de total do período. Veja [Dashboard](#dashboard) |
+| Categorias de receitas e despesas | ✅ | ✅ | Tipos e categorias padrão criados no primeiro acesso; criar, editar, inativar/reativar e excluir pela própria tabela do Dashboard. Categorias têm descrição curta e dia de vencimento opcionais |
+| Metas por tipo de despesa | ✅ | ✅ | Meta em % das receitas por tipo de despesa, com termômetro do mês atual e do período acima dos cards |
 | Receitas e despesas pessoais | 🚧 | 🚧 | Hoje: um valor por categoria e mês, editado no Dashboard. Lançamentos individuais e previsto × realizado ainda não existem |
 | Grupos de finanças | ⏳ | ⏳ | |
 | Convites para grupos | ⏳ | ⏳ | |
@@ -216,25 +217,42 @@ Página inicial do app (`/`), com o balanço das finanças pessoais.
 
 O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, podendo ser negativo) é ajustado pelo lápis no card de abertura. Receitas, despesas e saldos do mês são recalculados na hora, enquanto o usuário edita a tabela, mesmo antes de salvar.
 
+**Metas por tipo de despesa (acima dos cards)**
+
+- Cada tipo de despesa (2º nível, ex.: Despesas Básicas) pode ter uma meta em **% das receitas** (inteiro de 1 a 100), definida em **Definir metas** ou no menu **Editar** do tipo. Tipos de receita não têm meta.
+- Para cada tipo com meta, um termômetro mostra quanto das receitas ele consome no **mês atual** e no **período** da tabela (12 meses), com um marcador na meta: verde abaixo de 90% da meta, amarelo de 90% até a meta e vermelho acima dela (ou com gastos sem receitas). Abaixo, a soma das metas e o realizado total.
+- Os termômetros acompanham as edições da tabela ainda não salvas. Tipos inativos ficam fora das metas.
+
 **Planejamento mensal (tabela dinâmica)**
 
-- Colunas: o mês atual e os 11 seguintes. Linhas: **Despesas** e depois **Receitas**, que se expandem em **tipos** (Despesas Básicas e Custos de Vida; Salário, Provento e Renda Extra) e depois em **categorias** (Moradia, Alimentação, etc.). Os valores ficam nas categorias; tipos e grupos mostram as somas. No rodapé ficam o saldo de cada mês e o saldo acumulado projetado.
+- Colunas: o mês atual, os 11 seguintes e **Total** (fixa à direita), que soma o período em cada linha; no saldo acumulado, mostra o saldo projetado ao fim do período. Linhas: **Despesas** e depois **Receitas** (fixas, não editáveis), que se expandem em **tipos** (Despesas Básicas e Custos de Vida; Salário, Provento e Renda Extra) e depois em **categorias** (Moradia, Alimentação, etc.). Os valores ficam nas categorias; tipos e grupos mostram as somas. No rodapé ficam o saldo de cada mês e o saldo acumulado projetado.
 - Edição direto na célula: clique e digite (`1800`, `1.800,50`, `R$ 10`). Tab vai para a direita, Enter desce (Shift+Enter sobe), Esc desfaz a edição da célula e texto inválido é ignorado. Deixar a célula vazia zera o valor.
 - Menu da célula (botão ⋮ ao passar o mouse, ou botão direito): **Replicar para os meses seguintes**, **Replicar até dezembro** e **Limpar valor**.
 - As alterações ficam destacadas e só são gravadas ao clicar em **Salvar**, na barra que aparece no rodapé (ou descartadas em **Descartar**). Sair da página com alterações pendentes pede confirmação.
-- Tipos e categorias padrão são criados no primeiro acesso. Eles serão editáveis em uma tela própria (ainda não implementada).
+- Tipos e categorias padrão são criados uma única vez, no primeiro acesso (excluir todos não os recria).
+- Menu de tipos e categorias (botão ⋯ ao passar o mouse sobre o nome, ou botão direito): **Editar** (nome; descrição e dia de vencimento nas categorias; meta nos tipos de despesa), **Nova categoria** (tipos), **Inativar**/**Reativar** e **Excluir**.
+- **+ Nova categoria**, ao fim de cada tipo, cria uma categoria com nome, descrição curta opcional (ex.: "Apartamento do centro") e dia de vencimento opcional (1 a 31), exibidos na linha.
+- No cabeçalho da tabela: **Novo tipo** (de despesa ou de receita) e **Mostrar inativas**.
+- **Inativar** mantém o histórico: os valores continuam nos totais e saldos, mas a linha some da tabela e não aceita valores. Com **Mostrar inativas**, ela aparece esmaecida e somente leitura, e pode ser reativada. Inativar um tipo inativa, na prática, todas as suas categorias.
+- **Excluir** pede confirmação e apaga os valores lançados (de um tipo, apaga também as categorias). Edições não salvas de uma categoria inativada ou excluída são descartadas.
 
 **Rotas da API** (todas exigem sessão; tudo é do usuário logado)
 
 | Método | Rota | Corpo / query | Resposta |
 | --- | --- | --- | --- |
-| `GET` | `/budget/categories` | — | `200` com a árvore de tipos e categorias (cria os padrões no primeiro acesso) |
+| `GET` | `/budget/categories` | — | `200` com a árvore de tipos (`active`, `goalPercent`) e categorias (`active`, `description`, `dueDay`), incluindo inativos (cria os padrões no primeiro acesso) |
+| `POST` | `/budget/groups` | `{ kind, name, goalPercent? }` | `201` com o tipo, no fim do seu `kind`. `goalPercent` (1–100) só em despesas; `409` se o nome já existir no mesmo `kind` |
+| `PATCH` | `/budget/groups/:id` | `{ name?, active?, goalPercent? }` | `200` com o tipo. `goalPercent: null` remove a meta; `kind` não muda; `409` em nome duplicado |
+| `DELETE` | `/budget/groups/:id` | — | `204`; apaga as categorias e os valores do tipo |
+| `POST` | `/budget/groups/:id/categories` | `{ name, description?, dueDay? }` | `201` com a categoria, no fim do tipo. `dueDay` de 1 a 31; `400` se o tipo estiver inativo; `409` em nome duplicado no tipo |
+| `PATCH` | `/budget/categories/:id` | `{ name?, description?, dueDay?, active? }` | `200` com a categoria. `null` (ou descrição em branco) limpa descrição e vencimento |
+| `DELETE` | `/budget/categories/:id` | — | `204`; apaga os valores da categoria |
 | `GET` | `/budget/entries` | `?from=YYYY-MM&to=YYYY-MM` | `200` com `[{ categoryId, month, amountCents }]` (só valores diferentes de zero); `400` se o intervalo for inválido, invertido ou maior que 24 meses |
-| `PUT` | `/budget/entries` | `{ entries: [{ categoryId, month, amountCents }] }` | `204`. `amountCents` é inteiro ≥ 0, e `0` apaga a célula. Até 1000 células por chamada. `404` se alguma categoria não for do usuário (nada é gravado) |
+| `PUT` | `/budget/entries` | `{ entries: [{ categoryId, month, amountCents }] }` | `204`. `amountCents` é inteiro ≥ 0, e `0` apaga a célula. Até 1000 células por chamada. `404` se alguma categoria não for do usuário e `400` se estiver inativa (ou em tipo inativo); nada é gravado |
 | `GET` | `/budget/summary` | `?month=YYYY-MM` | `200` com `{ month, initialBalanceCents, openingBalanceCents, incomeCents, expenseCents, monthBalanceCents, closingBalanceCents }`. O mês vem do cliente, por causa do fuso horário |
 | `PUT` | `/budget/initial-balance` | `{ amountCents }` | `200` com `{ amountCents }` (pode ser negativo) |
 
-Os valores são sempre centavos inteiros. O sinal vem do tipo da categoria (receita ou despesa), nunca do valor.
+Os valores são sempre centavos inteiros. O sinal vem do tipo da categoria (receita ou despesa), nunca do valor. Tipos e categorias de outro usuário respondem `404` em todas as rotas.
 
 ## Testes
 

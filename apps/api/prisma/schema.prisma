@@ -28,6 +28,9 @@ model User {
   updatedAt           DateTime        @updatedAt
   /// Balance the user had before the first month in the budget (may be negative)
   initialBalanceCents Int             @default(0)
+  /// Set once the default categories were created, so deleting them all
+  /// doesn't bring the defaults back
+  budgetSeeded        Boolean         @default(false)
   sessions            Session[]
   categoryGroups      CategoryGroup[]
   categories          Category[]
@@ -63,29 +66,39 @@ enum EntryKind {
 
 /// A category "type" (e.g. Despesas Básicas, Salário) grouping categories of one kind.
 model CategoryGroup {
-  id         Int        @id @default(autoincrement())
-  userId     Int
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind       EntryKind
-  name       String
-  position   Int        @default(0)
-  createdAt  DateTime   @default(now())
-  categories Category[]
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        EntryKind
+  name        String
+  position    Int        @default(0)
+  /// Inactive types are hidden from the grid and not editable; their values still count
+  active      Boolean    @default(true)
+  /// Target share of the month's income, in whole percent (1–100). Expense types only.
+  goalPercent Int?
+  createdAt   DateTime   @default(now())
+  categories  Category[]
 
   @@unique([userId, kind, name])
 }
 
 /// Leaf category that holds the monthly values (e.g. Moradia under Despesas Básicas).
 model Category {
-  id       Int            @id @default(autoincrement())
+  id          Int            @id @default(autoincrement())
   /// Denormalized owner so every query can be scoped by user
-  userId   Int
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId  Int
-  group    CategoryGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  name     String
-  position Int            @default(0)
-  entries  MonthlyEntry[]
+  userId      Int
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId     Int
+  group       CategoryGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name        String
+  position    Int            @default(0)
+  /// Inactive categories are hidden from the grid and not editable; their values still count
+  active      Boolean        @default(true)
+  /// Short note, e.g. "Apartamento do centro"
+  description String?
+  /// Day of the month the bill is due (1–31)
+  dueDay      Int?
+  entries     MonthlyEntry[]
 
   @@unique([groupId, name])
   @@index([userId])

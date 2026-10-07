@@ -137,10 +137,11 @@ describe('Dashboard route (/)', () => {
       expect(fetchEntriesMock).toHaveBeenCalledWith('2026-10', '2027-09')
       const table = screen.getByRole('table', { name: 'Planejamento mensal' })
       const headers = within(table).getAllByRole('columnheader')
-      expect(headers).toHaveLength(13)
+      expect(headers).toHaveLength(14)
       expect(headers[1]).toHaveAccessibleName('outubro de 2026')
       expect(headers[1]).toHaveTextContent(/^out\/26\s*\(atual\)$/)
       expect(headers[12]).toHaveAccessibleName('setembro de 2027')
+      expect(headers[13]).toHaveTextContent('Total')
 
       const sections = within(table)
         .getAllByRole('rowheader')
@@ -163,6 +164,23 @@ describe('Dashboard route (/)', () => {
       expect(rowCells('Saldo do mês').slice(0, 3)).toEqual(['R$ 2.500,00', '-R$ 1.800,00', '-R$ 300,00'])
       // Opening 2.500 + 2.500, then − 1.800, then − 300
       expect(rowCells('Saldo acumulado').slice(0, 3)).toEqual(['R$ 5.000,00', 'R$ 3.200,00', 'R$ 2.900,00'])
+    })
+
+    it('totals every row of the window in the last column', async () => {
+      await openDashboard()
+
+      // Moradia 1.800 + 1.800; Despesas 2.500 + 1.800 + 300
+      expect(rowCells('Moradia').at(-1)).toBe('R$ 3.600,00')
+      expect(rowCells('Despesas Básicas').at(-1)).toBe('R$ 4.300,00')
+      expect(rowCells('Despesas').at(-1)).toBe('R$ 4.600,00')
+      expect(rowCells('Receitas').at(-1)).toBe('R$ 5.000,00')
+      expect(rowCells('Saldo do mês').at(-1)).toBe('R$ 400,00')
+      // Closing balance of the window: opening 2.500 + 400
+      expect(rowCells('Saldo acumulado').at(-1)).toBe('R$ 2.900,00')
+
+      await typeInCell('Lazer em janeiro de 2027', '100')
+      expect(rowCells('Lazer').at(-1)).toBe('R$ 400,00')
+      expect(rowCells('Despesas').at(-1)).toBe('R$ 4.700,00')
     })
 
     it('collapses and expands sections and types', async () => {

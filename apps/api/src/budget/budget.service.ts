@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { EntryKind } from '../prisma/generated/client.js';
+import type { EntryKind, Prisma } from '../prisma/generated/client.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type BudgetSummary, computeSummary, sumByKind } from './balance.js';
@@ -17,6 +17,28 @@ import { MAX_MONTH_SPAN, monthSpan } from './month.js';
 
 const byPosition = { position: 'asc' } as const;
 
+export const categorySelect = {
+  id: true,
+  name: true,
+  position: true,
+  active: true,
+  description: true,
+  dueDay: true,
+} satisfies Prisma.CategorySelect;
+
+export const groupSelect = {
+  id: true,
+  kind: true,
+  name: true,
+  position: true,
+  active: true,
+  goalPercent: true,
+  categories: {
+    orderBy: [byPosition, { id: 'asc' }],
+    select: categorySelect,
+  },
+} satisfies Prisma.CategoryGroupSelect;
+
 /**
  * Personal budget: category tree and one amount per category and month.
  * Every method takes the owner from the auth context and scopes by it.
@@ -25,23 +47,14 @@ const byPosition = { position: 'asc' } as const;
 export class BudgetService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The user's category tree, creating the default one on first access. */
+  /** The user's category tree (inactive items included), creating the default one on first access. */
   async categories(userId: number): Promise<CategoryGroupDto[]> {
     await this.ensureDefaults(userId);
     return this.prisma.categoryGroup.findMany({
       where: { userId },
       // Expenses first (enum order is alphabetical), as the dashboard shows them
       orderBy: [{ kind: 'asc' }, byPosition, { id: 'asc' }],
-      select: {
-        id: true,
-        kind: true,
-        name: true,
-        position: true,
-        categories: {
-          orderBy: [byPosition, { id: 'asc' }],
-          select: { id: true, name: true, position: true },
-        },
-      },
+      select: groupSelect,
     });
   }
 
@@ -66,15 +79,20 @@ export class BudgetService {
 
   /**
    * Upserts the given cells; `0` clears one. All or nothing: a category that
-   * isn't the user's fails the whole save with 404 (no existence leak).
+   * isn't the user's fails the whole save with 404 (no existence leak), and an
+   * inactive one (or one in an inactive type) with 400.
    */
   async saveEntries(userId: number, entries: EntryDto[]): Promise<void> {
     const categoryIds = [...new Set(entries.map((e) => e.categoryId))];
-    const owned = await this.prisma.category.count({
+    const owned = await this.prisma.category.findMany({
       where: { userId, id: { in: categoryIds } },
+      select: { active: true, group: { select: { active: true } } },
     });
-    if (owned !== categoryIds.length) {
+    if (owned.length !== categoryIds.length) {
       throw new NotFoundException('Category not found');
+    }
+    if (owned.some((c) => !c.active || !c.group.active)) {
+      throw new BadRequestException('Category is inactive');
     }
 
     // Last write wins when the same cell appears twice in one request
@@ -149,15 +167,26 @@ export class BudgetService {
     }));
   }
 
-  /** Idempotent; a concurrent first access losing the race is fine. */
+  /**
+   * Creates the defaults once per user (the `budgetSeeded` flag, not the
+   * current tree, says so: deleting every type must not bring them back).
+   * Idempotent; a concurrent first access losing the race is fine.
+   */
   private async ensureDefaults(userId: number): Promise<void> {
-    const existing = await this.prisma.categoryGroup.count({
-      where: { userId },
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { budgetSeeded: true },
     });
-    if (existing > 0) return;
+    if (user.budgetSeeded) return;
     try {
-      await this.prisma.$transaction(
-        DEFAULT_CATEGORIES.map((group, position) =>
+      await this.prisma.$transaction([
+        // Fails the transaction (P2002 via the unique type names) if another
+        // request seeded first; the flag flips together with the creates
+        this.prisma.user.update({
+          where: { id: userId },
+          data: { budgetSeeded: true },
+        }),
+        ...DEFAULT_CATEGORIES.map((group, position) =>
           this.prisma.categoryGroup.create({
             data: {
               userId,
@@ -174,7 +203,7 @@ export class BudgetService {
             },
           }),
         ),
-      );
+      ]);
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
     }
