@@ -92,6 +92,19 @@ describe('Dashboard route (/)', () => {
       expect(within(card('Saldo acumulado')).getByText(/5\.000,00/)).toBeInTheDocument()
     })
 
+    it('counts realized amounts in the cards, plus unsaved edits of the month', async () => {
+      // Alimentação was realized for R$ 800,00 instead of the planned R$ 700,00
+      stubBudgetApi({ summary: { ...budgetSummary, expenseCents: 260000 } })
+      await openDashboard()
+
+      expect(rowCells('Despesas')[0]).toBe('R$ 2.500,00')
+      expect(within(card('Despesas do mês')).getByText(/2\.600,00/)).toBeInTheDocument()
+      expect(within(card('Saldo acumulado')).getByText(/4\.900,00/)).toBeInTheDocument()
+
+      await typeInCell(MORADIA_OUT, '2.000')
+      expect(within(card('Despesas do mês')).getByText(/2\.800,00/)).toBeInTheDocument()
+    })
+
     it('adjusts the initial balance, accepting negative amounts', async () => {
       await openDashboard()
       fetchSummaryMock.mockResolvedValue({ ...budgetSummary, initialBalanceCents: -50000, openingBalanceCents: 100000 })
@@ -306,6 +319,29 @@ describe('Dashboard route (/)', () => {
         expect(cell(`Moradia em ${month}`)).toHaveValue('1.800,00')
       }
       // November already had 1.800,00 saved, so 10 cells changed
+      expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('10 alterações não salvas')
+    })
+
+    it('shows cells with several transactions read-only, linking to the statement, and skips them when replicating', async () => {
+      stubBudgetApi({
+        entries: [
+          ...budgetEntries.filter((e) => !(e.categoryId === 1 && e.month === '2026-11')),
+          { categoryId: 1, month: '2026-11', amountCents: 200000, count: 2 },
+        ],
+      })
+      await openDashboard()
+
+      expect(screen.queryByRole('textbox', { name: 'Moradia em novembro de 2026' })).not.toBeInTheDocument()
+      const link = screen.getByRole('link', {
+        name: 'Moradia em novembro de 2026: vários lançamentos, editar no extrato',
+      })
+      expect(link).toHaveTextContent('R$ 2.000,00')
+      expect(link).toHaveAttribute('href', '/extrato?month=2026-11')
+
+      await cellAction(MORADIA_OUT, 'Replicar para os meses seguintes')
+      expect(cell('Moradia em dezembro de 2026')).toHaveValue('1.800,00')
+      expect(link).toHaveTextContent('R$ 2.000,00')
+      // December to September: 10 cells, November left out
       expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('10 alterações não salvas')
     })
 

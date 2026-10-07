@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../prisma/generated/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { BudgetService } from './budget.service.js';
@@ -10,10 +14,11 @@ describe('BudgetService', () => {
     user: { findUniqueOrThrow: vi.fn(), update: vi.fn() },
     category: { findMany: vi.fn() },
     categoryGroup: { create: vi.fn(), findMany: vi.fn() },
-    monthlyEntry: {
+    transaction: {
       findMany: vi.fn(),
-      upsert: vi.fn(),
-      deleteMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
       groupBy: vi.fn(),
     },
   };
@@ -27,10 +32,9 @@ describe('BudgetService', () => {
       create: args,
     }));
     prisma.user.update.mockImplementation((args) => ({ update: args }));
-    prisma.monthlyEntry.upsert.mockImplementation((args) => ({ upsert: args }));
-    prisma.monthlyEntry.deleteMany.mockImplementation((args) => ({
-      deleteMany: args,
-    }));
+    prisma.transaction.create.mockImplementation((args) => ({ create: args }));
+    prisma.transaction.update.mockImplementation((args) => ({ update: args }));
+    prisma.transaction.delete.mockImplementation((args) => ({ delete: args }));
   });
 
   describe('categories', () => {
@@ -94,12 +98,20 @@ describe('BudgetService', () => {
   });
 
   describe('entries', () => {
-    it('lists the user’s entries in the range', async () => {
-      prisma.monthlyEntry.findMany.mockResolvedValue([]);
+    it('sums the planned amounts per cell of the user’s range', async () => {
+      prisma.transaction.groupBy.mockResolvedValue([
+        {
+          categoryId: 1,
+          month: '2026-10',
+          _sum: { plannedCents: 300 },
+          _count: { _all: 2 },
+        },
+      ]);
 
-      await service.entries(7, '2026-10', '2027-09');
-
-      expect(prisma.monthlyEntry.findMany).toHaveBeenCalledWith(
+      await expect(service.entries(7, '2026-10', '2027-09')).resolves.toEqual([
+        { categoryId: 1, month: '2026-10', amountCents: 300, count: 2 },
+      ]);
+      expect(prisma.transaction.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: 7, month: { gte: '2026-10', lte: '2027-09' } },
         }),
@@ -113,44 +125,65 @@ describe('BudgetService', () => {
       await expect(service.entries(7, '2026-01', '2028-01')).rejects.toThrow(
         BadRequestException,
       );
-      expect(prisma.monthlyEntry.findMany).not.toHaveBeenCalled();
+      expect(prisma.transaction.groupBy).not.toHaveBeenCalled();
     });
   });
 
   describe('saveEntries', () => {
     const active = { active: true, group: { active: true } };
 
-    it('upserts amounts and deletes zeros, last duplicate winning', async () => {
+    it('creates, updates and deletes the cell’s transaction, last duplicate winning', async () => {
       prisma.category.findMany.mockResolvedValue([active, active]);
+      prisma.transaction.findMany.mockResolvedValue([
+        { id: 40, categoryId: 2, month: '2026-11' },
+        { id: 41, categoryId: 2, month: '2026-12' },
+      ]);
 
       await service.saveEntries(7, [
         { categoryId: 1, month: '2026-10', amountCents: 100 },
         { categoryId: 1, month: '2026-10', amountCents: 250 },
         { categoryId: 2, month: '2026-11', amountCents: 0 },
+        { categoryId: 2, month: '2026-12', amountCents: 900 },
+        { categoryId: 1, month: '2027-01', amountCents: 0 },
       ]);
 
       expect(prisma.category.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { userId: 7, id: { in: [1, 2] } } }),
       );
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: 7 }),
+        }),
+      );
       expect(prisma.$transaction.mock.calls[0][0]).toEqual([
         {
-          upsert: {
-            where: { categoryId_month: { categoryId: 1, month: '2026-10' } },
-            create: {
+          create: {
+            data: {
               userId: 7,
               categoryId: 1,
               month: '2026-10',
-              amountCents: 250,
+              plannedCents: 250,
             },
-            update: { amountCents: 250 },
           },
         },
-        {
-          deleteMany: {
-            where: { userId: 7, categoryId: 2, month: '2026-11' },
-          },
-        },
+        { delete: { where: { id: 40 } } },
+        { update: { where: { id: 41 }, data: { plannedCents: 900 } } },
       ]);
+    });
+
+    it('fails with 409 when a cell holds several transactions', async () => {
+      prisma.category.findMany.mockResolvedValue([active]);
+      prisma.transaction.findMany.mockResolvedValue([
+        { id: 40, categoryId: 1, month: '2026-10' },
+        { id: 41, categoryId: 1, month: '2026-10' },
+      ]);
+
+      await expect(
+        service.saveEntries(7, [
+          { categoryId: 1, month: '2026-10', amountCents: 100 },
+        ]),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('fails with 404 and writes nothing when a category is not the user’s', async () => {
@@ -182,7 +215,7 @@ describe('BudgetService', () => {
   });
 
   describe('summary', () => {
-    it('combines the initial balance with previous and current months', async () => {
+    it('combines the initial balance with the effective amounts of previous and current months', async () => {
       prisma.user.findUniqueOrThrow.mockResolvedValue({
         initialBalanceCents: 1000,
       });
@@ -190,19 +223,22 @@ describe('BudgetService', () => {
         { id: 1, group: { kind: 'INCOME' } },
         { id: 2, group: { kind: 'EXPENSE' } },
       ]);
-      prisma.monthlyEntry.groupBy.mockImplementation(({ where }) =>
-        Promise.resolve(
-          'lt' in where.month
-            ? [
-                { categoryId: 1, _sum: { amountCents: 5000 } },
-                { categoryId: 2, _sum: { amountCents: 2000 } },
-              ]
-            : [
-                { categoryId: 1, _sum: { amountCents: 3000 } },
-                { categoryId: 2, _sum: { amountCents: null } },
-              ],
-        ),
-      );
+      // Realized rows sum `realizedCents`, pending ones `plannedCents`
+      prisma.transaction.groupBy.mockImplementation(({ where }) => {
+        const previous = 'lt' in where.month;
+        if (where.realizedCents === null) {
+          return Promise.resolve(
+            previous
+              ? [{ categoryId: 1, _sum: { plannedCents: 5000 } }]
+              : [{ categoryId: 2, _sum: { plannedCents: null } }],
+          );
+        }
+        return Promise.resolve(
+          previous
+            ? [{ categoryId: 2, _sum: { realizedCents: 2000 } }]
+            : [{ categoryId: 1, _sum: { realizedCents: 3000 } }],
+        );
+      });
 
       await expect(service.summary(7, '2026-10')).resolves.toEqual({
         month: '2026-10',
@@ -213,9 +249,13 @@ describe('BudgetService', () => {
         monthBalanceCents: 3000,
         closingBalanceCents: 7000,
       });
-      expect(prisma.monthlyEntry.groupBy).toHaveBeenCalledWith(
+      expect(prisma.transaction.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId: 7, month: { lt: '2026-10' } },
+          where: {
+            userId: 7,
+            month: { lt: '2026-10' },
+            realizedCents: { not: null },
+          },
         }),
       );
     });

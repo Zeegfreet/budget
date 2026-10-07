@@ -60,8 +60,14 @@ export class MonthlyEntryDto {
   @ApiProperty({ example: '2026-10' })
   month: string;
 
-  @ApiProperty({ example: 180000 })
+  @ApiProperty({ example: 180000, description: 'Sum of the planned amounts' })
   amountCents: number;
+
+  @ApiProperty({
+    example: 1,
+    description: 'Transactions in the cell; with more than one it is read-only',
+  })
+  count: number;
 }
 
 export class BudgetSummaryDto {

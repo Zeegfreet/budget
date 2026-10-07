@@ -13,6 +13,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - [Rodando localmente](#rodando-localmente)
 - [Autenticação](#autenticação)
 - [Dashboard](#dashboard)
+- [Extrato](#extrato)
 - [Testes](#testes)
 - [CI/CD](#cicd)
 - [Deploy](#deploy)
@@ -40,7 +41,8 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`), com coluna de total do período. Veja [Dashboard](#dashboard) |
 | Categorias de receitas e despesas | ✅ | ✅ | Tipos e categorias padrão criados no primeiro acesso; criar, editar, inativar/reativar e excluir pela própria tabela do Dashboard. Categorias têm descrição curta e dia de vencimento opcionais |
 | Metas por tipo de despesa | ✅ | ✅ | Meta em % das receitas por tipo de despesa, com termômetro do mês atual e do período acima dos cards |
-| Receitas e despesas pessoais | 🚧 | 🚧 | Hoje: um valor por categoria e mês, editado no Dashboard. Lançamentos individuais e previsto × realizado ainda não existem |
+| Receitas e despesas pessoais (lançamentos) | ✅ | ✅ | Lançamentos por categoria e mês, com valor previsto e realizado. O grid do Dashboard mostra a soma dos previstos |
+| Extrato mensal (realização e recorrência) | ✅ | ✅ | Tela `/extrato`: lista do mês com navegação entre meses, marcar como realizado (com outro valor, se for o caso), lançar receitas e despesas com repetição por N meses e alterar/excluir "só este" ou "também os próximos". Veja [Extrato](#extrato) |
 | Grupos de finanças | ⏳ | ⏳ | |
 | Convites para grupos | ⏳ | ⏳ | |
 | Métodos de divisão | ⏳ | ⏳ | |
@@ -210,12 +212,12 @@ Página inicial do app (`/`), com o balanço das finanças pessoais.
 | Card | Cálculo |
 | --- | --- |
 | Saldo de abertura | Saldo inicial + receitas − despesas de todos os meses anteriores |
-| Receitas do mês | Soma das categorias de receita no mês atual |
-| Despesas do mês | Soma das categorias de despesa no mês atual |
+| Receitas do mês | Soma das receitas do mês atual: valor realizado quando houver, senão o previsto |
+| Despesas do mês | Soma das despesas do mês atual: valor realizado quando houver, senão o previsto |
 | Saldo do mês | Receitas − despesas do mês atual |
 | Saldo acumulado | Saldo de abertura + saldo do mês |
 
-O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, podendo ser negativo) é ajustado pelo lápis no card de abertura. Receitas, despesas e saldos do mês são recalculados na hora, enquanto o usuário edita a tabela, mesmo antes de salvar.
+O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, podendo ser negativo) é ajustado pelo lápis no card de abertura. Receitas, despesas e saldos do mês são recalculados na hora, enquanto o usuário edita a tabela, mesmo antes de salvar. Os saldos usam o valor **realizado** dos lançamentos já marcados no [Extrato](#extrato) e o previsto dos demais.
 
 **Metas por tipo de despesa (acima dos cards)**
 
@@ -226,6 +228,7 @@ O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, po
 **Planejamento mensal (tabela dinâmica)**
 
 - Colunas: o mês atual, os 11 seguintes e **Total** (fixa à direita), que soma o período em cada linha; no saldo acumulado, mostra o saldo projetado ao fim do período. Linhas: **Despesas** e depois **Receitas** (fixas, não editáveis), que se expandem em **tipos** (Despesas Básicas e Custos de Vida; Salário, Provento e Renda Extra) e depois em **categorias** (Moradia, Alimentação, etc.). Os valores ficam nas categorias; tipos e grupos mostram as somas. No rodapé ficam o saldo de cada mês e o saldo acumulado projetado.
+- Cada célula mostra a soma dos valores **previstos** dos lançamentos daquela categoria no mês. Editar uma célula cria, altera ou apaga (valor zero) o seu único lançamento. Células com **vários lançamentos** aparecem sublinhadas e somente leitura, com link para o Extrato daquele mês (o replicar também as pula).
 - Edição direto na célula: clique e digite (`1800`, `1.800,50`, `R$ 10`). Tab vai para a direita, Enter desce (Shift+Enter sobe), Esc desfaz a edição da célula e texto inválido é ignorado. Deixar a célula vazia zera o valor.
 - Menu da célula (botão ⋮ ao passar o mouse, ou botão direito): **Replicar para os meses seguintes**, **Replicar até dezembro** e **Limpar valor**.
 - As alterações ficam destacadas e só são gravadas ao clicar em **Salvar**, na barra que aparece no rodapé (ou descartadas em **Descartar**). Sair da página com alterações pendentes pede confirmação.
@@ -247,12 +250,34 @@ O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, po
 | `POST` | `/budget/groups/:id/categories` | `{ name, description?, dueDay? }` | `201` com a categoria, no fim do tipo. `dueDay` de 1 a 31; `400` se o tipo estiver inativo; `409` em nome duplicado no tipo |
 | `PATCH` | `/budget/categories/:id` | `{ name?, description?, dueDay?, active? }` | `200` com a categoria. `null` (ou descrição em branco) limpa descrição e vencimento |
 | `DELETE` | `/budget/categories/:id` | — | `204`; apaga os valores da categoria |
-| `GET` | `/budget/entries` | `?from=YYYY-MM&to=YYYY-MM` | `200` com `[{ categoryId, month, amountCents }]` (só valores diferentes de zero); `400` se o intervalo for inválido, invertido ou maior que 24 meses |
-| `PUT` | `/budget/entries` | `{ entries: [{ categoryId, month, amountCents }] }` | `204`. `amountCents` é inteiro ≥ 0, e `0` apaga a célula. Até 1000 células por chamada. `404` se alguma categoria não for do usuário e `400` se estiver inativa (ou em tipo inativo); nada é gravado |
-| `GET` | `/budget/summary` | `?month=YYYY-MM` | `200` com `{ month, initialBalanceCents, openingBalanceCents, incomeCents, expenseCents, monthBalanceCents, closingBalanceCents }`. O mês vem do cliente, por causa do fuso horário |
+| `GET` | `/budget/entries` | `?from=YYYY-MM&to=YYYY-MM` | `200` com `[{ categoryId, month, amountCents, count }]`: soma dos previstos e número de lançamentos de cada célula não vazia; `400` se o intervalo for inválido, invertido ou maior que 24 meses |
+| `PUT` | `/budget/entries` | `{ entries: [{ categoryId, month, amountCents }] }` | `204`. `amountCents` é inteiro ≥ 0, e `0` apaga a célula. Até 1000 células por chamada. `404` se alguma categoria não for do usuário, `400` se estiver inativa (ou em tipo inativo) e `409` se a célula tiver vários lançamentos; nada é gravado |
+| `GET` | `/budget/summary` | `?month=YYYY-MM` | `200` com `{ month, initialBalanceCents, openingBalanceCents, incomeCents, expenseCents, monthBalanceCents, closingBalanceCents }`, usando o valor realizado dos lançamentos realizados. O mês vem do cliente, por causa do fuso horário |
 | `PUT` | `/budget/initial-balance` | `{ amountCents }` | `200` com `{ amountCents }` (pode ser negativo) |
 
 Os valores são sempre centavos inteiros. O sinal vem do tipo da categoria (receita ou despesa), nunca do valor. Tipos e categorias de outro usuário respondem `404` em todas as rotas.
+
+## Extrato
+
+Tela `/extrato` (menu lateral **Extrato**), com os lançamentos de um mês: abre no mês atual e navega com **‹ ›** (ou **Mês atual**). O mês fica na URL (`/extrato?month=2026-11`).
+
+- **Resumo do mês**: um card compacto com o saldo final em destaque e, ao lado, receitas e despesas do mês (com o quanto já foi realizado e o quanto falta realizar), saldo de abertura e saldo do mês.
+- **Lista**: Receitas em cima e Despesas embaixo, cada seção com o total e o quanto falta realizar, separada pelos **tipos** (na mesma ordem da tabela do painel), cada um com seu subtotal. Dentro do tipo, os lançamentos seguem o dia de vencimento. Cada linha mostra o vencimento, a descrição (ou o nome da categoria, que aparece embaixo quando há descrição), o selo **3/12** quando o lançamento é recorrente e o valor.
+- **Celular**: a tela é de uma coluna só, com caixa de "realizado" fácil de tocar e o menu **⋯** de cada linha sempre visível em telas de toque.
+- **Realizado**: marcar a caixa da linha registra o lançamento como realizado com o valor previsto; desmarcar volta para pendente. Para informar **outro valor**, use **Informar valor realizado** no menu da linha (⋯ ou botão direito) ou clique no valor realizado. Quando o realizado difere do previsto, a linha mostra os dois.
+- **Nova receita / Nova despesa**: categoria (só as ativas do tipo escolhido), descrição opcional e valor previsto. Com **Repetir nos próximos meses**, informe quantos meses (2 a 60, padrão 12, contando o mês atual); cada mês ganha um lançamento da mesma série.
+- **Editar / Excluir** um lançamento recorrente pergunta o que fazer com os próximos: **Manter os próximos** / **Excluir só este**, ou **Alterar também os próximos** / **Excluir também os próximos**. A opção "também os próximos" atinge os lançamentos da série deste mês em diante que ainda não foram realizados; meses anteriores e lançamentos já realizados não mudam. Lançamentos de categorias inativas podem ser realizados e excluídos, mas não editados.
+
+**Rotas da API** (todas exigem sessão; lançamento de outro usuário responde `404`)
+
+| Método | Rota | Corpo / query | Resposta |
+| --- | --- | --- | --- |
+| `GET` | `/budget/transactions` | `?month=YYYY-MM` | `200` com os lançamentos do mês: `{ id, month, description, plannedCents, realizedCents, series: { index, count } \| null, category: { id, name, dueDay, active, group: { id, name, kind, active } } }` |
+| `POST` | `/budget/transactions` | `{ categoryId, month, description?, plannedCents, repeatMonths? }` | `201` com os lançamentos criados (um por mês a partir de `month`; `repeatMonths` de 1 a 60). `404` se a categoria não for do usuário, `400` se estiver inativa |
+| `PATCH` | `/budget/transactions/:id` | `{ categoryId?, description?, plannedCents?, scope? }` | `200` com o lançamento. `scope` é `ONE` (padrão) ou `FOLLOWING` (também os próximos pendentes da série). O mês não é editável |
+| `DELETE` | `/budget/transactions/:id` | `?scope=ONE\|FOLLOWING` | `204` |
+| `PUT` | `/budget/transactions/:id/realization` | `{ amountCents }` | `200`; marca como realizado com esse valor (inteiro ≥ 0) |
+| `DELETE` | `/budget/transactions/:id/realization` | — | `200`; volta para pendente |
 
 ## Testes
 

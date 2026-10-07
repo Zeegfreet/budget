@@ -6,6 +6,7 @@ import {
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { MoneyText } from '@/components/atoms'
 import { BudgetCell, RowActions, type FillScope, type RowAction } from '@/components/molecules'
@@ -38,6 +39,8 @@ interface BudgetGridProps {
   /** Shows inactive types and categories (faded, read-only) */
   showInactive: boolean
   isChanged: (categoryId: number, month: Month) => boolean
+  /** The cell holds several transactions: shown read-only, linking to the statement */
+  isLocked: (categoryId: number, month: Month) => boolean
   onChange: (categoryId: number, month: Month, cents: number) => void
   onFill: (categoryId: number, month: Month, scope: FillScope) => void
   onAction: (action: GridAction) => void
@@ -117,6 +120,7 @@ export function BudgetGrid({
   months,
   showInactive,
   isChanged,
+  isLocked,
   onChange,
   onFill,
   onAction,
@@ -188,9 +192,22 @@ export function BudgetGrid({
         {months.map((month, col) => (
           <TableCell
             key={month}
-            className={cn(category.editable ? 'p-0' : 'px-3 text-right', col === 0 && 'bg-primary/5')}
+            className={cn(
+              category.editable && !isLocked(category.id, month) ? 'p-0' : 'px-3 text-right',
+              col === 0 && 'bg-primary/5',
+            )}
           >
-            {category.editable ? (
+            {category.editable && isLocked(category.id, month) ? (
+              <Link
+                to="/extrato"
+                search={{ month }}
+                aria-label={`${category.name} em ${formatMonthLong(month)}: vários lançamentos, editar no extrato`}
+                title="Vários lançamentos — edite no Extrato"
+                className="underline decoration-dotted underline-offset-4 hover:text-primary"
+              >
+                <MoneyText cents={category.values[col]} />
+              </Link>
+            ) : category.editable ? (
               <BudgetCell
                 label={`${category.name} em ${formatMonthLong(month)}`}
                 cents={category.values[col]}

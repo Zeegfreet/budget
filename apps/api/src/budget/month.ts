@@ -10,3 +10,14 @@ export function monthSpan(from: string, to: string): number {
   const [ty, tm] = to.split('-').map(Number);
   return (ty - fy) * 12 + (tm - fm) + 1;
 }
+
+/** Most occurrences one recurring launch may create. */
+export const MAX_REPEAT_MONTHS = 60;
+
+/** The month `count` months after `month` (negative goes back). */
+export function addMonths(month: string, count: number): string {
+  const [year, m] = month.split('-').map(Number);
+  const total = year * 12 + (m - 1) + count;
+  const next = (total % 12) + 1;
+  return `${Math.floor(total / 12)}-${String(next).padStart(2, '0')}`;
+}

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -59,6 +60,7 @@ export class BudgetController {
   @ApiNoContentResponse()
   @ApiBadRequestResponse()
   @ApiNotFoundResponse({ description: 'A category is not the user’s' })
+  @ApiConflictResponse({ description: 'A cell has several transactions' })
   saveEntries(
     @CurrentUser() user: JwtUser,
     @Body() { entries }: SaveEntriesDto,

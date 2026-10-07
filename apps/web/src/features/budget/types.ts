@@ -45,11 +45,17 @@ export interface CategoryInput {
 /** Fields to change; `null` clears description or due day */
 export type CategoryPatch = Partial<Pick<Category, 'name' | 'active' | 'description' | 'dueDay'>>
 
+/** A grid cell: the planned amount of a category in a month */
 export interface MonthlyEntry {
   categoryId: number
   month: Month
-  /** Integer cents, never negative; the sign comes from the kind */
+  /** Integer cents, never negative; the sign comes from the kind. Sum of the cell's transactions. */
   amountCents: number
+  /**
+   * Transactions behind the cell (responses only). With more than one the cell
+   * is read-only in the grid and edited in the statement.
+   */
+  count?: number
 }
 
 export interface BudgetSummary {

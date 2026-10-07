@@ -49,10 +49,10 @@ export function RowActions({ label, actions, children, className }: RowActionsPr
                 variant="ghost"
                 size="icon-xs"
                 // Same as the cell menu: out of the Tab order, reachable by right
-                // click or the context-menu key
+                // click or the context-menu key. Always visible on touch screens, which have no hover
                 tabIndex={-1}
                 aria-label={`Opções de ${label}`}
-                className="shrink-0 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                className="shrink-0 opacity-0 group-hover/row:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
               >
                 <MoreHorizontalIcon />
               </Button>

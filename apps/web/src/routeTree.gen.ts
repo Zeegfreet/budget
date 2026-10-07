@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppExtratoRouteImport } from './routes/_app/extrato'
 import { Route as AppSettingsPasswordRouteImport } from './routes/_app/settings/password'
 import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/profile'
 
@@ -35,6 +36,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppExtratoRoute = AppExtratoRouteImport.update({
+  id: '/extrato',
+  path: '/extrato',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsPasswordRoute = AppSettingsPasswordRouteImport.update({
   id: '/settings/password',
   path: '/settings/password',
@@ -50,12 +56,14 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/extrato': typeof AppExtratoRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/extrato': typeof AppExtratoRoute
   '/': typeof AppIndexRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
@@ -65,6 +73,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/_app/extrato': typeof AppExtratoRoute
   '/_app/': typeof AppIndexRoute
   '/_app/settings/password': typeof AppSettingsPasswordRoute
   '/_app/settings/profile': typeof AppSettingsProfileRoute
@@ -72,14 +81,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/signup' | '/settings/password' | '/settings/profile'
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/extrato'
+    | '/settings/password'
+    | '/settings/profile'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/signup' | '/' | '/settings/password' | '/settings/profile'
+  to:
+    | '/login'
+    | '/signup'
+    | '/extrato'
+    | '/'
+    | '/settings/password'
+    | '/settings/profile'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/signup'
+    | '/_app/extrato'
     | '/_app/'
     | '/_app/settings/password'
     | '/_app/settings/profile'
@@ -121,6 +142,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/extrato': {
+      id: '/_app/extrato'
+      path: '/extrato'
+      fullPath: '/extrato'
+      preLoaderRoute: typeof AppExtratoRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/password': {
       id: '/_app/settings/password'
       path: '/settings/password'
@@ -139,12 +167,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppExtratoRoute: typeof AppExtratoRoute
   AppIndexRoute: typeof AppIndexRoute
   AppSettingsPasswordRoute: typeof AppSettingsPasswordRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppExtratoRoute: AppExtratoRoute,
   AppIndexRoute: AppIndexRoute,
   AppSettingsPasswordRoute: AppSettingsPasswordRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,

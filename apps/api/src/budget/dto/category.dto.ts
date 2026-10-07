@@ -20,10 +20,10 @@ export const MAX_DESCRIPTION_LENGTH = 120;
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 /** Blank text clears the field */
-const trimToNull = ({ value }: { value: unknown }) =>
+export const trimToNull = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
 /** Optional but, when sent, never `null` (unlike `@IsOptional`) */
-const IsPresent = () =>
+export const IsPresent = () =>
   ValidateIf((_object, value: unknown) => value !== undefined);
 
 /** Body of `POST /budget/groups`. */

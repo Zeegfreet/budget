@@ -25,6 +25,10 @@ import type { CategoryInput, CategoryPatch, GroupInput, GroupPatch, MonthlyEntry
 /** Local, unsaved edits of the budget grid on top of the saved entries. */
 export function useBudgetDraft(entries: MonthlyEntry[]) {
   const saved = useMemo(() => savedValues(entries), [entries])
+  const locked = useMemo(
+    () => new Set(entries.filter((e) => (e.count ?? 1) > 1).map((e) => cellKey(e.categoryId, e.month))),
+    [entries],
+  )
   const [edits, dispatch] = useReducer(draftReducer, new Map() as Edits)
 
   return {
@@ -37,6 +41,16 @@ export function useBudgetDraft(entries: MonthlyEntry[]) {
     isChanged: useCallback(
       (categoryId: number, month: Month) => isChanged(saved, edits, cellKey(categoryId, month)),
       [saved, edits],
+    ),
+    /** The saved value, ignoring edits */
+    savedValue: useCallback(
+      (categoryId: number, month: Month) => saved.get(cellKey(categoryId, month)) ?? 0,
+      [saved],
+    ),
+    /** The cell holds several transactions: read-only here, edited in the statement */
+    isLocked: useCallback(
+      (categoryId: number, month: Month) => locked.has(cellKey(categoryId, month)),
+      [locked],
     ),
   }
 }

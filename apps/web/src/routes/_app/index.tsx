@@ -57,8 +57,12 @@ function DashboardPage() {
   useUnsavedChangesGuard(dirty)
 
   const table = buildBudgetTable(groups, months, draft.value, summary.openingBalanceCents)
-  const [expenses, incomes] = [table.expenses[0], table.incomes[0]]
   const goals = buildGoalsOverview(table)
+  // The cards use the effective amounts (realized ones count) plus the unsaved
+  // grid edits of the current month, so they react while typing
+  const saved = buildBudgetTable(groups, [month], draft.savedValue, 0)
+  const incomes = summary.incomeCents + table.incomes[0] - saved.incomes[0]
+  const expenses = summary.expenseCents + table.expenses[0] - saved.expenses[0]
 
   const [showInactive, setShowInactive] = useState(false)
   const [dialog, setDialog] = useState<BudgetDialog>(null)
@@ -136,9 +140,10 @@ function DashboardPage() {
         <CardHeader className="pb-4">
           <CardTitle>Planejamento mensal</CardTitle>
           <CardDescription>
-            Clique em um valor para editar. Use o menu da célula (ou o botão direito) para replicar
-            para os meses seguintes. Passe o mouse sobre um tipo ou categoria para editar, inativar
-            ou excluir. As alterações nos valores só valem depois de salvar.
+            Clique em um valor previsto para editar. Use o menu da célula (ou o botão direito) para
+            replicar para os meses seguintes. Passe o mouse sobre um tipo ou categoria para editar,
+            inativar ou excluir. Valores sublinhados somam vários lançamentos e são editados no
+            Extrato. As alterações nos valores só valem depois de salvar.
           </CardDescription>
           <CardAction>
             <BudgetGridToolbar
@@ -155,6 +160,7 @@ function DashboardPage() {
             showInactive={showInactive}
             onAction={handleGridAction}
             isChanged={draft.isChanged}
+            isLocked={draft.isLocked}
             onChange={(categoryId, m, amountCents) =>
               draft.dispatch({ type: 'set', categoryId, month: m, amountCents })
             }
@@ -163,7 +169,7 @@ function DashboardPage() {
               draft.dispatch({
                 type: 'fill',
                 categoryId,
-                months: months.filter((m) => m > from && m <= until),
+                months: months.filter((m) => m > from && m <= until && !draft.isLocked(categoryId, m)),
                 amountCents: draft.value(categoryId, from),
               })
             }}

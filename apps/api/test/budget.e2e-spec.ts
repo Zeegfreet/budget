@@ -114,8 +114,18 @@ describe('Budget (e2e)', () => {
         .expect(200);
       // Ordered by month, then category (defaults create expenses first)
       expect(res.body).toEqual([
-        { categoryId: ids.housing, month: '2026-10', amountCents: 190000 },
-        { categoryId: ids.salary, month: '2026-10', amountCents: 500000 },
+        {
+          categoryId: ids.housing,
+          month: '2026-10',
+          amountCents: 190000,
+          count: 1,
+        },
+        {
+          categoryId: ids.salary,
+          month: '2026-10',
+          amountCents: 500000,
+          count: 1,
+        },
       ]);
     });
 
@@ -275,7 +285,12 @@ describe('Budget (e2e)', () => {
         .get('/budget/entries?from=2026-10&to=2026-10')
         .expect(200);
       expect(anaEntries.body).toEqual([
-        { categoryId: anaIds.salary, month: '2026-10', amountCents: 500000 },
+        {
+          categoryId: anaIds.salary,
+          month: '2026-10',
+          amountCents: 500000,
+          count: 1,
+        },
       ]);
     });
   });

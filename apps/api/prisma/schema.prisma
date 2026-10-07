@@ -34,7 +34,7 @@ model User {
   sessions            Session[]
   categoryGroups      CategoryGroup[]
   categories          Category[]
-  monthlyEntries      MonthlyEntry[]
+  transactions        Transaction[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -84,39 +84,48 @@ model CategoryGroup {
 
 /// Leaf category that holds the monthly values (e.g. Moradia under Despesas Básicas).
 model Category {
-  id          Int            @id @default(autoincrement())
+  id           Int           @id @default(autoincrement())
   /// Denormalized owner so every query can be scoped by user
-  userId      Int
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId     Int
-  group       CategoryGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  name        String
-  position    Int            @default(0)
+  userId       Int
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId      Int
+  group        CategoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name         String
+  position     Int           @default(0)
   /// Inactive categories are hidden from the grid and not editable; their values still count
-  active      Boolean        @default(true)
+  active       Boolean       @default(true)
   /// Short note, e.g. "Apartamento do centro"
-  description String?
+  description  String?
   /// Day of the month the bill is due (1–31)
-  dueDay      Int?
-  entries     MonthlyEntry[]
+  dueDay       Int?
+  transactions Transaction[]
 
   @@unique([groupId, name])
   @@index([userId])
 }
 
-/// Amount of one category in one month. Zero amounts are not stored.
-model MonthlyEntry {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  categoryId  Int
-  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+/// One planned income or expense of a category in a month (a "lançamento").
+/// A category may have several in the same month; the grid shows their sum.
+model Transaction {
+  id            Int      @id @default(autoincrement())
+  /// Denormalized owner so every query can be scoped by user
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId    Int
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   /// `YYYY-MM`, so string order is chronological order
-  month       String
+  month         String
+  description   String?
   /// Always >= 0; the sign comes from the category's kind
-  amountCents Int
-  updatedAt   DateTime @updatedAt
+  plannedCents  Int
+  /// `null` while pending; once realized, the amount actually paid or received
+  realizedCents Int?
+  /// Shared by the occurrences created by one recurring launch
+  seriesId      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  @@unique([categoryId, month])
   @@index([userId, month])
+  @@index([categoryId, month])
+  @@index([seriesId])
 }
