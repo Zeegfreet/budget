@@ -1,11 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsDefined,
+  IsInt,
   IsOptional,
   IsString,
   Length,
   Matches,
   MaxLength,
+  Min,
+  ValidateIf,
 } from 'class-validator';
 import {
   IsPresent,
@@ -99,9 +103,45 @@ export class GroupMemberDto {
   joinedAt: Date;
 }
 
+/**
+ * Body of `PUT /groups/:id/link` and the current member's link in the group:
+ * the personal categories that receive their shares (`null` = not counted).
+ */
+export class GroupLinkDto {
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 4,
+    description: 'Own active EXPENSE category for the expense shares',
+  })
+  @IsDefined()
+  @ValidateIf((_object, value: unknown) => value !== null)
+  @IsInt()
+  @Min(1)
+  expenseCategoryId: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description: 'Own active INCOME category for the income shares',
+  })
+  @IsDefined()
+  @ValidateIf((_object, value: unknown) => value !== null)
+  @IsInt()
+  @Min(1)
+  incomeCategoryId: number | null;
+}
+
 export class FinanceGroupDto extends FinanceGroupSummaryDto {
   @ApiProperty({ example: 1, description: 'The current user’s membership id' })
   memberId: number;
+
+  @ApiProperty({
+    type: GroupLinkDto,
+    description: 'Where the current user’s shares land in their budget',
+  })
+  link: GroupLinkDto;
 
   @ApiProperty({
     type: [GroupMemberDto],

@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tansta
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { BudgetGridToolbar, EmptyState } from '@/components/molecules'
+import { BudgetGridToolbar, EmptyState, GroupLinkDialog } from '@/components/molecules'
 import {
   BalanceSummary,
   BudgetDialogs,
   BudgetGrid,
   GoalsPanel,
+  GroupStatementsCard,
   SaveBar,
   type BudgetDialog,
   type GridAction,
@@ -22,6 +23,10 @@ import { useBudgetDraft, useCategoryActions, useUnsavedChangesGuard } from '@/fe
 import { currentMonth, endOfYear, formatMonthLabel, formatMonthLong, monthWindow } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
 import { buildBudgetTable } from '@/features/budget/rows'
+import type { GroupStatement } from '@/features/budget/types'
+import { groupErrorMessage } from '@/features/groups/errors'
+import { useGroupActions } from '@/features/groups/hooks'
+import { statementLink } from '@/features/groups/link'
 import { ApiError } from '@/lib/api/client'
 
 /** The grid shows the current month and the 11 after it */
@@ -34,6 +39,7 @@ export const Route = createFileRoute('/_app/')({
       queryClient.ensureQueryData(budgetQueries.categories()),
       queryClient.ensureQueryData(budgetQueries.entries(months[0], months[months.length - 1])),
       queryClient.ensureQueryData(budgetQueries.summary(months[0])),
+      queryClient.ensureQueryData(budgetQueries.groupStatements(months[0])),
     ])
     return { months }
   },
@@ -51,6 +57,7 @@ function DashboardPage() {
     budgetQueries.entries(months[0], months[months.length - 1]),
   )
   const { data: summary } = useSuspenseQuery(budgetQueries.summary(month))
+  const { data: groupStatements } = useSuspenseQuery(budgetQueries.groupStatements(month))
 
   const draft = useBudgetDraft(entries)
   const dirty = draft.changes.length > 0
@@ -66,6 +73,8 @@ function DashboardPage() {
 
   const [showInactive, setShowInactive] = useState(false)
   const [dialog, setDialog] = useState<BudgetDialog>(null)
+  const [linking, setLinking] = useState<GroupStatement | null>(null)
+  const groupActions = useGroupActions()
   const actions = useCategoryActions((categoryIds) => draft.dispatch({ type: 'forget', categoryIds }))
 
   async function toggleActive(run: () => Promise<void>, active: boolean, name: string) {
@@ -136,14 +145,18 @@ function DashboardPage() {
         onSaveInitialBalance={saveInitialBalance}
       />
 
+      {groupStatements.length > 0 && (
+        <GroupStatementsCard statements={groupStatements} month={month} onLink={setLinking} />
+      )}
+
       <Card className="gap-0 pb-0">
         <CardHeader className="pb-4">
           <CardTitle>Planejamento mensal</CardTitle>
           <CardDescription>
             Clique em um valor previsto para editar. Use o menu da célula (ou o botão direito) para
             replicar para os meses seguintes. Passe o mouse sobre um tipo ou categoria para editar,
-            inativar ou excluir. Valores sublinhados somam vários lançamentos e são editados no
-            Extrato. As alterações nos valores só valem depois de salvar.
+            inativar ou excluir. Valores sublinhados somam vários lançamentos ou incluem sua parte em
+            grupos e são vistos no Extrato. As alterações nos valores só valem depois de salvar.
           </CardDescription>
           <CardAction>
             <BudgetGridToolbar
@@ -161,6 +174,7 @@ function DashboardPage() {
             onAction={handleGridAction}
             isChanged={draft.isChanged}
             isLocked={draft.isLocked}
+            hasGroupShare={draft.hasGroupShare}
             onChange={(categoryId, m, amountCents) =>
               draft.dispatch({ type: 'set', categoryId, month: m, amountCents })
             }
@@ -201,6 +215,16 @@ function DashboardPage() {
         goalTargets={groups
           .filter((g) => g.kind === 'EXPENSE' && g.active)
           .map(({ id, name, goalPercent }) => ({ id, name, goalPercent }))}
+      />
+
+      <GroupLinkDialog
+        open={linking !== null}
+        onOpenChange={(open) => !open && setLinking(null)}
+        groupName={linking?.group.name ?? ''}
+        categories={groups}
+        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null }}
+        onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
+        errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />
     </div>
   )

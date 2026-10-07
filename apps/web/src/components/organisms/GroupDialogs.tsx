@@ -1,16 +1,25 @@
 import {
   ConfirmDialog,
   GroupFormDialog,
+  GroupLinkDialog,
   InviteMemberDialog,
   SplitMethodFormDialog,
 } from '@/components/molecules'
+import type { CategoryGroup } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import type { useInvitationActions, useSplitMethodActions } from '@/features/groups/hooks'
-import type { FinanceGroup, GroupInput, GroupInvitation, GroupMember, SplitMethod } from '@/features/groups/types'
+import type {
+  FinanceGroup,
+  GroupInput,
+  GroupInvitation,
+  GroupLink,
+  GroupMember,
+  SplitMethod,
+} from '@/features/groups/types'
 
 /** The dialog open on a group's page for the group itself, its members or its rules */
 export type GroupDialog =
-  | { type: 'edit-group' | 'delete-group' | 'leave' | 'invite' | 'create-rule' }
+  | { type: 'edit-group' | 'delete-group' | 'leave' | 'invite' | 'create-rule' | 'link' }
   | { type: 'remove-member'; member: GroupMember }
   | { type: 'cancel-invitation'; invitation: GroupInvitation }
   | { type: 'edit-rule' | 'delete-rule'; method: SplitMethod }
@@ -25,13 +34,19 @@ interface GroupDialogsProps {
   onDeleteGroup: () => Promise<void>
   onLeave: () => Promise<void>
   onRemoveMember: (member: GroupMember) => Promise<void>
+  /** The user's category tree, for the link dialog (empty while loading) */
+  categories: CategoryGroup[]
+  onSetLink: (link: GroupLink) => Promise<void>
   invitations: ReturnType<typeof useInvitationActions>
   rules: ReturnType<typeof useSplitMethodActions>
 }
 
 const message = (fallback: string) => (error: unknown) => groupErrorMessage(error, fallback)
 
-/** Rename, delete and leave the group; invite and remove members; create, edit and delete rules. */
+/**
+ * Rename, delete and leave the group; link it to the user's budget; invite and
+ * remove members; create, edit and delete rules.
+ */
 export function GroupDialogs({
   dialog,
   onDialogChange,
@@ -40,6 +55,8 @@ export function GroupDialogs({
   onDeleteGroup,
   onLeave,
   onRemoveMember,
+  categories,
+  onSetLink,
   invitations,
   rules,
 }: GroupDialogsProps) {
@@ -59,6 +76,15 @@ export function GroupDialogs({
         initial={{ name: group.name, description: group.description }}
         onSubmit={onUpdateGroup}
         errorMessage={message('Não foi possível salvar.')}
+      />
+      <GroupLinkDialog
+        open={dialog?.type === 'link'}
+        onOpenChange={close}
+        groupName={group.name}
+        categories={categories}
+        initial={group.link}
+        onSubmit={onSetLink}
+        errorMessage={message('Não foi possível salvar o vínculo.')}
       />
       <ConfirmDialog
         open={dialog?.type === 'delete-group'}

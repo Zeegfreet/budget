@@ -1,6 +1,13 @@
 import { vi } from 'vitest'
 import * as budgetApi from '@/features/budget/api'
-import type { BudgetSummary, Category, CategoryGroup, MonthlyEntry } from '@/features/budget/types'
+import type {
+  BudgetSummary,
+  Category,
+  CategoryGroup,
+  GroupStatement,
+  GroupStatementItem,
+  MonthlyEntry,
+} from '@/features/budget/types'
 
 // For specs that `vi.mock('@/features/budget/api')`: data matching a clock set to October 2026.
 
@@ -51,12 +58,76 @@ export const budgetSummary: BudgetSummary = {
   closingBalanceCents: 500000,
 }
 
+const housing = {
+  id: 1,
+  name: 'Moradia',
+  dueDay: null,
+  active: true,
+  group: { id: 10, name: 'Despesas Básicas', kind: 'EXPENSE', active: true },
+} as const
+
+/** Ana's share of a pending group expense, counted in Moradia */
+export const makeStatementItem = (
+  transactionId: number,
+  extra: Partial<GroupStatementItem> = {},
+): GroupStatementItem => ({
+  transactionId,
+  kind: 'EXPENSE',
+  description: 'Aluguel',
+  month: '2026-10',
+  shareCents: 100000,
+  totalCents: 200000,
+  paid: false,
+  paidByName: null,
+  series: null,
+  category: housing,
+  ...extra,
+})
+
+/**
+ * "República" (group 7) in October 2026 from Ana's side, linked to Moradia:
+ * a rent Bruno paid (her share 1000,00) and a pending, unlinked income.
+ */
+export const makeGroupStatement = (extra: Partial<GroupStatement> = {}): GroupStatement => ({
+  group: { id: 7, name: 'República' },
+  active: true,
+  memberId: 1,
+  link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: null },
+  expenseCents: 200000,
+  incomeCents: 4000,
+  pendingCents: 4000,
+  expenseShareCents: 100000,
+  incomeShareCents: 2000,
+  paidCents: 0,
+  receivedCents: 0,
+  netCents: -100000,
+  transfers: [{ fromMemberId: 1, fromName: 'Ana', toMemberId: 2, toName: 'Bruno', amountCents: 100000 }],
+  items: [
+    makeStatementItem(10, { paid: true, paidByName: 'Bruno' }),
+    makeStatementItem(12, {
+      kind: 'INCOME',
+      description: 'Sublocação',
+      shareCents: 2000,
+      totalCents: 4000,
+      category: null,
+    }),
+  ],
+  ...extra,
+})
+
 export function stubBudgetApi({
   groups = budgetGroups,
   entries = budgetEntries,
   summary = budgetSummary,
-}: { groups?: CategoryGroup[]; entries?: MonthlyEntry[]; summary?: BudgetSummary } = {}) {
+  groupStatements = [],
+}: {
+  groups?: CategoryGroup[]
+  entries?: MonthlyEntry[]
+  summary?: BudgetSummary
+  groupStatements?: GroupStatement[]
+} = {}) {
   vi.mocked(budgetApi.fetchCategories).mockResolvedValue(groups)
+  vi.mocked(budgetApi.fetchGroupStatements).mockResolvedValue(groupStatements)
   vi.mocked(budgetApi.fetchEntries).mockResolvedValue(entries)
   vi.mocked(budgetApi.fetchSummary).mockResolvedValue(summary)
   vi.mocked(budgetApi.saveEntries).mockResolvedValue()

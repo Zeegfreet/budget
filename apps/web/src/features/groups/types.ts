@@ -31,9 +31,17 @@ export interface GroupMember {
   joinedAt: string
 }
 
+/** The personal categories that receive the user's shares; `null` keeps them out of the budget */
+export interface GroupLink {
+  expenseCategoryId: number | null
+  incomeCategoryId: number | null
+}
+
 export interface FinanceGroup extends FinanceGroupSummary {
   /** The current user's membership id */
   memberId: number
+  /** Where the current user's shares land in their budget */
+  link: GroupLink
   /** Active members, oldest first */
   members: GroupMember[]
 }

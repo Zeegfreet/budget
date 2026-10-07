@@ -21,12 +21,14 @@ describe('BudgetService', () => {
       delete: vi.fn(),
       groupBy: vi.fn(),
     },
+    groupTransactionShare: { findMany: vi.fn() },
   };
   const service = new BudgetService(prisma as unknown as PrismaService);
 
   beforeEach(() => {
     vi.clearAllMocks();
     prisma.$transaction.mockResolvedValue([]);
+    prisma.groupTransactionShare.findMany.mockResolvedValue([]);
     // Builders return descriptions of the operation, so tests can inspect them
     prisma.categoryGroup.create.mockImplementation((args) => ({
       create: args,
@@ -109,11 +111,66 @@ describe('BudgetService', () => {
       ]);
 
       await expect(service.entries(7, '2026-10', '2027-09')).resolves.toEqual([
-        { categoryId: 1, month: '2026-10', amountCents: 300, count: 2 },
+        {
+          categoryId: 1,
+          month: '2026-10',
+          amountCents: 300,
+          count: 2,
+          groupCents: 0,
+        },
       ]);
       expect(prisma.transaction.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: 7, month: { gte: '2026-10', lte: '2027-09' } },
+        }),
+      );
+    });
+
+    it('adds the linked group shares to the cells', async () => {
+      prisma.transaction.groupBy.mockResolvedValue([
+        {
+          categoryId: 1,
+          month: '2026-11',
+          _sum: { plannedCents: 300 },
+          _count: { _all: 1 },
+        },
+      ]);
+      const link = { expenseCategoryId: 1, incomeCategoryId: null };
+      prisma.groupTransactionShare.findMany.mockResolvedValue([
+        {
+          amountCents: 1500,
+          member: link,
+          transaction: { kind: 'EXPENSE', month: '2026-11' },
+        },
+        {
+          amountCents: 700,
+          member: link,
+          transaction: { kind: 'EXPENSE', month: '2026-10' },
+        },
+      ]);
+
+      await expect(service.entries(7, '2026-10', '2027-09')).resolves.toEqual([
+        {
+          categoryId: 1,
+          month: '2026-10',
+          amountCents: 0,
+          count: 0,
+          groupCents: 700,
+        },
+        {
+          categoryId: 1,
+          month: '2026-11',
+          amountCents: 300,
+          count: 1,
+          groupCents: 1500,
+        },
+      ]);
+      expect(prisma.groupTransactionShare.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            member: expect.objectContaining({ userId: 7 }),
+            transaction: { month: { gte: '2026-10', lte: '2027-09' } },
+          }),
         }),
       );
     });
@@ -258,6 +315,47 @@ describe('BudgetService', () => {
           },
         }),
       );
+    });
+  });
+
+  it('summary counts the linked group shares by the category’s kind', async () => {
+    prisma.user.findUniqueOrThrow.mockResolvedValue({ initialBalanceCents: 0 });
+    prisma.category.findMany.mockResolvedValue([
+      { id: 1, group: { kind: 'INCOME' } },
+      { id: 2, group: { kind: 'EXPENSE' } },
+    ]);
+    prisma.transaction.groupBy.mockResolvedValue([]);
+    const link = { expenseCategoryId: 2, incomeCategoryId: 1 };
+    prisma.groupTransactionShare.findMany.mockImplementation(({ where }) =>
+      Promise.resolve(
+        'lt' in where.transaction.month
+          ? [
+              {
+                amountCents: 400,
+                member: link,
+                transaction: { kind: 'EXPENSE', month: '2026-09' },
+              },
+            ]
+          : [
+              {
+                amountCents: 1500,
+                member: link,
+                transaction: { kind: 'EXPENSE', month: '2026-10' },
+              },
+              {
+                amountCents: 200,
+                member: link,
+                transaction: { kind: 'INCOME', month: '2026-10' },
+              },
+            ],
+      ),
+    );
+
+    await expect(service.summary(7, '2026-10')).resolves.toMatchObject({
+      openingBalanceCents: -400,
+      incomeCents: 200,
+      expenseCents: 1500,
+      closingBalanceCents: -1700,
     });
   });
 

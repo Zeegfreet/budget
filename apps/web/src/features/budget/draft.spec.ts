@@ -4,6 +4,7 @@ import {
   changedEntries,
   draftReducer,
   isChanged,
+  groupValues,
   savedValues,
   valueOf,
   type Edits,
@@ -69,5 +70,18 @@ describe('budget draft', () => {
     edits = draftReducer(edits, { type: 'forget', categoryIds: [1, 2] })
 
     expect([...edits.keys()]).toEqual([cellKey(12, '2026-10')])
+  })
+})
+
+describe('groupValues', () => {
+  it('keeps only the cells with group shares, apart from the personal amount', () => {
+    const entries = [
+      { categoryId: 1, month: '2026-10', amountCents: 5000, count: 1, groupCents: 1500 },
+      { categoryId: 2, month: '2026-10', amountCents: 300, count: 1, groupCents: 0 },
+      { categoryId: 3, month: '2026-10', amountCents: 300 },
+    ]
+
+    expect(groupValues(entries)).toEqual(new Map([['1:2026-10', 1500]]))
+    expect(savedValues(entries).get('1:2026-10')).toBe(5000)
   })
 })

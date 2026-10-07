@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -29,6 +30,7 @@ import {
   CreateFinanceGroupDto,
   FinanceGroupDto,
   FinanceGroupSummaryDto,
+  GroupLinkDto,
   UpdateFinanceGroupDto,
 } from './dto/group.dto.js';
 import { GroupService } from './group.service.js';
@@ -76,6 +78,19 @@ export class GroupController {
     @Body() body: UpdateFinanceGroupDto,
   ): Promise<FinanceGroupDto> {
     return this.groupService.update(user.id, id, body);
+  }
+
+  @Put(':id/link')
+  @ApiOkResponse({ type: FinanceGroupDto })
+  @ApiNotFoundResponse({
+    description: 'Not a member of the group, or not the user’s category',
+  })
+  setLink(
+    @CurrentUser() user: JwtUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: GroupLinkDto,
+  ): Promise<FinanceGroupDto> {
+    return this.groupService.setLink(user.id, id, body);
   }
 
   @Delete(':id')

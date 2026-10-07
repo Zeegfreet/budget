@@ -37,6 +37,7 @@ export const makeGroup = (extra: Partial<FinanceGroup> = {}): FinanceGroup => {
     memberId: ana.id,
     memberCount: members.length,
     members,
+    link: { expenseCategoryId: null, incomeCategoryId: null },
     ...extra,
   }
 }
@@ -153,6 +154,7 @@ export function stubGroupsApi({
   vi.mocked(groupsApi.deleteGroup).mockResolvedValue()
   vi.mocked(groupsApi.leaveGroup).mockResolvedValue()
   vi.mocked(groupsApi.removeMember).mockResolvedValue()
+  vi.mocked(groupsApi.setGroupLink).mockResolvedValue(group)
   vi.mocked(groupsApi.fetchGroupInvitations).mockResolvedValue(invitations)
   vi.mocked(groupsApi.inviteMember).mockResolvedValue(pendingInvitation)
   vi.mocked(groupsApi.cancelInvitation).mockResolvedValue()

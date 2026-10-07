@@ -6,6 +6,7 @@ import type {
   GroupBalance,
   GroupInput,
   GroupInvitation,
+  GroupLink,
   GroupTransaction,
   GroupTransactionInput,
   GroupTransactionPatch,
@@ -32,6 +33,12 @@ export async function createGroup(input: GroupInput): Promise<FinanceGroup> {
 
 export async function updateGroup(id: number, input: Partial<GroupInput>): Promise<FinanceGroup> {
   const { data } = await api.patch<FinanceGroup>(`/groups/${id}`, input)
+  return data
+}
+
+/** Sets the user's own categories for their shares of the group */
+export async function setGroupLink(id: number, link: GroupLink): Promise<FinanceGroup> {
+  const { data } = await api.put<FinanceGroup>(`/groups/${id}/link`, link)
   return data
 }
 

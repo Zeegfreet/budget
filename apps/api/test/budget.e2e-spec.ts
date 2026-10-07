@@ -119,12 +119,14 @@ describe('Budget (e2e)', () => {
           month: '2026-10',
           amountCents: 190000,
           count: 1,
+          groupCents: 0,
         },
         {
           categoryId: ids.salary,
           month: '2026-10',
           amountCents: 500000,
           count: 1,
+          groupCents: 0,
         },
       ]);
     });
@@ -290,6 +292,7 @@ describe('Budget (e2e)', () => {
           month: '2026-10',
           amountCents: 500000,
           count: 1,
+          groupCents: 0,
         },
       ]);
     });

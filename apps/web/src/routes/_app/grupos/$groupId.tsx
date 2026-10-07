@@ -1,6 +1,14 @@
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate, useRouter, type ErrorComponentProps } from '@tanstack/react-router'
-import { ChevronLeftIcon, LogOutIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import {
+  ChevronLeftIcon,
+  Link2Icon,
+  LogOutIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState, MonthSwitcher } from '@/components/molecules'
@@ -25,6 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { currentMonth, formatMonthLong } from '@/features/budget/months'
+import { budgetQueries } from '@/features/budget/queries'
 import type { Month } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import {
@@ -90,6 +99,8 @@ function GroupPage() {
   const ruleActions = useSplitMethodActions(id)
   const transactionActions = useGroupTransactionActions(id)
   const [dialog, setDialog] = useState<GroupDialog>(null)
+  // The user's categories, only once the link dialog opens
+  const { data: categories } = useQuery({ ...budgetQueries.categories(), enabled: dialog?.type === 'link' })
   const [transactionDialog, setTransactionDialog] = useState<GroupTransactionDialog>(null)
   const owner = group.role === 'OWNER'
 
@@ -155,6 +166,10 @@ function GroupPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setDialog({ type: 'link' })}>
+                <Link2Icon aria-hidden />
+                Vincular ao orçamento
+              </DropdownMenuItem>
               {owner && (
                 <DropdownMenuItem onSelect={() => setDialog({ type: 'edit-group' })}>
                   <PencilIcon aria-hidden />
@@ -241,6 +256,8 @@ function GroupPage() {
           await goAway()
         }}
         onRemoveMember={(member) => groupActions.removeMember(id, member.id)}
+        categories={categories ?? []}
+        onSetLink={(link) => groupActions.setLink(id, link)}
         invitations={invitationActions}
         rules={ruleActions}
       />

@@ -68,6 +68,13 @@ export class MonthlyEntryDto {
     description: 'Transactions in the cell; with more than one it is read-only',
   })
   count: number;
+
+  @ApiProperty({
+    example: 75000,
+    description:
+      'The user’s shares of group transactions linked to the category (not in `amountCents`); the cell is read-only when > 0',
+  })
+  groupCents: number;
 }
 
 export class BudgetSummaryDto {

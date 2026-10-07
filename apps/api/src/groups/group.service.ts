@@ -3,11 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { assertWritableCategories } from '../budget/category-access.js';
+import type { EntryKind } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
   CreateFinanceGroupDto,
   FinanceGroupDto,
   FinanceGroupSummaryDto,
+  GroupLinkDto,
   UpdateFinanceGroupDto,
 } from './dto/group.dto.js';
 import { assertMember, assertOwner } from './group-access.js';
@@ -91,6 +94,10 @@ export class GroupService {
       description: group.description,
       role: me.role,
       memberId: me.id,
+      link: {
+        expenseCategoryId: me.expenseCategoryId,
+        incomeCategoryId: me.incomeCategoryId,
+      },
       memberCount: group.members.length,
       members: group.members.map(({ user, ...member }) => ({
         ...member,
@@ -108,6 +115,56 @@ export class GroupService {
     await this.prisma.financeGroup.update({
       where: { id },
       data: { name, description },
+    });
+    return this.get(userId, id);
+  }
+
+  /**
+   * Sets the user's own categories that receive their shares of the group's
+   * expenses and incomes in the personal budget (`null` keeps them out).
+   * Each must be the user's (404) and of the matching kind (400); a new one
+   * must also be active (400), while keeping a now inactive one is fine.
+   */
+  async setLink(
+    userId: number,
+    id: number,
+    { expenseCategoryId, incomeCategoryId }: GroupLinkDto,
+  ): Promise<FinanceGroupDto> {
+    const me = await assertMember(this.prisma, userId, id);
+    const wanted: [number | null, EntryKind][] = [
+      [expenseCategoryId, 'EXPENSE'],
+      [incomeCategoryId, 'INCOME'],
+    ];
+    const ids = wanted.flatMap(([categoryId]) =>
+      categoryId === null ? [] : [categoryId],
+    );
+    const current = [me.expenseCategoryId, me.incomeCategoryId];
+    await assertWritableCategories(
+      this.prisma,
+      userId,
+      ids.filter((categoryId) => !current.includes(categoryId)),
+    );
+    const kinds = await this.prisma.category.findMany({
+      where: { userId, id: { in: ids } },
+      select: { id: true, group: { select: { kind: true } } },
+    });
+    // Every category, kept ones included, must be the user's
+    if (kinds.length !== new Set(ids).size) {
+      throw new NotFoundException('Category not found');
+    }
+    const kindOf = new Map(kinds.map((c) => [c.id, c.group.kind]));
+    for (const [categoryId, kind] of wanted) {
+      if (categoryId !== null && kindOf.get(categoryId) !== kind) {
+        throw new BadRequestException(
+          kind === 'EXPENSE'
+            ? 'expenseCategoryId must be an expense category'
+            : 'incomeCategoryId must be an income category',
+        );
+      }
+    }
+    await this.prisma.groupMember.update({
+      where: { id: me.id },
+      data: { expenseCategoryId, incomeCategoryId },
     });
     return this.get(userId, id);
   }

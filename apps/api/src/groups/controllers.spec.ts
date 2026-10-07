@@ -24,6 +24,7 @@ describe('group controllers', () => {
       remove: vi.fn(),
       leave: vi.fn(),
       removeMember: vi.fn(),
+      setLink: vi.fn(),
     };
     const controller = new GroupController(service as unknown as GroupService);
 
@@ -34,6 +35,8 @@ describe('group controllers', () => {
     await controller.remove(user, 5);
     await controller.leave(user, 5);
     await controller.removeMember(user, 5, 2);
+    const link = { expenseCategoryId: 3, incomeCategoryId: null };
+    await controller.setLink(user, 5, link);
 
     expect(service.list).toHaveBeenCalledWith(7);
     expect(service.create).toHaveBeenCalledWith(7, { name: 'Casa' });
@@ -42,6 +45,7 @@ describe('group controllers', () => {
     expect(service.remove).toHaveBeenCalledWith(7, 5);
     expect(service.leave).toHaveBeenCalledWith(7, 5);
     expect(service.removeMember).toHaveBeenCalledWith(7, 5, 2);
+    expect(service.setLink).toHaveBeenCalledWith(7, 5, link);
   });
 
   it('invitation controllers scope every call by the authenticated user', async () => {

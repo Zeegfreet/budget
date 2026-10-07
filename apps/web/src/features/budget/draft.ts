@@ -40,6 +40,13 @@ export function savedValues(entries: MonthlyEntry[]): SavedValues {
   return new Map(entries.map((e) => [cellKey(e.categoryId, e.month), e.amountCents]))
 }
 
+/** The user's group shares per cell (read-only part of the shown value) */
+export function groupValues(entries: MonthlyEntry[]): SavedValues {
+  return new Map(
+    entries.filter((e) => (e.groupCents ?? 0) > 0).map((e) => [cellKey(e.categoryId, e.month), e.groupCents ?? 0]),
+  )
+}
+
 export function valueOf(saved: SavedValues, edits: Edits, key: string): number {
   return edits.get(key) ?? saved.get(key) ?? 0
 }

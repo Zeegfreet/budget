@@ -15,6 +15,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - [Dashboard](#dashboard)
 - [Extrato](#extrato)
 - [Grupos](#grupos)
+- [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal)
 - [Testes](#testes)
 - [CI/CD](#cicd)
 - [Deploy](#deploy)
@@ -47,7 +48,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Grupos de finanças | ✅ | ✅ | Telas `/grupos` e `/grupos/:id` (abas Lançamentos, Balanço, Membros e Rateio): criar, renomear, excluir e sair; lançamentos do grupo com recorrência, "pago por" e balanço mensal por membro com o acerto (quem paga quem). Veja [Grupos](#grupos) |
 | Convites para grupos | ✅ | ✅ | Convite por e-mail de usuário cadastrado; o convidado aceita ou recusa em `/grupos`. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total |
-| Rateio no extrato e no dashboard pessoais | ⏳ | ⏳ | Próximo passo: levar a cota de cada um (o balanço por membro) para o extrato e o saldo pessoais |
+| Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Docker / deploy em containers | ⏳ | ⏳ | Próximo passo, veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
@@ -230,7 +231,7 @@ O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, po
 **Planejamento mensal (tabela dinâmica)**
 
 - Colunas: o mês atual, os 11 seguintes e **Total** (fixa à direita), que soma o período em cada linha; no saldo acumulado, mostra o saldo projetado ao fim do período. Linhas: **Despesas** e depois **Receitas** (fixas, não editáveis), que se expandem em **tipos** (Despesas Básicas e Custos de Vida; Salário, Provento e Renda Extra) e depois em **categorias** (Moradia, Alimentação, etc.). Os valores ficam nas categorias; tipos e grupos mostram as somas. No rodapé ficam o saldo de cada mês e o saldo acumulado projetado.
-- Cada célula mostra a soma dos valores **previstos** dos lançamentos daquela categoria no mês. Editar uma célula cria, altera ou apaga (valor zero) o seu único lançamento. Células com **vários lançamentos** aparecem sublinhadas e somente leitura, com link para o Extrato daquele mês (o replicar também as pula).
+- Cada célula mostra a soma dos valores **previstos** dos lançamentos daquela categoria no mês. Editar uma célula cria, altera ou apaga (valor zero) o seu único lançamento. Células com **vários lançamentos**, ou que incluem a **sua parte em um grupo** vinculado à categoria, aparecem sublinhadas e somente leitura, com link para o Extrato daquele mês (o replicar também as pula).
 - Edição direto na célula: clique e digite (`1800`, `1.800,50`, `R$ 10`). Tab vai para a direita, Enter desce (Shift+Enter sobe), Esc desfaz a edição da célula e texto inválido é ignorado. Deixar a célula vazia zera o valor.
 - Menu da célula (botão ⋮ ao passar o mouse, ou botão direito): **Replicar para os meses seguintes**, **Replicar até dezembro** e **Limpar valor**.
 - As alterações ficam destacadas e só são gravadas ao clicar em **Salvar**, na barra que aparece no rodapé (ou descartadas em **Descartar**). Sair da página com alterações pendentes pede confirmação.
@@ -252,9 +253,9 @@ O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, po
 | `POST` | `/budget/groups/:id/categories` | `{ name, description?, dueDay? }` | `201` com a categoria, no fim do tipo. `dueDay` de 1 a 31; `400` se o tipo estiver inativo; `409` em nome duplicado no tipo |
 | `PATCH` | `/budget/categories/:id` | `{ name?, description?, dueDay?, active? }` | `200` com a categoria. `null` (ou descrição em branco) limpa descrição e vencimento |
 | `DELETE` | `/budget/categories/:id` | — | `204`; apaga os valores da categoria |
-| `GET` | `/budget/entries` | `?from=YYYY-MM&to=YYYY-MM` | `200` com `[{ categoryId, month, amountCents, count }]`: soma dos previstos e número de lançamentos de cada célula não vazia; `400` se o intervalo for inválido, invertido ou maior que 24 meses |
+| `GET` | `/budget/entries` | `?from=YYYY-MM&to=YYYY-MM` | `200` com `[{ categoryId, month, amountCents, count, groupCents }]`: soma dos previstos e número de lançamentos de cada célula não vazia, e a sua parte nos grupos vinculados à categoria (`groupCents`, fora de `amountCents`); `400` se o intervalo for inválido, invertido ou maior que 24 meses |
 | `PUT` | `/budget/entries` | `{ entries: [{ categoryId, month, amountCents }] }` | `204`. `amountCents` é inteiro ≥ 0, e `0` apaga a célula. Até 1000 células por chamada. `404` se alguma categoria não for do usuário, `400` se estiver inativa (ou em tipo inativo) e `409` se a célula tiver vários lançamentos; nada é gravado |
-| `GET` | `/budget/summary` | `?month=YYYY-MM` | `200` com `{ month, initialBalanceCents, openingBalanceCents, incomeCents, expenseCents, monthBalanceCents, closingBalanceCents }`, usando o valor realizado dos lançamentos realizados. O mês vem do cliente, por causa do fuso horário |
+| `GET` | `/budget/summary` | `?month=YYYY-MM` | `200` com `{ month, initialBalanceCents, openingBalanceCents, incomeCents, expenseCents, monthBalanceCents, closingBalanceCents }`, usando o valor realizado dos lançamentos realizados e somando a sua parte nos grupos vinculados. O mês vem do cliente, por causa do fuso horário |
 | `PUT` | `/budget/initial-balance` | `{ amountCents }` | `200` com `{ amountCents }` (pode ser negativo) |
 
 Os valores são sempre centavos inteiros. O sinal vem do tipo da categoria (receita ou despesa), nunca do valor. Tipos e categorias de outro usuário respondem `404` em todas as rotas.
@@ -304,7 +305,7 @@ A página do grupo (`/grupos/:id`) tem quatro abas. A aba aberta e o mês ficam 
   - O dono pode **remover** membros.
 - **Rateio**: regras de divisão do grupo (criar, editar e excluir).
 
-O menu **⋯** do cabeçalho tem **Editar grupo** e **Excluir grupo** (só o dono) e **Sair do grupo**.
+O menu **⋯** do cabeçalho tem **Vincular ao orçamento** (veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal)), **Editar grupo** e **Excluir grupo** (só o dono) e **Sair do grupo**.
 
 **Regras de rateio**
 
@@ -330,7 +331,8 @@ Todas as rotas exigem sessão. Quem não é membro ativo, incluindo convidados c
 | --- | --- | --- | --- |
 | `GET` | `/groups` | — | `200` com `[{ id, name, description, role, memberCount }]` dos grupos do usuário |
 | `POST` | `/groups` | `{ name, description? }` | `201` com o grupo (`role`, `memberId` do usuário, `members`) |
-| `GET` | `/groups/:id` | — | `200` com o grupo e os membros ativos `{ id, userId, name, email, role, joinedAt }` |
+| `GET` | `/groups/:id` | — | `200` com o grupo, os membros ativos `{ id, userId, name, email, role, joinedAt }` e o vínculo do usuário `link: { expenseCategoryId, incomeCategoryId }` |
+| `PUT` | `/groups/:id/link` | `{ expenseCategoryId, incomeCategoryId }` | `200` com o grupo. Categorias do próprio usuário onde entra a sua parte (`null` desvincula; os dois campos são obrigatórios). `404` se a categoria não for do usuário, `400` se for do tipo errado ou estiver inativa (manter uma já vinculada que foi inativada é permitido) |
 | `PATCH` | `/groups/:id` | `{ name?, description? }` | `200`; só o dono (`403` para os demais membros) |
 | `DELETE` | `/groups/:id` | — | `204`; só o dono. Apaga lançamentos, regras e convites |
 | `POST` | `/groups/:id/leave` | — | `204`; o acesso termina |
@@ -352,6 +354,24 @@ Todas as rotas exigem sessão. Quem não é membro ativo, incluindo convidados c
 | `PUT` | `/groups/:id/transactions/:txId/payment` | `{ memberId }` | `200`; registra quem pagou ou recebeu (membro ativo) |
 | `DELETE` | `/groups/:id/transactions/:txId/payment` | — | `200`; volta para pendente |
 | `GET` | `/groups/:id/balance` | `?month=YYYY-MM` | `200` com `{ month, incomeCents, expenseCents, pendingCents, members: [{ memberId, name, active, shareCents, paidCents, receivedCents, netCents }], transfers: [{ fromMemberId, toMemberId, amountCents }] }`. A soma dos `netCents` é sempre zero |
+
+## Grupos no orçamento pessoal
+
+A sua parte nos grupos aparece no Dashboard e no Extrato.
+
+- **Card Grupos** (Dashboard, mês atual; Extrato, mês escolhido): para cada grupo, a sua parte nas despesas e nas receitas (de quanto), o que você pagou ou recebeu, o saldo (**A pagar**, **A receber** ou **Em dia**) e o acerto que envolve você ("Pague R$ 1.000,00 a Bruno"). No Extrato, o card também lista cada lançamento do grupo com a sua parte e se já foi pago.
+- **Vínculo**: em **Vincular categorias** (no card) ou **Vincular ao orçamento** (menu do grupo), cada membro escolhe uma categoria **de despesa** e uma **de receita** suas. Cada membro escolhe as próprias categorias, e o vínculo de um não afeta os outros. Sem vínculo, nada entra no seu orçamento; o grupo só aparece no card.
+- **O que entra no saldo**: só a **sua parte** já rateada (a cota gravada em cada lançamento), não importa quem pagou. O acerto entre os membros fica no grupo. A parte é calculada na leitura, então editar o valor, a regra, o pagamento ou excluir o lançamento do grupo reflete na hora.
+- **Dashboard**: a parte soma no valor da categoria vinculada (a célula fica somente leitura, com link para o Extrato), nos totais, nas metas e nos cards de saldo.
+- **Extrato**: a parte aparece no tipo da categoria vinculada, somente leitura, com o selo do grupo e o total do lançamento. Paga no grupo conta como **realizada**; pendente, como **a realizar**. O menu da linha tem **Abrir no grupo**.
+- **Histórico**: excluir a categoria vinculada desfaz o vínculo. Quem sai do grupo mantém as partes dos meses em que participou (o saldo passado não muda), e o grupo aparece com o selo **Você saiu** nos meses em que você tem parte nele.
+
+**Rotas da API**
+
+| Método | Rota | Corpo / query | Resposta |
+| --- | --- | --- | --- |
+| `PUT` | `/groups/:id/link` | `{ expenseCategoryId, incomeCategoryId }` | Veja [Grupos](#grupos) |
+| `GET` | `/budget/group-statements` | `?month=YYYY-MM` | `200` com os grupos do usuário no mês: `{ group, active, memberId, link: { expenseCategory, incomeCategory }, expenseCents, incomeCents, pendingCents, expenseShareCents, incomeShareCents, paidCents, receivedCents, netCents, transfers: [{ fromMemberId, fromName, toMemberId, toName, amountCents }], items: [{ transactionId, kind, description, month, shareCents, totalCents, paid, paidByName, series, category }] }`. `transfers` só traz as que envolvem o usuário; `category` é a categoria vinculada (`null` = fora do orçamento) |
 
 ## Testes
 

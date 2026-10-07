@@ -3,8 +3,9 @@ import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { EmptyState, MonthSwitcher } from '@/components/molecules'
+import { EmptyState, GroupLinkDialog, MonthSwitcher } from '@/components/molecules'
 import {
+  GroupStatementsCard,
   StatementList,
   StatementSummary,
   TransactionDialogs,
@@ -14,7 +15,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { currentMonth, formatMonthLong } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
-import type { Month } from '@/features/budget/types'
+import type { GroupStatement, Month } from '@/features/budget/types'
+import { groupErrorMessage } from '@/features/groups/errors'
+import { useGroupActions } from '@/features/groups/hooks'
+import { statementLink } from '@/features/groups/link'
 import { transactionErrorMessage } from '@/features/transactions/errors'
 import { useTransactionActions } from '@/features/transactions/hooks'
 import { transactionQueries } from '@/features/transactions/queries'
@@ -38,6 +42,7 @@ export const Route = createFileRoute('/_app/extrato')({
       queryClient.ensureQueryData(transactionQueries.month(month)),
       queryClient.ensureQueryData(budgetQueries.categories()),
       queryClient.ensureQueryData(budgetQueries.summary(month)),
+      queryClient.ensureQueryData(budgetQueries.groupStatements(month)),
     ])
     return { month }
   },
@@ -51,10 +56,18 @@ function StatementPage() {
   const { data: transactions } = useSuspenseQuery(transactionQueries.month(month))
   const { data: groups } = useSuspenseQuery(budgetQueries.categories())
   const { data: summary } = useSuspenseQuery(budgetQueries.summary(month))
-  // Types in the tree's order, the same as the dashboard grid
-  const statement = buildStatement(transactions, groups.map((g) => g.id))
+  const { data: groupStatements } = useSuspenseQuery(budgetQueries.groupStatements(month))
+  // Types in the tree's order, the same as the dashboard grid; linked group shares join their type
+  const statement = buildStatement(
+    transactions,
+    groups.map((g) => g.id),
+    groupStatements,
+  )
+  const hasShares = statement.sections.some((s) => s.shares.length > 0)
   const actions = useTransactionActions()
+  const groupActions = useGroupActions()
   const [dialog, setDialog] = useState<TransactionDialog>(null)
+  const [linking, setLinking] = useState<GroupStatement | null>(null)
 
   async function toggleRealized({ id, realizedCents, plannedCents }: StatementAction['transaction']) {
     try {
@@ -106,7 +119,7 @@ function StatementPage() {
 
       <StatementSummary statement={statement} openingCents={summary.openingBalanceCents} />
 
-      {transactions.length === 0 ? (
+      {transactions.length === 0 && !hasShares ? (
         <EmptyState
           title="Nenhum lançamento neste mês"
           description="Lance suas receitas e despesas previstas, inclusive as que se repetem todo mês."
@@ -116,12 +129,26 @@ function StatementPage() {
         <StatementList statement={statement} onAction={handleAction} />
       )}
 
+      {groupStatements.length > 0 && (
+        <GroupStatementsCard statements={groupStatements} month={month} detailed onLink={setLinking} />
+      )}
+
       <TransactionDialogs
         dialog={dialog}
         onDialogChange={setDialog}
         month={month}
         groups={groups}
         actions={actions}
+      />
+
+      <GroupLinkDialog
+        open={linking !== null}
+        onOpenChange={(open) => !open && setLinking(null)}
+        groupName={linking?.group.name ?? ''}
+        categories={groups}
+        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null }}
+        onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
+        errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />
     </div>
   )

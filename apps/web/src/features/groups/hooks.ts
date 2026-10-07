@@ -14,14 +14,17 @@ import {
   leaveGroup,
   payGroupTransaction,
   removeMember,
+  setGroupLink,
   unpayGroupTransaction,
   updateGroup,
   updateGroupTransaction,
   updateSplitMethod,
 } from './api'
+import { budgetQueries } from '@/features/budget/queries'
 import { groupQueries, invitationQueries } from './queries'
 import type {
   GroupInput,
+  GroupLink,
   GroupTransactionInput,
   GroupTransactionPatch,
   RecurrenceScope,
@@ -35,6 +38,8 @@ import type {
 export function useGroupActions() {
   const queryClient = useQueryClient()
   const refresh = () => queryClient.invalidateQueries({ queryKey: groupQueries.all() })
+  // The user's shares show up in the personal budget (statement, grid, summary)
+  const refreshBudget = () => queryClient.invalidateQueries({ queryKey: budgetQueries.all() })
   return {
     /**
      * Drops a group the user no longer sees (deleted or left). Call it after
@@ -42,7 +47,19 @@ export function useGroupActions() {
      */
     forget(id: number) {
       queryClient.removeQueries({ queryKey: groupQueries.detail(id).queryKey })
-      return queryClient.invalidateQueries({ queryKey: groupQueries.list().queryKey })
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: groupQueries.list().queryKey }),
+        refreshBudget(),
+      ])
+    },
+    /** Chooses where the user's shares of the group count in their budget */
+    async setLink(id: number, link: GroupLink) {
+      await setGroupLink(id, link)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: groupQueries.detail(id).queryKey }),
+        refreshBudget(),
+      ])
+      toast.success('Vínculo com o orçamento salvo')
     },
     async create(input: GroupInput) {
       const group = await createGroup(input)
@@ -65,7 +82,10 @@ export function useGroupActions() {
     },
     async removeMember(groupId: number, memberId: number) {
       await removeMember(groupId, memberId)
-      await queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey }),
+        refreshBudget(),
+      ])
       toast.success('Membro removido')
     },
   }
@@ -93,6 +113,7 @@ export function useInvitationActions() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: invitationQueries.received().queryKey }),
         queryClient.invalidateQueries({ queryKey: groupQueries.all() }),
+        queryClient.invalidateQueries({ queryKey: budgetQueries.all() }),
       ])
       toast.success('Você entrou no grupo')
     },
@@ -128,10 +149,17 @@ export function useSplitMethodActions(groupId: number) {
   }
 }
 
-/** The group's transactions; changes refresh the list and the balance. */
+/**
+ * The group's transactions; changes refresh the list and the balance, and the
+ * personal budget, where the user's shares count.
+ */
 export function useGroupTransactionActions(groupId: number) {
   const queryClient = useQueryClient()
-  const refresh = () => queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey })
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey }),
+      queryClient.invalidateQueries({ queryKey: budgetQueries.all() }),
+    ])
 
   return {
     async create(input: GroupTransactionInput) {

@@ -1,5 +1,11 @@
-import type { EntryKind } from '@/features/budget/types'
+import type { EntryKind, GroupStatement, GroupStatementItem } from '@/features/budget/types'
 import type { Transaction } from './types'
+
+/** The user's share of a group transaction, counted in a personal category */
+export interface StatementShare {
+  group: { id: number; name: string }
+  item: GroupStatementItem & { category: NonNullable<GroupStatementItem['category']> }
+}
 
 /** The transactions of one type ("Despesas Básicas") within a section */
 export interface StatementGroup {
@@ -7,6 +13,8 @@ export interface StatementGroup {
   name: string
   active: boolean
   transactions: Transaction[]
+  /** The user's group shares linked to categories of this type (read-only here) */
+  shares: StatementShare[]
   /** Subtotal: realized amounts, or planned while pending */
   effectiveCents: number
 }
@@ -15,12 +23,13 @@ export interface StatementSection {
   kind: EntryKind
   label: string
   transactions: Transaction[]
+  shares: StatementShare[]
   /** The same transactions split by type, in the tree's order */
   groups: StatementGroup[]
   plannedCents: number
-  /** Sum of the realized amounts of realized transactions */
+  /** Sum of the realized amounts of realized transactions (and of paid group shares) */
   realizedCents: number
-  /** Planned amount still pending */
+  /** Planned amount still pending (unpaid group shares included) */
   pendingCents: number
   /** What counts in the balance: realized amounts, or planned while pending */
   effectiveCents: number
@@ -42,17 +51,26 @@ const SECTIONS: { kind: EntryKind; label: string }[] = [
 export const effectiveCents = (t: Transaction) => t.realizedCents ?? t.plannedCents
 
 /**
- * Groups a section's transactions by type, keeping their order inside each type.
- * Types follow `groupOrder` (ids in the tree's order); unknown ones go last, as they appear.
+ * Groups a section's transactions (then its group shares) by type, keeping
+ * their order inside each type. Types follow `groupOrder` (ids in the tree's
+ * order); unknown ones go last, as they appear.
  */
-function groupByType(items: Transaction[], groupOrder: number[]): StatementGroup[] {
+function groupByType(items: Transaction[], shares: StatementShare[], groupOrder: number[]): StatementGroup[] {
   const groups = new Map<number, StatementGroup>()
-  for (const t of items) {
-    const { id, name, active } = t.category.group
+  const of = ({ id, name, active }: { id: number; name: string; active: boolean }) => {
     let group = groups.get(id)
-    if (!group) groups.set(id, (group = { id, name, active, transactions: [], effectiveCents: 0 }))
+    if (!group) groups.set(id, (group = { id, name, active, transactions: [], shares: [], effectiveCents: 0 }))
+    return group
+  }
+  for (const t of items) {
+    const group = of(t.category.group)
     group.transactions.push(t)
     group.effectiveCents += effectiveCents(t)
+  }
+  for (const share of shares) {
+    const group = of(share.item.category.group)
+    group.shares.push(share)
+    group.effectiveCents += share.item.shareCents
   }
   const rank = (id: number) => {
     const index = groupOrder.indexOf(id)
@@ -62,13 +80,27 @@ function groupByType(items: Transaction[], groupOrder: number[]): StatementGroup
   return [...groups.values()].sort((a, b) => rank(a.id) - rank(b.id))
 }
 
+/** The shares of `statements` that count in the budget (linked to a category) */
+export function linkedShares(statements: GroupStatement[]): StatementShare[] {
+  return statements.flatMap(({ group, items }) =>
+    items.flatMap((item) => (item.category ? [{ group, item: { ...item, category: item.category } }] : [])),
+  )
+}
+
 /**
- * Splits a month's transactions by kind and then by type (keeping their order
- * inside each type) and totals them, in integer cents.
+ * Splits a month's transactions and linked group shares by kind and then by
+ * type (keeping their order inside each type) and totals them, in integer
+ * cents. A paid share counts as realized, an unpaid one as pending.
  */
-export function buildStatement(transactions: Transaction[], groupOrder: number[] = []): Statement {
+export function buildStatement(
+  transactions: Transaction[],
+  groupOrder: number[] = [],
+  groupStatements: GroupStatement[] = [],
+): Statement {
+  const allShares = linkedShares(groupStatements)
   const sections = SECTIONS.map(({ kind, label }): StatementSection => {
     const items = transactions.filter((t) => t.category.group.kind === kind)
+    const shares = allShares.filter((s) => s.item.category.group.kind === kind)
     let plannedCents = 0
     let realizedCents = 0
     let pendingCents = 0
@@ -77,11 +109,17 @@ export function buildStatement(transactions: Transaction[], groupOrder: number[]
       if (t.realizedCents === null) pendingCents += t.plannedCents
       else realizedCents += t.realizedCents
     }
+    for (const { item } of shares) {
+      plannedCents += item.shareCents
+      if (item.paid) realizedCents += item.shareCents
+      else pendingCents += item.shareCents
+    }
     return {
       kind,
       label,
       transactions: items,
-      groups: groupByType(items, groupOrder),
+      shares,
+      groups: groupByType(items, shares, groupOrder),
       plannedCents,
       realizedCents,
       pendingCents,

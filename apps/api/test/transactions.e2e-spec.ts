@@ -307,6 +307,7 @@ describe('Transactions (e2e)', () => {
         month: '2026-10',
         amountCents: 10000,
         count: 1,
+        groupCents: 0,
       });
       // Later months open with the realized amount
       expect((await summary(ana, '2026-11')).openingBalanceCents).toBe(487500);
@@ -494,6 +495,7 @@ describe('Transactions (e2e)', () => {
           month: '2026-10',
           amountCents: 3500,
           count: 2,
+          groupCents: 0,
         },
       ]);
 

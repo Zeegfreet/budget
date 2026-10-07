@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { type BudgetSummary, computeSummary, sumByKind } from './balance.js';
 import { assertWritableCategories } from './category-access.js';
 import { DEFAULT_CATEGORIES } from './default-categories.js';
+import { linkedShareCells } from './group-shares.js';
 import type {
   CategoryGroupDto,
   MonthlyEntryDto,
@@ -60,7 +61,10 @@ export class BudgetService {
     });
   }
 
-  /** Planned amount and number of transactions of each non-empty cell in the range. */
+  /**
+   * Planned amount and number of transactions of each non-empty cell in the
+   * range, plus the user's shares of the groups linked to the category.
+   */
   async entries(
     userId: number,
     from: string,
@@ -73,19 +77,48 @@ export class BudgetService {
         `The range must span at most ${MAX_MONTH_SPAN} months`,
       );
     }
-    const cells = await this.prisma.transaction.groupBy({
-      by: ['month', 'categoryId'],
-      where: { userId, month: { gte: from, lte: to } },
-      orderBy: [{ month: 'asc' }, { categoryId: 'asc' }],
-      _sum: { plannedCents: true },
-      _count: { _all: true },
-    });
-    return cells.map((c) => ({
-      categoryId: c.categoryId,
-      month: c.month,
-      amountCents: c._sum.plannedCents ?? 0,
-      count: c._count._all,
-    }));
+    const range = { gte: from, lte: to };
+    const [cells, shares] = await Promise.all([
+      this.prisma.transaction.groupBy({
+        by: ['month', 'categoryId'],
+        where: { userId, month: range },
+        orderBy: [{ month: 'asc' }, { categoryId: 'asc' }],
+        _sum: { plannedCents: true },
+        _count: { _all: true },
+      }),
+      linkedShareCells(this.prisma, userId, range),
+    ]);
+    const key = (c: { categoryId: number; month: string }) =>
+      `${c.categoryId}:${c.month}`;
+    const entries = new Map<string, MonthlyEntryDto>(
+      cells.map((c) => [
+        key(c),
+        {
+          categoryId: c.categoryId,
+          month: c.month,
+          amountCents: c._sum.plannedCents ?? 0,
+          count: c._count._all,
+          groupCents: 0,
+        },
+      ]),
+    );
+    // The user's shares of linked groups join the cell (read-only in the grid)
+    for (const share of shares) {
+      const entry = entries.get(key(share));
+      if (entry) entry.groupCents = share.amountCents;
+      else {
+        entries.set(key(share), {
+          categoryId: share.categoryId,
+          month: share.month,
+          amountCents: 0,
+          count: 0,
+          groupCents: share.amountCents,
+        });
+      }
+    }
+    return [...entries.values()].sort(
+      (a, b) => a.month.localeCompare(b.month) || a.categoryId - b.categoryId,
+    );
   }
 
   /**
@@ -157,27 +190,31 @@ export class BudgetService {
     if (writes.length > 0) await this.prisma.$transaction(writes);
   }
 
+  /** Balances from the effective amounts plus the user's linked group shares. */
   async summary(userId: number, month: string): Promise<BudgetSummary> {
-    const [user, categories, previous, current] = await Promise.all([
-      this.prisma.user.findUniqueOrThrow({
-        where: { id: userId },
-        select: { initialBalanceCents: true },
-      }),
-      this.prisma.category.findMany({
-        where: { userId },
-        select: { id: true, group: { select: { kind: true } } },
-      }),
-      this.sumsByCategory(userId, { lt: month }),
-      this.sumsByCategory(userId, { equals: month }),
-    ]);
+    const [user, categories, previous, current, sharesBefore, sharesNow] =
+      await Promise.all([
+        this.prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { initialBalanceCents: true },
+        }),
+        this.prisma.category.findMany({
+          where: { userId },
+          select: { id: true, group: { select: { kind: true } } },
+        }),
+        this.sumsByCategory(userId, { lt: month }),
+        this.sumsByCategory(userId, { equals: month }),
+        linkedShareCells(this.prisma, userId, { lt: month }),
+        linkedShareCells(this.prisma, userId, { equals: month }),
+      ]);
     const kindOf = new Map<number, EntryKind>(
       categories.map((c) => [c.id, c.group.kind]),
     );
     return computeSummary(
       month,
       user.initialBalanceCents,
-      sumByKind(previous, kindOf),
-      sumByKind(current, kindOf),
+      sumByKind([...previous, ...sharesBefore], kindOf),
+      sumByKind([...current, ...sharesNow], kindOf),
     );
   }
 

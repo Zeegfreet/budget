@@ -87,21 +87,25 @@ model CategoryGroup {
 
 /// Leaf category that holds the monthly values (e.g. Moradia under Despesas Básicas).
 model Category {
-  id           Int           @id @default(autoincrement())
+  id                Int           @id @default(autoincrement())
   /// Denormalized owner so every query can be scoped by user
-  userId       Int
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId      Int
-  group        CategoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  name         String
-  position     Int           @default(0)
+  userId            Int
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId           Int
+  group             CategoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name              String
+  position          Int           @default(0)
   /// Inactive categories are hidden from the grid and not editable; their values still count
-  active       Boolean       @default(true)
+  active            Boolean       @default(true)
   /// Short note, e.g. "Apartamento do centro"
-  description  String?
+  description       String?
   /// Day of the month the bill is due (1–31)
-  dueDay       Int?
-  transactions Transaction[]
+  dueDay            Int?
+  transactions      Transaction[]
+  /// Group memberships whose expense shares land here
+  groupExpenseLinks GroupMember[] @relation("MemberExpenseCategory")
+  /// Group memberships whose income shares land here
+  groupIncomeLinks  GroupMember[] @relation("MemberIncomeCategory")
 
   @@unique([groupId, name])
   @@index([userId])
@@ -174,18 +178,25 @@ model FinanceGroup {
 /// A user's membership. Leaving sets `leftAt` (history keeps pointing to it);
 /// accepting a new invitation reactivates the same row.
 model GroupMember {
-  id          Int                     @id @default(autoincrement())
-  groupId     Int
-  group       FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  userId      Int
-  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role        GroupRole               @default(MEMBER)
-  joinedAt    DateTime                @default(now())
+  id                Int                     @id @default(autoincrement())
+  groupId           Int
+  group             FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId            Int
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              GroupRole               @default(MEMBER)
+  joinedAt          DateTime                @default(now())
   /// `null` while active; only active members can access the group
-  leftAt      DateTime?
-  splitShares SplitMethodShare[]
-  paid        GroupTransaction[]
-  shares      GroupTransactionShare[]
+  leftAt            DateTime?
+  /// The member's own category that receives their share of the group's
+  /// expenses in the personal budget; `null` keeps them out of it
+  expenseCategoryId Int?
+  expenseCategory   Category?               @relation("MemberExpenseCategory", fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  /// Same for the incomes
+  incomeCategoryId  Int?
+  incomeCategory    Category?               @relation("MemberIncomeCategory", fields: [incomeCategoryId], references: [id], onDelete: SetNull)
+  splitShares       SplitMethodShare[]
+  paid              GroupTransaction[]
+  shares            GroupTransactionShare[]
 
   @@unique([groupId, userId])
   @@index([userId])

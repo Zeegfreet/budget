@@ -15,6 +15,9 @@ const MESSAGES: Record<string, string> = {
   'Every participant must be an active member': 'Escolha apenas membros ativos do grupo.',
   'Unknown member': 'Escolha um membro ativo do grupo.',
   'Leave the group instead of removing yourself': 'Para sair do grupo, use “Sair do grupo”.',
+  'Category is inactive': 'Escolha uma categoria ativa.',
+  'expenseCategoryId must be an expense category': 'Escolha uma categoria de despesa para as despesas do grupo.',
+  'incomeCategoryId must be an income category': 'Escolha uma categoria de receita para as receitas do grupo.',
 }
 
 /** Message for a failed change in a group */

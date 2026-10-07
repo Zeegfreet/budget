@@ -41,6 +41,8 @@ interface BudgetGridProps {
   isChanged: (categoryId: number, month: Month) => boolean
   /** The cell holds several transactions: shown read-only, linking to the statement */
   isLocked: (categoryId: number, month: Month) => boolean
+  /** The cell includes the user's share of a linked group (locked as well) */
+  hasGroupShare?: (categoryId: number, month: Month) => boolean
   onChange: (categoryId: number, month: Month, cents: number) => void
   onFill: (categoryId: number, month: Month, scope: FillScope) => void
   onAction: (action: GridAction) => void
@@ -121,6 +123,7 @@ export function BudgetGrid({
   showInactive,
   isChanged,
   isLocked,
+  hasGroupShare = () => false,
   onChange,
   onFill,
   onAction,
@@ -201,8 +204,16 @@ export function BudgetGrid({
               <Link
                 to="/extrato"
                 search={{ month }}
-                aria-label={`${category.name} em ${formatMonthLong(month)}: vários lançamentos, editar no extrato`}
-                title="Vários lançamentos — edite no Extrato"
+                aria-label={
+                  hasGroupShare(category.id, month)
+                    ? `${category.name} em ${formatMonthLong(month)}: inclui sua parte em grupos, ver no extrato`
+                    : `${category.name} em ${formatMonthLong(month)}: vários lançamentos, editar no extrato`
+                }
+                title={
+                  hasGroupShare(category.id, month)
+                    ? 'Inclui sua parte em grupos — veja no Extrato'
+                    : 'Vários lançamentos — edite no Extrato'
+                }
                 className="underline decoration-dotted underline-offset-4 hover:text-primary"
               >
                 <MoneyText cents={category.values[col]} />

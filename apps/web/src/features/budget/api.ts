@@ -7,6 +7,7 @@ import type {
   CategoryPatch,
   GroupInput,
   GroupPatch,
+  GroupStatement,
   MonthlyEntry,
   Month,
 } from './types'
@@ -28,6 +29,12 @@ export async function saveEntries(entries: MonthlyEntry[]): Promise<void> {
 
 export async function fetchSummary(month: Month): Promise<BudgetSummary> {
   const { data } = await api.get<BudgetSummary>('/budget/summary', { params: { month } })
+  return data
+}
+
+/** The user's groups in the month, from their side */
+export async function fetchGroupStatements(month: Month): Promise<GroupStatement[]> {
+  const { data } = await api.get<GroupStatement[]>('/budget/group-statements', { params: { month } })
   return data
 }
 

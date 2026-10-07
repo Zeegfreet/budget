@@ -7,9 +7,42 @@ import {
   rentTransaction,
   salaryTransaction,
 } from '@/test/transactions'
-import { buildStatement, effectiveCents, hasFollowing, transactionTitle } from './statement'
+import { makeGroupStatement, makeStatementItem } from '@/test/budget'
+import { buildStatement, effectiveCents, hasFollowing, linkedShares, transactionTitle } from './statement'
 
 describe('buildStatement', () => {
+  it('adds the linked group shares to their category’s type and to the totals', () => {
+    // Paid rent share (1000,00) linked to Moradia; the unlinked income stays out
+    const pendingWater = makeStatementItem(11, { description: 'Água', shareCents: 5000 })
+    const republica = makeGroupStatement()
+    const statement = buildStatement(octoberTransactions, [10, 20, 30], [
+      { ...republica, items: [...republica.items, pendingWater] },
+    ])
+
+    const [income, expense] = statement.sections
+    expect(income).toMatchObject({ shares: [], effectiveCents: 500000 })
+    expect(expense.shares.map((s) => s.item.transactionId)).toEqual([10, 11])
+    expect(expense).toMatchObject({
+      plannedCents: 355000,
+      realizedCents: 175000,
+      pendingCents: 185000,
+      effectiveCents: 360000,
+    })
+    const [basics] = expense.groups
+    expect(basics).toMatchObject({ name: 'Despesas Básicas', effectiveCents: 360000 })
+    expect(basics.transactions.map((t) => t.id)).toEqual([2, 3])
+    expect(basics.shares.map((s) => [s.group.name, s.item.description])).toEqual([
+      ['República', 'Aluguel'],
+      ['República', 'Água'],
+    ])
+    expect(statement.balanceCents).toBe(140000)
+  })
+
+  it('keeps only the linked shares', () => {
+    expect(linkedShares([makeGroupStatement()]).map((s) => s.item.transactionId)).toEqual([10])
+    expect(linkedShares([])).toEqual([])
+  })
+
   it('splits by kind, keeping the order, and totals planned, realized and pending', () => {
     const statement = buildStatement(octoberTransactions)
 

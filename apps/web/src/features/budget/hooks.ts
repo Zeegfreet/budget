@@ -14,6 +14,7 @@ import {
   cellKey,
   changedEntries,
   draftReducer,
+  groupValues,
   isChanged,
   savedValues,
   valueOf,
@@ -25,8 +26,14 @@ import type { CategoryInput, CategoryPatch, GroupInput, GroupPatch, MonthlyEntry
 /** Local, unsaved edits of the budget grid on top of the saved entries. */
 export function useBudgetDraft(entries: MonthlyEntry[]) {
   const saved = useMemo(() => savedValues(entries), [entries])
+  const shares = useMemo(() => groupValues(entries), [entries])
   const locked = useMemo(
-    () => new Set(entries.filter((e) => (e.count ?? 1) > 1).map((e) => cellKey(e.categoryId, e.month))),
+    () =>
+      new Set(
+        entries
+          .filter((e) => (e.count ?? 1) > 1 || (e.groupCents ?? 0) > 0)
+          .map((e) => cellKey(e.categoryId, e.month)),
+      ),
     [entries],
   )
   const [edits, dispatch] = useReducer(draftReducer, new Map() as Edits)
@@ -34,23 +41,38 @@ export function useBudgetDraft(entries: MonthlyEntry[]) {
   return {
     dispatch,
     changes: useMemo(() => changedEntries(saved, edits), [saved, edits]),
+    /** What the cell shows: the personal amount (edited or saved) plus the group shares */
     value: useCallback(
-      (categoryId: number, month: Month) => valueOf(saved, edits, cellKey(categoryId, month)),
-      [saved, edits],
+      (categoryId: number, month: Month) => {
+        const key = cellKey(categoryId, month)
+        return valueOf(saved, edits, key) + (shares.get(key) ?? 0)
+      },
+      [saved, edits, shares],
     ),
     isChanged: useCallback(
       (categoryId: number, month: Month) => isChanged(saved, edits, cellKey(categoryId, month)),
       [saved, edits],
     ),
-    /** The saved value, ignoring edits */
+    /** The saved value (group shares included), ignoring edits */
     savedValue: useCallback(
-      (categoryId: number, month: Month) => saved.get(cellKey(categoryId, month)) ?? 0,
-      [saved],
+      (categoryId: number, month: Month) => {
+        const key = cellKey(categoryId, month)
+        return (saved.get(key) ?? 0) + (shares.get(key) ?? 0)
+      },
+      [saved, shares],
     ),
-    /** The cell holds several transactions: read-only here, edited in the statement */
+    /**
+     * The cell holds several transactions or the user's share of a linked
+     * group: read-only here, detailed in the statement
+     */
     isLocked: useCallback(
       (categoryId: number, month: Month) => locked.has(cellKey(categoryId, month)),
       [locked],
+    ),
+    /** The cell includes the user's share of a linked group */
+    hasGroupShare: useCallback(
+      (categoryId: number, month: Month) => shares.has(cellKey(categoryId, month)),
+      [shares],
     ),
   }
 }
