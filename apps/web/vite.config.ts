@@ -24,6 +24,8 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
+        // The API scopes the refresh cookie to Path=/auth; the browser sees /api/auth
+        cookiePathRewrite: { '/auth': '/api/auth' },
       },
     },
   },

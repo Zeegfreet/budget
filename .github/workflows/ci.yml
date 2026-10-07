@@ -18,6 +18,8 @@ jobs:
     env:
       # Isolated SQLite file for tests; never dev.db
       DATABASE_URL: file:./test.db
+      # Required by the API's env validation; test-only value
+      JWT_ACCESS_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4 # version comes from root package.json "packageManager"

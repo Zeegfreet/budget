@@ -7,5 +7,10 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    // Files share one SQLite database, so run them one at a time
+    fileParallelism: false,
+    env: {
+      JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET ?? 'e2e-test-secret',
+    },
   },
 });

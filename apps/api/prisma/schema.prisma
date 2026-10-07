@@ -1,11 +1,9 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../src/prisma/generated"
+  provider     = "prisma-client"
+  output       = "../src/prisma/generated"
   moduleFormat = "cjs"
 }
 
@@ -14,17 +12,41 @@ datasource db {
 }
 
 model User {
-  id    Int     @default(autoincrement()) @id
-  email String  @unique
-  name  String?
-  posts Post[]
+  id           Int       @id @default(autoincrement())
+  /// Always stored trimmed and lowercased
+  email        String    @unique
+  name         String
+  passwordHash String
+  /// Calendar date, stored as midnight UTC
+  birthDate    DateTime
+  /// 8 digits, no mask
+  cep          String
+  city         String
+  /// UF, e.g. `SP`
+  state        String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
 }
 
-model Post {
-  id        Int      @default(autoincrement()) @id
-  title     String
-  content   String?
-  published Boolean? @default(false)
-  author    User?    @relation(fields: [authorId], references: [id])
-  authorId  Int?
+/// A refresh-token session (one per sign-in). Only `/auth/refresh` and
+/// `/auth/logout` read it; access tokens are validated without the database.
+model Session {
+  id                String    @id @default(uuid())
+  userId            Int
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the current refresh secret; rotated on every refresh
+  tokenHash         String
+  /// Hash replaced by the last rotation. Presenting it shortly after the
+  /// rotation is a benign race (e.g. two tabs refreshing at once), not reuse.
+  previousTokenHash String?
+  rotatedAt         DateTime?
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  lastUsedAt        DateTime  @default(now())
+  userAgent         String?
+  ip                String?
+
+  @@index([userId])
 }

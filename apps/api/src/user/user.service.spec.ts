@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserService } from './user.service.js';
+import { authUserSelect, UserService } from './user.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 describe('UserService', () => {
@@ -7,10 +7,7 @@ describe('UserService', () => {
   const prisma = {
     user: {
       create: vi.fn(),
-      findMany: vi.fn(),
       findUnique: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
     },
   };
 
@@ -23,43 +20,57 @@ describe('UserService', () => {
     service = module.get<UserService>(UserService);
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
+  it('creates a user and returns only public fields', async () => {
+    const data = {
+      name: 'Ana Souza',
+      email: 'ana@example.com',
+      passwordHash: 'hash',
+      birthDate: new Date('1990-05-20T00:00:00Z'),
+      cep: '01001000',
+      city: 'São Paulo',
+      state: 'SP',
+    };
+    prisma.user.create.mockResolvedValue({
+      id: 1,
+      email: data.email,
+      name: data.name,
+    });
 
-  it('creates a user', async () => {
-    const dto = { name: 'John Doe', email: 'john@doe.com' };
-    prisma.user.create.mockResolvedValue({ id: 1, ...dto });
-
-    await expect(service.create(dto)).resolves.toEqual({ id: 1, ...dto });
-    expect(prisma.user.create).toHaveBeenCalledWith({ data: dto });
-  });
-
-  it('finds all users', async () => {
-    prisma.user.findMany.mockResolvedValue([]);
-
-    await expect(service.findAll()).resolves.toEqual([]);
-  });
-
-  it('finds one user by id', async () => {
-    prisma.user.findUnique.mockResolvedValue(null);
-
-    await expect(service.findOne(1)).resolves.toBeNull();
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
-  });
-
-  it('updates a user', async () => {
-    await service.update(1, { name: 'Jane' });
-
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 1 },
-      data: { name: 'Jane' },
+    await expect(service.create(data)).resolves.toEqual({
+      id: 1,
+      email: 'ana@example.com',
+      name: 'Ana Souza',
+    });
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data,
+      select: authUserSelect,
     });
   });
 
-  it('removes a user', async () => {
-    await service.remove(1);
+  it('finds the full record by e-mail', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
 
-    expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+    await expect(service.findByEmail('ana@example.com')).resolves.toBeNull();
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { email: 'ana@example.com' },
+    });
+  });
+
+  it('finds the public view by id', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 1,
+      email: 'a@b.c',
+      name: 'A',
+    });
+
+    await expect(service.findById(1)).resolves.toEqual({
+      id: 1,
+      email: 'a@b.c',
+      name: 'A',
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: authUserSelect,
+    });
   });
 });
