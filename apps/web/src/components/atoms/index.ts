@@ -1,6 +1,7 @@
 export { BrandIcon } from './BrandIcon'
 export { FormAlert } from './FormAlert'
 export { Logo } from './Logo'
+export { MoneyInput } from './MoneyInput'
 export { MoneyText } from './MoneyText'
 export { Spinner } from './Spinner'
 export { UserAvatar } from './UserAvatar'

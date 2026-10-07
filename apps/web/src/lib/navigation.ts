@@ -1,5 +1,5 @@
 import type { LinkProps } from '@tanstack/react-router'
-import { HomeIcon, type LucideIcon } from 'lucide-react'
+import { LayoutDashboardIcon, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   label: string
@@ -9,5 +9,5 @@ export interface NavItem {
 
 /** Entries of the app's side menu. Register new top-level pages here. */
 export const appNavItems: NavItem[] = [
-  { label: 'Início', to: '/', icon: HomeIcon },
+  { label: 'Dashboard', to: '/', icon: LayoutDashboardIcon },
 ]

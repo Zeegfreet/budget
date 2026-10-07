@@ -6,6 +6,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module.js';
+import { BudgetModule } from './budget/budget.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { validateEnv } from './config/env.validation.js';
 import { UserModule } from './user/user.module.js';
@@ -29,6 +30,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     UserModule,
     AuthModule,
+    BudgetModule,
   ],
   controllers: [AppController],
   providers: [

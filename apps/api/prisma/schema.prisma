@@ -12,21 +12,26 @@ datasource db {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
+  id                  Int             @id @default(autoincrement())
   /// Always stored trimmed and lowercased
-  email        String    @unique
-  name         String
-  passwordHash String
+  email               String          @unique
+  name                String
+  passwordHash        String
   /// Calendar date, stored as midnight UTC
-  birthDate    DateTime
+  birthDate           DateTime
   /// 8 digits, no mask
-  cep          String
-  city         String
+  cep                 String
+  city                String
   /// UF, e.g. `SP`
-  state        String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  sessions     Session[]
+  state               String
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  /// Balance the user had before the first month in the budget (may be negative)
+  initialBalanceCents Int             @default(0)
+  sessions            Session[]
+  categoryGroups      CategoryGroup[]
+  categories          Category[]
+  monthlyEntries      MonthlyEntry[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -49,4 +54,56 @@ model Session {
   ip                String?
 
   @@index([userId])
+}
+
+enum EntryKind {
+  INCOME
+  EXPENSE
+}
+
+/// A category "type" (e.g. Despesas Básicas, Salário) grouping categories of one kind.
+model CategoryGroup {
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       EntryKind
+  name       String
+  position   Int        @default(0)
+  createdAt  DateTime   @default(now())
+  categories Category[]
+
+  @@unique([userId, kind, name])
+}
+
+/// Leaf category that holds the monthly values (e.g. Moradia under Despesas Básicas).
+model Category {
+  id       Int            @id @default(autoincrement())
+  /// Denormalized owner so every query can be scoped by user
+  userId   Int
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId  Int
+  group    CategoryGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name     String
+  position Int            @default(0)
+  entries  MonthlyEntry[]
+
+  @@unique([groupId, name])
+  @@index([userId])
+}
+
+/// Amount of one category in one month. Zero amounts are not stored.
+model MonthlyEntry {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId  Int
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  /// `YYYY-MM`, so string order is chronological order
+  month       String
+  /// Always >= 0; the sign comes from the category's kind
+  amountCents Int
+  updatedAt   DateTime @updatedAt
+
+  @@unique([categoryId, month])
+  @@index([userId, month])
 }

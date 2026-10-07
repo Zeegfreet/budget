@@ -1,0 +1,53 @@
+import type { MonthlyEntry, Month } from './types'
+
+/**
+ * Unsaved edits of the budget grid, keyed by cell. Saved values come from the
+ * server; an edit equal to the saved value is not a change.
+ */
+export type Edits = ReadonlyMap<string, number>
+export type SavedValues = ReadonlyMap<string, number>
+
+export const cellKey = (categoryId: number, month: Month) => `${categoryId}:${month}`
+
+export type DraftAction =
+  | { type: 'set'; categoryId: number; month: Month; amountCents: number }
+  | { type: 'fill'; categoryId: number; months: Month[]; amountCents: number }
+  | { type: 'discard' }
+
+export function draftReducer(edits: Edits, action: DraftAction): Edits {
+  switch (action.type) {
+    case 'set':
+      return new Map(edits).set(cellKey(action.categoryId, action.month), action.amountCents)
+    case 'fill': {
+      const next = new Map(edits)
+      for (const month of action.months) {
+        next.set(cellKey(action.categoryId, month), action.amountCents)
+      }
+      return next
+    }
+    case 'discard':
+      return new Map()
+  }
+}
+
+export function savedValues(entries: MonthlyEntry[]): SavedValues {
+  return new Map(entries.map((e) => [cellKey(e.categoryId, e.month), e.amountCents]))
+}
+
+export function valueOf(saved: SavedValues, edits: Edits, key: string): number {
+  return edits.get(key) ?? saved.get(key) ?? 0
+}
+
+export function isChanged(saved: SavedValues, edits: Edits, key: string): boolean {
+  return edits.has(key) && edits.get(key) !== (saved.get(key) ?? 0)
+}
+
+/** Cells to send to `PUT /budget/entries` (only real changes; 0 clears). */
+export function changedEntries(saved: SavedValues, edits: Edits): MonthlyEntry[] {
+  return [...edits]
+    .filter(([key]) => isChanged(saved, edits, key))
+    .map(([key, amountCents]) => {
+      const [categoryId, month] = key.split(':')
+      return { categoryId: Number(categoryId), month, amountCents }
+    })
+}

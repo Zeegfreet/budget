@@ -20,7 +20,7 @@ describe('Alterar senha route (/settings/password)', () => {
     expect(await screen.findByRole('heading', { name: 'Alterar senha' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Em breve' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Navegação principal' })
-    expect(within(nav).getByRole('link', { name: 'Início' })).toHaveAttribute('data-active', 'false')
+    expect(within(nav).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('data-active', 'false')
   })
 
   it('redirects signed-out visitors to /login and back here afterwards', async () => {

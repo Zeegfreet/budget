@@ -20,7 +20,7 @@ describe('Editar perfil route (/settings/profile)', () => {
     expect(await screen.findByRole('heading', { name: 'Editar perfil' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Em breve' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Navegação principal' })
-    expect(within(nav).getByRole('link', { name: 'Início' })).toHaveAttribute('data-active', 'false')
+    expect(within(nav).getByRole('link', { name: 'Dashboard' })).toHaveAttribute('data-active', 'false')
   })
 
   it('redirects signed-out visitors to /login and back here afterwards', async () => {

@@ -9,8 +9,11 @@ import {
   tooManyAttemptsMessage,
 } from '@/features/auth/errors'
 import { ApiError } from '@/lib/api/client'
+import { stubBudgetApi } from '@/test/budget'
 import { renderRoute } from '@/test/render'
 
+// Signing in lands on the dashboard, which loads the budget
+vi.mock('@/features/budget/api')
 vi.mock('@/features/auth/api', () => ({
   fetchMe: vi.fn(),
   login: vi.fn(),
@@ -65,6 +68,7 @@ async function fillValidForm(options?: FillOptions) {
 describe('Sign-up route (/signup)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    stubBudgetApi()
     fetchMeMock.mockRejectedValue(new ApiError(401, ['Unauthorized']))
     lookupCepMock.mockResolvedValue(saoPaulo)
   })
@@ -241,7 +245,7 @@ describe('Sign-up route (/signup)', () => {
         },
         expect.anything(),
       )
-      expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
       expect(router.state.location.pathname).toBe('/')
       expect(screen.getByRole('button', { name: /menu da conta/i })).toHaveTextContent('ana@example.com')
     })
@@ -263,7 +267,7 @@ describe('Sign-up route (/signup)', () => {
       await fillValidForm()
       await submit()
 
-      expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
       expect(router.state.location.href).toBe('/')
     })
 
@@ -315,7 +319,7 @@ describe('Sign-up route (/signup)', () => {
     fetchMeMock.mockResolvedValue(ana)
     const { router } = await renderRoute('/signup')
 
-    expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
 })

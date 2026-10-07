@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { Prisma } from '../prisma/generated/client.js';
+import { isUniqueViolation } from '../prisma/errors.js';
 import { type AuthUser, UserService } from '../user/user.service.js';
 import type { AuthTokens } from './auth.cookies.js';
 import type { RegisterDto } from './dto/register.dto.js';
@@ -19,10 +19,6 @@ export interface AuthResult {
 }
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
-
-const isUniqueViolation = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  error.code === 'P2002';
 
 @Injectable()
 export class AuthService {

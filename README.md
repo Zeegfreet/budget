@@ -12,6 +12,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - [Estrutura do repositório](#estrutura-do-repositório)
 - [Rodando localmente](#rodando-localmente)
 - [Autenticação](#autenticação)
+- [Dashboard](#dashboard)
 - [Testes](#testes)
 - [CI/CD](#cicd)
 - [Deploy](#deploy)
@@ -32,11 +33,13 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Fundação do frontend (Tailwind, shadcn/ui, Router, Query, Atomic Design) | — | ✅ | |
 | Pipeline de CI (lint, build, testes unitários e e2e) | ✅ | ✅ | |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
-| Layout autenticado (menu lateral recolhível) | — | ✅ | Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
+| Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
 | Editar perfil | ⏳ | 🚧 | Rota `/settings/profile` criada como página "Em breve" |
 | Alterar senha | ⏳ | 🚧 | Rota `/settings/password` criada como página "Em breve" |
 | Login com GitHub e Google (OAuth) | ⏳ | 🚧 | Web já tem os botões; a API ainda não implementa `/auth/github` e `/auth/google` |
-| Receitas e despesas pessoais | ⏳ | ⏳ | |
+| Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`). Veja [Dashboard](#dashboard) |
+| Categorias de receitas e despesas | 🚧 | ⏳ | Tipos e categorias padrão criados no primeiro acesso; a tela de edição ainda não existe |
+| Receitas e despesas pessoais | 🚧 | 🚧 | Hoje: um valor por categoria e mês, editado no Dashboard. Lançamentos individuais e previsto × realizado ainda não existem |
 | Grupos de finanças | ⏳ | ⏳ | |
 | Convites para grupos | ⏳ | ⏳ | |
 | Métodos de divisão | ⏳ | ⏳ | |
@@ -81,7 +84,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ├── apps/
 │   ├── api/                 # Backend NestJS
 │   │   ├── prisma/          # schema.prisma e migrations
-│   │   ├── src/             # módulos (auth, user, prisma), app.setup.ts
+│   │   ├── src/             # módulos (auth, budget, user, prisma), app.setup.ts
 │   │   └── test/            # testes e2e (*.e2e-spec.ts)
 │   └── web/                 # Frontend React
 │       └── src/
@@ -196,6 +199,42 @@ Cadastro (`/signup`):
 ### Proxy reverso e cookies
 
 A API define o cookie de refresh com `Path=/auth`. Atrás de um proxy que publica a API sob `/api`, o navegador enxerga `/api/auth/refresh`, então o proxy precisa reescrever o path do cookie (o Vite já faz isso em dev; no Nginx, `proxy_cookie_path /auth /api/auth;`). Se o web for servido de outra origem (`VITE_API_URL` absoluto), será preciso habilitar CORS com `credentials: true` e origem explícita, nunca `*`.
+
+## Dashboard
+
+Página inicial do app (`/`), com o balanço das finanças pessoais.
+
+**Cards do mês atual**
+
+| Card | Cálculo |
+| --- | --- |
+| Saldo de abertura | Saldo inicial + receitas − despesas de todos os meses anteriores |
+| Receitas do mês | Soma das categorias de receita no mês atual |
+| Despesas do mês | Soma das categorias de despesa no mês atual |
+| Saldo do mês | Receitas − despesas do mês atual |
+| Saldo acumulado | Saldo de abertura + saldo do mês |
+
+O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, podendo ser negativo) é ajustado pelo lápis no card de abertura. Receitas, despesas e saldos do mês são recalculados na hora, enquanto o usuário edita a tabela, mesmo antes de salvar.
+
+**Planejamento mensal (tabela dinâmica)**
+
+- Colunas: o mês atual e os 11 seguintes. Linhas: **Despesas** e depois **Receitas**, que se expandem em **tipos** (Despesas Básicas e Custos de Vida; Salário, Provento e Renda Extra) e depois em **categorias** (Moradia, Alimentação, etc.). Os valores ficam nas categorias; tipos e grupos mostram as somas. No rodapé ficam o saldo de cada mês e o saldo acumulado projetado.
+- Edição direto na célula: clique e digite (`1800`, `1.800,50`, `R$ 10`). Tab vai para a direita, Enter desce (Shift+Enter sobe), Esc desfaz a edição da célula e texto inválido é ignorado. Deixar a célula vazia zera o valor.
+- Menu da célula (botão ⋮ ao passar o mouse, ou botão direito): **Replicar para os meses seguintes**, **Replicar até dezembro** e **Limpar valor**.
+- As alterações ficam destacadas e só são gravadas ao clicar em **Salvar**, na barra que aparece no rodapé (ou descartadas em **Descartar**). Sair da página com alterações pendentes pede confirmação.
+- Tipos e categorias padrão são criados no primeiro acesso. Eles serão editáveis em uma tela própria (ainda não implementada).
+
+**Rotas da API** (todas exigem sessão; tudo é do usuário logado)
+
+| Método | Rota | Corpo / query | Resposta |
+| --- | --- | --- | --- |
+| `GET` | `/budget/categories` | — | `200` com a árvore de tipos e categorias (cria os padrões no primeiro acesso) |
+| `GET` | `/budget/entries` | `?from=YYYY-MM&to=YYYY-MM` | `200` com `[{ categoryId, month, amountCents }]` (só valores diferentes de zero); `400` se o intervalo for inválido, invertido ou maior que 24 meses |
+| `PUT` | `/budget/entries` | `{ entries: [{ categoryId, month, amountCents }] }` | `204`. `amountCents` é inteiro ≥ 0, e `0` apaga a célula. Até 1000 células por chamada. `404` se alguma categoria não for do usuário (nada é gravado) |
+| `GET` | `/budget/summary` | `?month=YYYY-MM` | `200` com `{ month, initialBalanceCents, openingBalanceCents, incomeCents, expenseCents, monthBalanceCents, closingBalanceCents }`. O mês vem do cliente, por causa do fuso horário |
+| `PUT` | `/budget/initial-balance` | `{ amountCents }` | `200` com `{ amountCents }` (pode ser negativo) |
+
+Os valores são sempre centavos inteiros. O sinal vem do tipo da categoria (receita ou despesa), nunca do valor.
 
 ## Testes
 
