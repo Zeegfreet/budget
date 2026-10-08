@@ -23,6 +23,10 @@ describe('AuthController', () => {
     me: vi.fn(),
     logout: vi.fn(),
     changePassword: vi.fn(),
+    activationInfo: vi.fn(),
+    activate: vi.fn(),
+    completeSignup: vi.fn(),
+    resendActivation: vi.fn(),
   };
   const controller = new AuthController(
     authService as unknown as AuthService,
@@ -75,18 +79,58 @@ describe('AuthController', () => {
     );
   };
 
-  it('register sets the session cookies and returns the user', async () => {
-    authService.register.mockResolvedValue(result);
+  it('register returns where the link went, without cookies', async () => {
+    authService.register.mockResolvedValue({ email: 'ana@example.com' });
     const dto = { email: 'ana@example.com' } as never;
 
-    await expect(controller.register(dto, req(), res)).resolves.toEqual(
-      authUser,
-    );
-    expect(authService.register).toHaveBeenCalledWith(dto, {
+    await expect(controller.register(dto)).resolves.toEqual({
+      email: 'ana@example.com',
+    });
+    expect(authService.register).toHaveBeenCalledWith(dto);
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('describes an activation link', async () => {
+    const info = { email: 'ana@example.com', name: 'Ana', kind: 'ACTIVATE' };
+    authService.activationInfo.mockResolvedValue(info);
+
+    await expect(controller.activationInfo({ token: 't' })).resolves.toBe(info);
+    expect(authService.activationInfo).toHaveBeenCalledWith('t');
+  });
+
+  it('activate opens a session', async () => {
+    authService.activate.mockResolvedValue(result);
+
+    await expect(
+      controller.activate({ token: 't' }, req(), res),
+    ).resolves.toEqual(authUser);
+    expect(authService.activate).toHaveBeenCalledWith('t', {
       userAgent: 'agent',
       ip: '::1',
     });
     expectSessionCookies();
+  });
+
+  it('completeSignup opens a session', async () => {
+    authService.completeSignup.mockResolvedValue(result);
+    const dto = { token: 't', name: 'Ana' } as never;
+
+    await expect(controller.completeSignup(dto, req(), res)).resolves.toEqual(
+      authUser,
+    );
+    expect(authService.completeSignup).toHaveBeenCalledWith(dto, {
+      userAgent: 'agent',
+      ip: '::1',
+    });
+    expectSessionCookies();
+  });
+
+  it('resendActivation forwards the e-mail', async () => {
+    await controller.resendActivation({ email: 'ana@example.com' });
+
+    expect(authService.resendActivation).toHaveBeenCalledWith(
+      'ana@example.com',
+    );
   });
 
   it('login opens a session for the user validated by the local strategy', async () => {

@@ -13,6 +13,8 @@ const loginErrorMessages: Record<string, string> = {
 export const defaultLoginErrorMessage = 'Não foi possível entrar. Tente novamente.'
 export const invalidCredentialsMessage = 'E-mail ou senha inválidos.'
 export const tooManyAttemptsMessage = 'Muitas tentativas. Aguarde um pouco e tente de novo.'
+export const notActivatedMessage =
+  'Sua conta ainda não foi ativada. Use o link que enviamos para o seu e-mail.'
 export const serverUnavailableMessage = 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
 
 export function getLoginErrorMessage(code: string) {
@@ -26,6 +28,7 @@ export function getLoginErrorMessage(code: string) {
 export function getCredentialsErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 400 || error.status === 401) return invalidCredentialsMessage
+    if (isNotActivated(error)) return notActivatedMessage
     if (error.status === 429) return tooManyAttemptsMessage
     // 0 = network error; 404 = auth routes not deployed; 5xx = API/proxy down
     if (error.status === 0 || error.status === 404 || error.status >= 500) {
@@ -33,6 +36,11 @@ export function getCredentialsErrorMessage(error: unknown) {
     }
   }
   return defaultLoginErrorMessage
+}
+
+/** The right credentials of an account still waiting for its activation link. */
+export function isNotActivated(error: unknown) {
+  return error instanceof ApiError && error.status === 403
 }
 
 export const emailTakenMessage = 'Este e-mail já está cadastrado.'
@@ -80,4 +88,37 @@ export function getPasswordChangeError(error: unknown): PasswordChangeError {
     }
   }
   return { form: defaultPasswordChangeErrorMessage }
+}
+
+export const invalidActivationLinkMessage =
+  'Este link de ativação é inválido ou expirou. Peça um novo abaixo.'
+export const defaultActivationErrorMessage = 'Não foi possível ativar sua conta. Tente novamente.'
+
+/** Whether an activation link was refused for being invalid, expired or already used. */
+export function isInvalidActivationLink(error: unknown) {
+  return error instanceof ApiError && error.status === 404
+}
+
+/** Message for a failed activation (link check, activation or the pre-registration form). */
+export function getActivationErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return invalidActivationLinkMessage
+    if (error.status === 400) return invalidRegisterDataMessage
+    if (error.status === 429) return tooManyAttemptsMessage
+    if (error.status === 0 || error.status >= 500) return serverUnavailableMessage
+  }
+  return defaultActivationErrorMessage
+}
+
+export const activationSentMessage = 'Se houver uma conta aguardando ativação, enviamos um novo link.'
+export const defaultResendErrorMessage = 'Não foi possível reenviar o e-mail. Tente novamente.'
+
+export function getResendErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 429) return tooManyAttemptsMessage
+    if (error.status === 0 || error.status === 404 || error.status >= 500) {
+      return serverUnavailableMessage
+    }
+  }
+  return defaultResendErrorMessage
 }

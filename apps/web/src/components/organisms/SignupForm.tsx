@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FormAlert, Spinner } from '@/components/atoms'
 import { AddressFields, FormField, PasswordField } from '@/components/molecules'
@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button'
 import { cepNotFoundMessage, useCepAddress } from '@/features/address/hooks'
 import { register } from '@/features/auth/api'
 import { getRegisterErrorMessage } from '@/features/auth/errors'
-import { authQueries } from '@/features/auth/queries'
-import { safeRedirect } from '@/features/auth/redirect'
 import {
   latestBirthDate,
   validateRegister,
@@ -18,11 +16,11 @@ import { ApiError } from '@/lib/api/client'
 
 /**
  * Sign-up form. City and UF come from the CEP (ViaCEP); they only become
- * editable when the lookup service is unavailable. `redirect` is where to go
- * afterwards (sanitized).
+ * editable when the lookup service is unavailable. The account starts
+ * inactive, so it goes on to "check your e-mail" (`redirect` only feeds the
+ * sign-in link of a duplicate e-mail).
  */
 export function SignupForm({ redirect }: { redirect?: string }) {
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const passwordRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
@@ -36,9 +34,8 @@ export function SignupForm({ redirect }: { redirect?: string }) {
 
   const mutation = useMutation({
     mutationFn: register,
-    onSuccess: async (user) => {
-      queryClient.setQueryData(authQueries.me().queryKey, user)
-      await navigate({ href: safeRedirect(redirect), replace: true })
+    onSuccess: async ({ email }) => {
+      await navigate({ to: '/verificar-email', search: { email }, replace: true })
     },
     onError: () => {
       // Never keep a rejected password around

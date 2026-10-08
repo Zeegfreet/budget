@@ -104,7 +104,9 @@ describe('Group members (/grupos/$groupId?tab=membros)', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(inviteMember).toHaveBeenLastCalledWith(7, { email: 'diego@example.com', nickname: 'Didi' })
-    expect(success).toHaveBeenCalledWith('Didi entrou no grupo (pré-cadastro)')
+    expect(success).toHaveBeenCalledWith('Didi entrou no grupo (pré-cadastro)', {
+      description: 'Enviamos um link de ativação para diego@example.com.',
+    })
     // The member list was refreshed
     const member = await within(region('Membros')).findByRole('listitem', { name: 'Didi' })
     expect(member).toHaveTextContent('Pré-cadastro')

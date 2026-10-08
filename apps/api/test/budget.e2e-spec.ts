@@ -1,17 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
-import { addTransactions, createTestApp, resetDatabase } from './utils.js';
-
-const userBody = (name: string, email: string) => ({
-  name,
-  email,
-  password: 'segredo123',
-  birthDate: '1990-05-20',
-  cep: '01001000',
-  city: 'São Paulo',
-  state: 'SP',
-});
+import {
+  addTransactions,
+  createTestApp,
+  resetDatabase,
+  signUp as signUpUser,
+} from './utils.js';
 
 type Agent = ReturnType<typeof request.agent>;
 interface Group {
@@ -25,11 +20,7 @@ describe('Budget (e2e)', () => {
   let app: INestApplication<App>;
   let ana: Agent;
 
-  async function signUp(name: string, email: string) {
-    const client = request.agent(app.getHttpServer());
-    await client.post('/auth/register').send(userBody(name, email)).expect(201);
-    return client;
-  }
+  const signUp = (name: string, email: string) => signUpUser(app, name, email);
 
   async function categoryIds(client: Agent) {
     const res = await client.get('/budget/categories').expect(200);

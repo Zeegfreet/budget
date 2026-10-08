@@ -1,10 +1,12 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchMe, login } from '@/features/auth/api'
+import { fetchMe, login, resendActivation } from '@/features/auth/api'
 import {
+  activationSentMessage,
   defaultLoginErrorMessage,
   invalidCredentialsMessage,
+  notActivatedMessage,
   serverUnavailableMessage,
   tooManyAttemptsMessage,
 } from '@/features/auth/errors'
@@ -15,7 +17,12 @@ import { renderRoute } from '@/test/render'
 
 // Signing in lands on the dashboard, which loads the budget
 vi.mock('@/features/budget/api')
-vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
+vi.mock('@/features/auth/api', () => ({
+  fetchMe: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+  resendActivation: vi.fn(),
+}))
 
 const fetchMeMock = vi.mocked(fetchMe)
 const loginMock = vi.mocked(login)
@@ -167,6 +174,29 @@ describe('Login route (/login)', () => {
       expect(screen.getByLabelText('Senha')).toHaveValue('')
       expect(screen.getByLabelText('Senha')).toHaveFocus()
       expect(screen.getByLabelText('E-mail')).toHaveValue('ana@example.com')
+    })
+
+    it('explains an account not activated yet and resends the link to the typed e-mail', async () => {
+      loginMock.mockRejectedValue(new ApiError(403, ['Account not activated']))
+      vi.mocked(resendActivation).mockResolvedValue()
+      await renderRoute('/login')
+
+      await fillAndSubmit(' ana@example.com ', 'segredo123')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(notActivatedMessage)
+      await userEvent.click(screen.getByRole('button', { name: 'Reenviar e-mail de ativação' }))
+      expect(await screen.findByRole('status')).toHaveTextContent(activationSentMessage)
+      expect(resendActivation).toHaveBeenCalledWith('ana@example.com', expect.anything())
+    })
+
+    it('offers no resend for other failures', async () => {
+      loginMock.mockRejectedValue(new ApiError(401, ['Invalid credentials']))
+      await renderRoute('/login')
+
+      await fillAndSubmit('ana@example.com', 'errada')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(invalidCredentialsMessage)
+      expect(screen.queryByRole('button', { name: 'Reenviar e-mail de ativação' })).not.toBeInTheDocument()
     })
 
     it('explains rate limiting', async () => {

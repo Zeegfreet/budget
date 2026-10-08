@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '../prisma/generated/client.js';
+import type { AccountMailer } from '../activation/account-mailer.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { UserService } from '../user/user.service.js';
 import { InvitationService } from './invitation.service.js';
@@ -22,12 +23,17 @@ describe('InvitationService', () => {
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    financeGroup: { findUnique: vi.fn() },
   };
   const users = { findPublicByEmail: vi.fn(), createPending: vi.fn() };
+  const mailer = { sendPreRegistration: vi.fn(), sendGroupInvitation: vi.fn() };
   const service = new InvitationService(
     prisma as unknown as PrismaService,
     users as unknown as UserService,
+    mailer as unknown as AccountMailer,
   );
+  const inviter = { id: 7, name: 'Ana', email: 'ana@example.com' };
+  const context = { inviterName: 'Ana', groupName: 'República' };
   const me = { id: 1, groupId: 5, userId: 7, role: 'OWNER' };
   const bruno = {
     id: 8,
@@ -44,6 +50,7 @@ describe('InvitationService', () => {
       (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
     );
     prisma.groupMember.upsert.mockResolvedValue({ id: 20 });
+    prisma.financeGroup.findUnique.mockResolvedValue({ name: 'República' });
   });
 
   describe('invite', () => {
@@ -62,18 +69,19 @@ describe('InvitationService', () => {
     });
 
     it('creates a pending invitation for a registered user', async () => {
-      prisma.groupInvitation.create.mockResolvedValue({ id: 3 });
+      prisma.groupInvitation.create.mockResolvedValue({ id: 3, inviter });
 
       await expect(
         service.invite(7, 5, { email: 'bruno@example.com' }),
-      ).resolves.toEqual({
-        id: 3,
-      });
+      ).resolves.toEqual({ id: 3, inviter });
       expect(prisma.groupInvitation.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { groupId: 5, inviterId: 7, inviteeId: 8 },
         }),
       );
+      const { pending: _pending, ...invitee } = bruno;
+      expect(mailer.sendGroupInvitation).toHaveBeenCalledWith(invitee, context);
+      expect(mailer.sendPreRegistration).not.toHaveBeenCalled();
     });
 
     it('requires a nickname for an e-mail without account', async () => {
@@ -96,11 +104,12 @@ describe('InvitationService', () => {
       prisma.groupInvitation.create.mockResolvedValue({
         id: 4,
         status: 'ACCEPTED',
+        inviter,
       });
 
       await expect(
         service.invite(7, 5, { email: 'carla@example.com', nickname: 'Carla' }),
-      ).resolves.toEqual({ id: 4, status: 'ACCEPTED' });
+      ).resolves.toEqual({ id: 4, status: 'ACCEPTED', inviter });
       expect(users.createPending).toHaveBeenCalledWith(
         'carla@example.com',
         'Carla',
@@ -122,6 +131,11 @@ describe('InvitationService', () => {
         update: { leftAt: null, joinedAt: expect.any(Date), role: 'MEMBER' },
       });
       expect(includeInRules).toHaveBeenCalledWith(prisma, 5, 20);
+      expect(mailer.sendPreRegistration).toHaveBeenCalledWith(
+        { id: 9, name: 'Carla', email: 'carla@example.com' },
+        context,
+      );
+      expect(mailer.sendGroupInvitation).not.toHaveBeenCalled();
     });
 
     it('adds an existing pre-registration right away, keeping its name', async () => {
@@ -129,7 +143,7 @@ describe('InvitationService', () => {
         ...bruno,
         pending: true,
       });
-      prisma.groupInvitation.create.mockResolvedValue({ id: 4 });
+      prisma.groupInvitation.create.mockResolvedValue({ id: 4, inviter });
 
       await service.invite(7, 5, {
         email: 'bruno@example.com',
@@ -138,6 +152,11 @@ describe('InvitationService', () => {
 
       expect(users.createPending).not.toHaveBeenCalled();
       expect(prisma.groupMember.upsert).toHaveBeenCalled();
+      // A new link for the new group (it replaces the previous one)
+      expect(mailer.sendPreRegistration).toHaveBeenCalledWith(
+        { id: 8, name: 'Bruno', email: 'bruno@example.com' },
+        context,
+      );
     });
 
     it('falls back to the user registered meanwhile', async () => {
@@ -150,12 +169,13 @@ describe('InvitationService', () => {
           clientVersion: 'test',
         }),
       );
-      prisma.groupInvitation.create.mockResolvedValue({ id: 3 });
+      prisma.groupInvitation.create.mockResolvedValue({ id: 3, inviter });
 
       await expect(
         service.invite(7, 5, { email: 'bruno@example.com', nickname: 'Bru' }),
-      ).resolves.toEqual({ id: 3 });
+      ).resolves.toEqual({ id: 3, inviter });
       expect(prisma.groupMember.upsert).not.toHaveBeenCalled();
+      expect(mailer.sendGroupInvitation).toHaveBeenCalled();
     });
 
     it('rejects self', async () => {
@@ -176,6 +196,7 @@ describe('InvitationService', () => {
         service.invite(7, 5, { email: 'bruno@example.com' }),
       ).rejects.toThrow(new ConflictException('Already a member'));
       expect(prisma.groupInvitation.create).not.toHaveBeenCalled();
+      expect(mailer.sendGroupInvitation).not.toHaveBeenCalled();
     });
   });
 

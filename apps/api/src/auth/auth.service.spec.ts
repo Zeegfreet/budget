@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import type { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import type { AccountMailer } from '../activation/account-mailer.js';
+import type { ActivationService } from '../activation/activation.service.js';
 import { Prisma } from '../prisma/generated/client.js';
 import type { UserService } from '../user/user.service.js';
 import { AuthService } from './auth.service.js';
@@ -28,7 +30,7 @@ const sessionUser = { ...authUser, needsProfile: false, hasPassword: true };
 describe('AuthService', () => {
   const users = {
     create: vi.fn(),
-    claimPending: vi.fn(),
+    claimUnverified: vi.fn(),
     findByEmail: vi.fn(),
     findSessionUser: vi.fn(),
     findCredentialsById: vi.fn(),
@@ -41,10 +43,18 @@ describe('AuthService', () => {
     revokeAllForUser: vi.fn(),
   };
   const jwt = { signAsync: vi.fn() };
+  const activation = {
+    inspect: vi.fn(),
+    activate: vi.fn(),
+    completeSignup: vi.fn(),
+  };
+  const mailer = { sendActivation: vi.fn(), resend: vi.fn() };
   const service = new AuthService(
     users as unknown as UserService,
     sessions as unknown as SessionService,
     jwt as unknown as JwtService,
+    activation as unknown as ActivationService,
+    mailer as unknown as AccountMailer,
   );
 
   beforeEach(() => {
@@ -55,15 +65,13 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('hashes the password, creates the user and opens a session', async () => {
+    it('hashes the password, creates the user and e-mails the link, without a session', async () => {
       users.create.mockResolvedValue(authUser);
 
-      const result = await service.register(dto, { ip: '::1' });
-
-      expect(result).toEqual({
-        user: sessionUser,
-        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      await expect(service.register(dto)).resolves.toEqual({
+        email: 'ana@example.com',
       });
+
       const data = users.create.mock.calls[0][0];
       expect(data).toMatchObject({
         name: 'Ana Souza',
@@ -74,11 +82,13 @@ describe('AuthService', () => {
         state: 'SP',
       });
       expect(data).not.toHaveProperty('password');
+      expect(data).not.toHaveProperty('emailVerifiedAt');
       await expect(
         argon2.verify(data.passwordHash, 'segredo123'),
       ).resolves.toBe(true);
-      expect(jwt.signAsync).toHaveBeenCalledWith({ sub: 1 });
-      expect(sessions.create).toHaveBeenCalledWith(1, { ip: '::1' });
+      expect(mailer.sendActivation).toHaveBeenCalledWith(authUser);
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(jwt.signAsync).not.toHaveBeenCalled();
     });
 
     const duplicate = () =>
@@ -89,22 +99,22 @@ describe('AuthService', () => {
 
     it('maps a duplicate e-mail to 409', async () => {
       users.create.mockRejectedValue(duplicate());
-      users.claimPending.mockResolvedValue(null);
+      users.claimUnverified.mockResolvedValue(null);
 
       await expect(service.register(dto)).rejects.toBeInstanceOf(
         ConflictException,
       );
-      expect(sessions.create).not.toHaveBeenCalled();
+      expect(mailer.sendActivation).not.toHaveBeenCalled();
     });
 
-    it('takes over the pre-registration of the e-mail', async () => {
+    it('takes over an account of the e-mail not yet activated', async () => {
       users.create.mockRejectedValue(duplicate());
-      users.claimPending.mockResolvedValue(authUser);
+      users.claimUnverified.mockResolvedValue(authUser);
 
-      const result = await service.register(dto);
-
-      expect(result.user).toEqual(sessionUser);
-      const [email, data] = users.claimPending.mock.calls[0];
+      await expect(service.register(dto)).resolves.toEqual({
+        email: 'ana@example.com',
+      });
+      const [email, data] = users.claimUnverified.mock.calls[0];
       expect(email).toBe('ana@example.com');
       expect(data).toMatchObject({
         name: 'Ana Souza',
@@ -114,13 +124,77 @@ describe('AuthService', () => {
         state: 'SP',
       });
       expect(data).not.toHaveProperty('email');
-      expect(sessions.create).toHaveBeenCalledWith(1, {});
+      expect(mailer.sendActivation).toHaveBeenCalledWith(authUser);
     });
 
     it('rethrows other errors', async () => {
       users.create.mockRejectedValue(new Error('db down'));
 
       await expect(service.register(dto)).rejects.toThrow('db down');
+    });
+  });
+
+  describe('activation', () => {
+    it('describes a link by its account', async () => {
+      activation.inspect.mockResolvedValueOnce({ ...authUser, pending: false });
+      await expect(service.activationInfo('t')).resolves.toEqual({
+        email: 'ana@example.com',
+        name: 'Ana Souza',
+        kind: 'ACTIVATE',
+      });
+
+      activation.inspect.mockResolvedValueOnce({ ...authUser, pending: true });
+      await expect(service.activationInfo('t')).resolves.toMatchObject({
+        kind: 'COMPLETE_SIGNUP',
+      });
+    });
+
+    it('is 404 for an invalid link', async () => {
+      activation.inspect.mockResolvedValue(null);
+
+      await expect(service.activationInfo('t')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('activates and opens a session', async () => {
+      activation.activate.mockResolvedValue(authUser);
+
+      await expect(service.activate('t', { ip: '::1' })).resolves.toEqual({
+        user: sessionUser,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      });
+      expect(activation.activate).toHaveBeenCalledWith('t');
+      expect(sessions.create).toHaveBeenCalledWith(1, { ip: '::1' });
+    });
+
+    it('finishes a pre-registration with the hashed password and opens a session', async () => {
+      activation.completeSignup.mockResolvedValue(authUser);
+      const { email: _email, ...profile } = dto;
+
+      const result = await service.completeSignup({ ...profile, token: 't' });
+
+      expect(result.user).toEqual(sessionUser);
+      const [token, data] = activation.completeSignup.mock.calls[0];
+      expect(token).toBe('t');
+      expect(data).toMatchObject({
+        name: 'Ana Souza',
+        birthDate: new Date('1990-05-20T00:00:00.000Z'),
+        cep: '01001000',
+        city: 'São Paulo',
+        state: 'SP',
+      });
+      expect(data).not.toHaveProperty('password');
+      expect(data).not.toHaveProperty('token');
+      await expect(
+        argon2.verify(data.passwordHash, 'segredo123'),
+      ).resolves.toBe(true);
+    });
+
+    it('resends with the normalized e-mail', async () => {
+      await service.resendActivation(' ANA@example.com ');
+
+      expect(mailer.resend).toHaveBeenCalledWith('ana@example.com');
     });
   });
 
@@ -131,8 +205,14 @@ describe('AuthService', () => {
       passwordHash = await argon2.hash('segredo123');
     });
 
+    const emailVerifiedAt = new Date('2026-01-01');
+
     it('returns the public user for valid credentials', async () => {
-      users.findByEmail.mockResolvedValue({ ...authUser, passwordHash });
+      users.findByEmail.mockResolvedValue({
+        ...authUser,
+        passwordHash,
+        emailVerifiedAt,
+      });
 
       await expect(
         service.validateCredentials(' ANA@example.com', 'segredo123'),
@@ -141,7 +221,37 @@ describe('AuthService', () => {
     });
 
     it('returns null for a wrong password', async () => {
-      users.findByEmail.mockResolvedValue({ ...authUser, passwordHash });
+      users.findByEmail.mockResolvedValue({
+        ...authUser,
+        passwordHash,
+        emailVerifiedAt,
+      });
+
+      await expect(
+        service.validateCredentials('ana@example.com', 'errada123'),
+      ).resolves.toBeNull();
+    });
+
+    it('is 403 for the right password of an account not activated', async () => {
+      users.findByEmail.mockResolvedValue({
+        ...authUser,
+        pending: false,
+        passwordHash,
+        emailVerifiedAt: null,
+      });
+
+      await expect(
+        service.validateCredentials('ana@example.com', 'segredo123'),
+      ).rejects.toThrow(new ForbiddenException('Account not activated'));
+    });
+
+    it('returns null (not 403) for a wrong password of an account not activated', async () => {
+      users.findByEmail.mockResolvedValue({
+        ...authUser,
+        pending: false,
+        passwordHash,
+        emailVerifiedAt: null,
+      });
 
       await expect(
         service.validateCredentials('ana@example.com', 'errada123'),

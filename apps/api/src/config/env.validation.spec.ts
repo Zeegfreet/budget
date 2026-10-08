@@ -17,6 +17,12 @@ describe('validateEnv', () => {
       GITHUB_CLIENT_SECRET: 'gh-secret',
       WEB_URL: 'https://budget.app',
       OAUTH_CALLBACK_BASE_URL: 'https://budget.app/api',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_PORT: '465',
+      SMTP_SECURE: 'true',
+      SMTP_USER: 'budget',
+      SMTP_PASS: 'smtp-secret',
+      ACTIVATION_TOKEN_TTL_HOURS: '48',
     };
     expect(validateEnv(env)).toEqual(env);
   });
@@ -33,6 +39,9 @@ describe('validateEnv', () => {
     ['COOKIE_SECURE', 'yes'],
     ['WEB_URL', 'budget.app'],
     ['OAUTH_CALLBACK_BASE_URL', 'ftp://budget.app'],
+    ['SMTP_PORT', 'smtp'],
+    ['SMTP_SECURE', '1'],
+    ['ACTIVATION_TOKEN_TTL_HOURS', '-1'],
   ])('rejects %s=%s', (key, value) => {
     expect(() => validateEnv({ ...valid, [key]: value })).toThrow(key);
   });
@@ -43,7 +52,16 @@ describe('validateEnv', () => {
       { GOOGLE_CLIENT_SECRET: 's' },
       'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET',
     ],
-  ])('requires both OAuth credentials of a provider (%o)', (extra, message) => {
+    [{ SMTP_USER: 'budget' }, 'SMTP_USER and SMTP_PASS'],
+  ])('requires both credentials of a pair (%o)', (extra, message) => {
     expect(() => validateEnv({ ...valid, ...extra })).toThrow(message);
+  });
+
+  it('requires SMTP_HOST in production', () => {
+    expect(() => validateEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
+      'SMTP_HOST is required in production',
+    );
+    const env = { ...valid, NODE_ENV: 'production', SMTP_HOST: 'smtp' };
+    expect(validateEnv(env)).toEqual(env);
   });
 });

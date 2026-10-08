@@ -79,8 +79,8 @@ function InviteForm({
       <DialogHeader>
         <DialogTitle>Convidar membro</DialogTitle>
         <DialogDescription>
-          Quem já tem conta verá o convite para {groupName} em Grupos e entra ao aceitar. Quem ainda não tem entra
-          agora com o apelido e assume o lugar ao se cadastrar com este e-mail.
+          Enviamos um e-mail para a pessoa. Quem já tem conta verá o convite para {groupName} em Grupos e entra ao
+          aceitar. Quem ainda não tem entra agora com o apelido e recebe um link para ativar a conta.
         </DialogDescription>
       </DialogHeader>
       <FormField

@@ -105,8 +105,11 @@ export class OAuthService {
    * 1. an account already linked to this provider id signs in its user;
    * 2. else the verified e-mail finds a user: a pre-registration is taken
    *    over (same id, so groups stay), a registered user gets the link;
+   *    either way the provider proved the e-mail, so the account becomes
+   *    active, and a password set by a sign-up nobody activated is dropped
+   *    (it was never proven to be the owner's);
    * 3. else a new user is created with only name and e-mail (they finish
-   *    the sign-up on the web).
+   *    the sign-up on the web), already active.
    */
   async resolveUser(
     provider: OAuthProviderId,
@@ -138,30 +141,39 @@ export class OAuthService {
     try {
       const existing = await this.prisma.user.findUnique({
         where: { email },
-        select: { ...authUserSelect, pending: true },
+        select: { ...authUserSelect, pending: true, emailVerifiedAt: true },
       });
       if (!existing) {
         return await this.prisma.user.create({
           data: {
             email,
             name: profile.name,
+            emailVerifiedAt: new Date(),
             oauthAccounts: { create: account },
           },
           select: authUserSelect,
         });
       }
 
-      const { pending, ...user } = existing;
+      const { pending, emailVerifiedAt, ...user } = existing;
       await this.prisma.$transaction([
-        // Like a sign-up, the provider's name replaces the invite nickname
-        ...(pending
-          ? [
+        ...(emailVerifiedAt
+          ? []
+          : [
               this.prisma.user.updateMany({
-                where: { id: user.id, pending: true },
-                data: { pending: false, name: profile.name },
+                where: { id: user.id, emailVerifiedAt: null },
+                data: {
+                  emailVerifiedAt: new Date(),
+                  passwordHash: null,
+                  // Like a sign-up, the provider's name replaces the invite nickname
+                  ...(pending && { pending: false, name: profile.name }),
+                },
               }),
-            ]
-          : []),
+              // Its activation link has nothing left to do
+              this.prisma.activationToken.deleteMany({
+                where: { userId: user.id },
+              }),
+            ]),
         this.prisma.oAuthAccount.create({
           data: { ...account, userId: user.id },
         }),

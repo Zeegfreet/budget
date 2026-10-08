@@ -83,21 +83,21 @@ describe('UserService', () => {
     });
   });
 
-  it('claims only a pre-registration', async () => {
+  it('claims only an account not yet activated', async () => {
     const data = { name: 'Caio Lima', passwordHash: 'hash' };
     prisma.user.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(
-      service.claimPending('caio@example.com', data),
+      service.claimUnverified('caio@example.com', data),
     ).resolves.toBeNull();
     expect(prisma.user.updateMany).toHaveBeenCalledWith({
-      where: { email: 'caio@example.com', pending: true },
+      where: { email: 'caio@example.com', emailVerifiedAt: null },
       data: { ...data, pending: false },
     });
 
     prisma.user.updateMany.mockResolvedValueOnce({ count: 1 });
     prisma.user.findUnique.mockResolvedValue({ id: 3 });
     await expect(
-      service.claimPending('caio@example.com', data),
+      service.claimUnverified('caio@example.com', data),
     ).resolves.toEqual({ id: 3 });
   });
 

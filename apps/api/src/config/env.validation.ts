@@ -2,12 +2,15 @@ const required = ['DATABASE_URL', 'JWT_ACCESS_SECRET'] as const;
 const positiveIntegers = [
   'JWT_ACCESS_TTL_SECONDS',
   'REFRESH_TOKEN_TTL_DAYS',
+  'SMTP_PORT',
+  'ACTIVATION_TOKEN_TTL_HOURS',
 ] as const;
-const booleans = ['COOKIE_SECURE'] as const;
-/** OAuth credentials: optional, but each provider needs both or neither */
+const booleans = ['COOKIE_SECURE', 'SMTP_SECURE'] as const;
+/** Optional credentials that only make sense together */
 const pairs = [
   ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
   ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+  ['SMTP_USER', 'SMTP_PASS'],
 ] as const;
 const urls = ['WEB_URL', 'OAUTH_CALLBACK_BASE_URL'] as const;
 
@@ -26,6 +29,10 @@ export function validateEnv(env: Record<string, unknown>) {
   for (const key of required) {
     if (typeof env[key] !== 'string' || !env[key])
       errors.push(`${key} is required`);
+  }
+  // Without SMTP the activation links only reach the log
+  if (env.NODE_ENV === 'production' && !env.SMTP_HOST) {
+    errors.push('SMTP_HOST is required in production');
   }
   for (const key of positiveIntegers) {
     const value = env[key];

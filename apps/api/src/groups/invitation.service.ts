@@ -4,10 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AccountMailer } from '../activation/account-mailer.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { UserService } from '../user/user.service.js';
+import { type AuthUser, UserService } from '../user/user.service.js';
 import type {
   CreateInvitationDto,
   GroupInvitationDto,
@@ -41,12 +42,16 @@ const receivedInvitationSelect = {
  * An e-mail without an account gets a pre-registration (a pending user named
  * with the given nickname) that joins the group right away, since nobody could
  * accept for it; signing up with that e-mail later takes the place over.
+ *
+ * Every invitation is e-mailed: a pre-registration gets the link that
+ * activates its account, a registered user a notice to answer in the app.
  */
 @Injectable()
 export class InvitationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly users: UserService,
+    private readonly mailer: AccountMailer,
   ) {}
 
   async listForGroup(
@@ -83,22 +88,23 @@ export class InvitationService {
     if (pending) throw new ConflictException('Already invited');
 
     const data = { groupId, inviterId: userId, inviteeId: invitee.id };
-    if (!invitee.pending) {
-      return this.prisma.groupInvitation.create({
-        data,
-        select: groupInvitationSelect,
-      });
-    }
-    // A pre-registration can't accept, so it joins now (the invitation stays
-    // as the record of who added it)
-    return this.prisma.$transaction(async (tx) => {
-      const invitation = await tx.groupInvitation.create({
-        data: { ...data, status: 'ACCEPTED', respondedAt: new Date() },
-        select: groupInvitationSelect,
-      });
-      await this.join(tx, groupId, invitee.id);
-      return invitation;
-    });
+    const invitation = invitee.pending
+      ? // A pre-registration can't accept, so it joins now (the invitation
+        // stays as the record of who added it)
+        await this.prisma.$transaction(async (tx) => {
+          const created = await tx.groupInvitation.create({
+            data: { ...data, status: 'ACCEPTED', respondedAt: new Date() },
+            select: groupInvitationSelect,
+          });
+          await this.join(tx, groupId, invitee.id);
+          return created;
+        })
+      : await this.prisma.groupInvitation.create({
+          data,
+          select: groupInvitationSelect,
+        });
+    await this.notify(groupId, invitee, invitation.inviter.name);
+    return invitation;
   }
 
   async cancel(userId: number, groupId: number, id: number): Promise<void> {
@@ -153,6 +159,22 @@ export class InvitationService {
       update: { leftAt: null, joinedAt: new Date(), role: 'MEMBER' },
     });
     await includeInRules(tx, groupId, member.id);
+  }
+
+  /** E-mails the invitee once the invitation is stored (never throws). */
+  private async notify(
+    groupId: number,
+    { pending, ...invitee }: AuthUser & { pending: boolean },
+    inviterName: string,
+  ) {
+    const group = await this.prisma.financeGroup.findUnique({
+      where: { id: groupId },
+      select: { name: true },
+    });
+    if (!group) return;
+    const context = { inviterName, groupName: group.name };
+    if (pending) await this.mailer.sendPreRegistration(invitee, context);
+    else await this.mailer.sendGroupInvitation(invitee, context);
   }
 
   /** Pending user for an e-mail without an account (400 without a nickname). */

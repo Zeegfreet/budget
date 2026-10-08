@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from '@/lib/api/client'
 import {
+  defaultActivationErrorMessage,
   defaultLoginErrorMessage,
+  defaultResendErrorMessage,
+  getActivationErrorMessage,
+  getResendErrorMessage,
+  invalidActivationLinkMessage,
+  isInvalidActivationLink,
+  isNotActivated,
+  notActivatedMessage,
   defaultPasswordChangeErrorMessage,
   getPasswordChangeError,
   invalidPasswordChangeMessage,
@@ -45,7 +53,15 @@ describe('getCredentialsErrorMessage', () => {
     expect(getCredentialsErrorMessage(new ApiError(status, ['x']))).toBe(serverUnavailableMessage)
   })
 
-  it.each([new ApiError(403, ['Forbidden']), new Error('x')])(
+  it('explains an account not activated yet (403)', () => {
+    expect(getCredentialsErrorMessage(new ApiError(403, ['Account not activated']))).toBe(
+      notActivatedMessage,
+    )
+    expect(isNotActivated(new ApiError(403, ['Account not activated']))).toBe(true)
+    expect(isNotActivated(new ApiError(401, ['Invalid credentials']))).toBe(false)
+  })
+
+  it.each([new ApiError(418, ['Teapot']), new Error('x')])(
     'uses the generic message for other failures',
     (error) => {
       expect(getCredentialsErrorMessage(error)).toBe(defaultLoginErrorMessage)
@@ -92,5 +108,35 @@ describe('getPasswordChangeError', () => {
     [418, defaultPasswordChangeErrorMessage],
   ])('shows %i above the form', (status, message) => {
     expect(getPasswordChangeError(new ApiError(status, ['x']))).toEqual({ form: message })
+  })
+})
+
+describe('getActivationErrorMessage', () => {
+  it.each([
+    [404, invalidActivationLinkMessage],
+    [400, invalidRegisterDataMessage],
+    [429, tooManyAttemptsMessage],
+    [0, serverUnavailableMessage],
+    [500, serverUnavailableMessage],
+    [418, defaultActivationErrorMessage],
+  ])('maps %i', (status, message) => {
+    expect(getActivationErrorMessage(new ApiError(status, ['x']))).toBe(message)
+  })
+
+  it('tells an invalid link apart', () => {
+    expect(isInvalidActivationLink(new ApiError(404, ['x']))).toBe(true)
+    expect(isInvalidActivationLink(new ApiError(400, ['x']))).toBe(false)
+    expect(getActivationErrorMessage(new Error('x'))).toBe(defaultActivationErrorMessage)
+  })
+})
+
+describe('getResendErrorMessage', () => {
+  it.each([
+    [429, tooManyAttemptsMessage],
+    [0, serverUnavailableMessage],
+    [502, serverUnavailableMessage],
+    [400, defaultResendErrorMessage],
+  ])('maps %i', (status, message) => {
+    expect(getResendErrorMessage(new ApiError(status, ['x']))).toBe(message)
   })
 })

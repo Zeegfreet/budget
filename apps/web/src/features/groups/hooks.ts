@@ -107,7 +107,9 @@ export function useInvitationActions() {
       const invitation = await inviteMember(groupId, input)
       if (invitation.status === 'PENDING') {
         await refreshGroup(groupId)
-        toast.success('Convite enviado')
+        toast.success('Convite enviado', {
+          description: `Avisamos ${invitation.invitee.email} por e-mail.`,
+        })
         return
       }
       // A pre-registration joins right away: members, rules and shares change
@@ -115,7 +117,9 @@ export function useInvitationActions() {
         queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey }),
         queryClient.invalidateQueries({ queryKey: budgetQueries.all() }),
       ])
-      toast.success(`${invitation.invitee.name} entrou no grupo (pré-cadastro)`)
+      toast.success(`${invitation.invitee.name} entrou no grupo (pré-cadastro)`, {
+        description: `Enviamos um link de ativação para ${invitation.invitee.email}.`,
+      })
     },
     async cancel(groupId: number, id: number) {
       await cancelInvitation(groupId, id)

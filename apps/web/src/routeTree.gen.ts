@@ -10,9 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as AtivarContaRouteImport } from './routes/ativar-conta'
 import { Route as CompletarCadastroRouteImport } from './routes/completar-cadastro'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppExtratoRouteImport } from './routes/_app/extrato'
 import { Route as AppGruposIndexRouteImport } from './routes/_app/grupos/index'
@@ -24,6 +26,11 @@ import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/p
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtivarContaRoute = AtivarContaRouteImport.update({
+  id: '/ativar-conta',
+  path: '/ativar-conta',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CompletarCadastroRoute = CompletarCadastroRouteImport.update({
@@ -39,6 +46,11 @@ const LoginRoute = LoginRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerificarEmailRoute = VerificarEmailRouteImport.update({
+  id: '/verificar-email',
+  path: '/verificar-email',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -86,9 +98,11 @@ const AppSettingsProfileRoute = AppSettingsProfileRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/ativar-conta': typeof AtivarContaRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/verificar-email': typeof VerificarEmailRoute
   '/extrato': typeof AppExtratoRoute
   '/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
@@ -98,9 +112,11 @@ export interface FileRoutesByFullPath {
   '/meios-de-pagamento/': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRoutesByTo {
+  '/ativar-conta': typeof AtivarContaRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/verificar-email': typeof VerificarEmailRoute
   '/extrato': typeof AppExtratoRoute
   '/': typeof AppIndexRoute
   '/grupos/$groupId': typeof AppGruposGroupIdRoute
@@ -113,9 +129,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/ativar-conta': typeof AtivarContaRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
+  '/verificar-email': typeof VerificarEmailRoute
   '/_app/extrato': typeof AppExtratoRoute
   '/_app/': typeof AppIndexRoute
   '/_app/grupos/$groupId': typeof AppGruposGroupIdRoute
@@ -129,9 +147,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ativar-conta'
     | '/completar-cadastro'
     | '/login'
     | '/signup'
+    | '/verificar-email'
     | '/extrato'
     | '/grupos/$groupId'
     | '/meios-de-pagamento/$methodId'
@@ -141,9 +161,11 @@ export interface FileRouteTypes {
     | '/meios-de-pagamento/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/ativar-conta'
     | '/completar-cadastro'
     | '/login'
     | '/signup'
+    | '/verificar-email'
     | '/extrato'
     | '/'
     | '/grupos/$groupId'
@@ -155,9 +177,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/ativar-conta'
     | '/completar-cadastro'
     | '/login'
     | '/signup'
+    | '/verificar-email'
     | '/_app/extrato'
     | '/_app/'
     | '/_app/grupos/$groupId'
@@ -170,9 +194,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  AtivarContaRoute: typeof AtivarContaRoute
   CompletarCadastroRoute: typeof CompletarCadastroRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  VerificarEmailRoute: typeof VerificarEmailRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -182,6 +208,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ativar-conta': {
+      id: '/ativar-conta'
+      path: '/ativar-conta'
+      fullPath: '/ativar-conta'
+      preLoaderRoute: typeof AtivarContaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/completar-cadastro': {
@@ -203,6 +236,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verificar-email': {
+      id: '/verificar-email'
+      path: '/verificar-email'
+      fullPath: '/verificar-email'
+      preLoaderRoute: typeof VerificarEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/': {
@@ -290,9 +330,11 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  AtivarContaRoute: AtivarContaRoute,
   CompletarCadastroRoute: CompletarCadastroRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  VerificarEmailRoute: VerificarEmailRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

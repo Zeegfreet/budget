@@ -4,13 +4,21 @@ import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import request from 'supertest';
+import { MAIL_TRANSPORT } from '../src/mail/mail.transport.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { mailOf, MemoryMailTransport, tokenFrom } from './mail.js';
 
-/** Boots the real AppModule with the production HTTP setup. */
+/**
+ * Boots the real AppModule with the production HTTP setup. E-mails go to an
+ * in-memory outbox (`mailOf(app)` in `test/mail.ts`).
+ */
 export async function createTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  })
+    .overrideProvider(MAIL_TRANSPORT)
+    .useValue(new MemoryMailTransport())
+    .compile();
   const app = moduleFixture.createNestApplication<INestApplication<App>>();
   configureApp(app);
   await app.init();
@@ -18,6 +26,7 @@ export async function createTestApp(): Promise<INestApplication<App>> {
 }
 
 export async function resetDatabase(app: INestApplication) {
+  mailOf(app).clear();
   const prisma = app.get(PrismaService);
   await prisma.groupTransactionShare.deleteMany();
   await prisma.groupTransaction.deleteMany();
@@ -31,6 +40,7 @@ export async function resetDatabase(app: INestApplication) {
   await prisma.category.deleteMany();
   await prisma.categoryGroup.deleteMany();
   await prisma.session.deleteMany();
+  await prisma.activationToken.deleteMany();
   await prisma.oAuthAccount.deleteMany();
   await prisma.user.deleteMany();
 }
@@ -47,7 +57,10 @@ export const userBody = (name: string, email: string) => ({
 
 export type Agent = ReturnType<typeof request.agent>;
 
-/** Registers a user and returns an agent carrying their session cookies. */
+/**
+ * Registers a user, activates the account through the e-mailed link and
+ * returns an agent carrying their session cookies.
+ */
 export async function signUp(
   app: INestApplication<App>,
   name: string,
@@ -55,6 +68,8 @@ export async function signUp(
 ): Promise<Agent> {
   const client = request.agent(app.getHttpServer());
   await client.post('/auth/register').send(userBody(name, email)).expect(201);
+  const token = tokenFrom(mailOf(app).lastTo(email.trim().toLowerCase()));
+  await client.post('/auth/activation').send({ token }).expect(200);
   return client;
 }
 

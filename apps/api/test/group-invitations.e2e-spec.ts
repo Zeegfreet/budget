@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { App } from 'supertest/types.js';
 import request from 'supertest';
 import { createGroup, type GroupDetail, splitMethods } from './groups.js';
+import { mailOf, tokenFrom } from './mail.js';
 import {
   type Agent,
   createTestApp,
@@ -202,10 +203,18 @@ describe('Group invitations (e2e)', () => {
       await login('diego@example.com').expect(401);
 
       const diego = request.agent(app.getHttpServer());
-      const res = await diego
+      await diego
         .post('/auth/register')
         .send(userBody('Diego Alves', 'Diego@example.com'))
         .expect(201);
+      // A sign-up (not the invitation's link) still needs activating
+      await login('diego@example.com').expect(403);
+      const { subject } = mailOf(app).lastTo('diego@example.com');
+      expect(subject).toBe('Ative sua conta no Budget');
+      const res = await diego
+        .post('/auth/activation')
+        .send({ token: tokenFrom(mailOf(app).lastTo('diego@example.com')) })
+        .expect(200);
       expect(res.body).toMatchObject({
         id: placeholder.userId,
         name: 'Diego Alves',
@@ -231,6 +240,58 @@ describe('Group invitations (e2e)', () => {
         .expect(409);
     });
 
+    it('e-mails the pre-registration a link that finishes the sign-up', async () => {
+      await invite(ana, 'diego@example.com', group.id, 'Didi').expect(201);
+
+      const mail = mailOf(app).lastTo('diego@example.com');
+      expect(mail.subject).toBe(
+        'Ana Souza adicionou você ao grupo "República" no Budget',
+      );
+      expect(mail.text).toContain('Olá, Didi!');
+      expect(mail.text).toContain('http://web.test/ativar-conta?token=');
+
+      const http = request(app.getHttpServer());
+      const info = await http
+        .get('/auth/activation')
+        .query({ token: tokenFrom(mail) })
+        .expect(200);
+      expect(info.body).toEqual({
+        email: 'diego@example.com',
+        name: 'Didi',
+        kind: 'COMPLETE_SIGNUP',
+      });
+    });
+
+    it('e-mails a registered user a notice of the invitation', async () => {
+      mailOf(app).clear();
+      await invite(ana, 'carla@example.com').expect(201);
+
+      expect(mailOf(app).outbox).toHaveLength(1);
+      const mail = mailOf(app).lastTo('carla@example.com');
+      expect(mail.subject).toBe(
+        'Ana Souza convidou você para o grupo "República" no Budget',
+      );
+      expect(mail.text).toContain('http://web.test/grupos');
+      expect(mail.text).not.toContain('token=');
+    });
+
+    it('e-mails nobody when the invitation is refused', async () => {
+      await invite(ana, 'carla@example.com').expect(201);
+      mailOf(app).clear();
+
+      await invite(ana, 'carla@example.com').expect(409);
+      await invite(ana, 'novo@example.com').expect(400);
+      await invite(ana, 'ana@example.com').expect(400);
+      expect(mailOf(app).outbox).toEqual([]);
+    });
+
+    it('still adds the member when the e-mail cannot be sent', async () => {
+      mailOf(app).failing = true;
+
+      await invite(ana, 'diego@example.com', group.id, 'Didi').expect(201);
+      expect(await members(ana)).toHaveLength(2);
+    });
+
     it('lets another group add the same pre-registration, keeping its name', async () => {
       await invite(ana, 'diego@example.com', group.id, 'Didi').expect(201);
       const other = await createGroup(bruno, 'Viagem');
@@ -246,6 +307,22 @@ describe('Group invitations (e2e)', () => {
       const third = await createGroup(carla, 'Trabalho');
       await invite(carla, 'diego@example.com', third.id).expect(201);
       expect((await members(bruno, other.id))[1].name).toBe('Didi');
+      // One e-mail per group; only the newest link works
+      const mails = mailOf(app).to('diego@example.com');
+      expect(mails.map((m) => m.subject)).toEqual([
+        'Ana Souza adicionou você ao grupo "República" no Budget',
+        expect.stringContaining('"Viagem"'),
+        expect.stringContaining('"Trabalho"'),
+      ]);
+      const http = request(app.getHttpServer());
+      await http
+        .get('/auth/activation')
+        .query({ token: tokenFrom(mails[0]) })
+        .expect(404);
+      await http
+        .get('/auth/activation')
+        .query({ token: tokenFrom(mails[2]) })
+        .expect(200);
     });
 
     it('removes a pre-registered member like any other', async () => {

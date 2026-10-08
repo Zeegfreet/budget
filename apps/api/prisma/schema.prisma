@@ -31,6 +31,10 @@ model User {
   city                String?
   /// UF, e.g. `SP`; `null` like `birthDate`
   state               String?
+  /// When the person proved they own the e-mail (activation link or a
+  /// GitHub/Google sign-in); `null` = not activated, can't sign in with a
+  /// password
+  emailVerifiedAt     DateTime?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   /// Balance the user had before the first month in the budget (may be negative)
@@ -47,6 +51,7 @@ model User {
   invitationsReceived GroupInvitation[] @relation("InvitationInvitee")
   paymentMethods      PaymentMethod[]
   oauthAccounts       OAuthAccount[]
+  activationTokens    ActivationToken[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -67,6 +72,20 @@ model Session {
   lastUsedAt        DateTime  @default(now())
   userAgent         String?
   ip                String?
+
+  @@index([userId])
+}
+
+/// One-time link sent by e-mail to activate the account (or finish a
+/// pre-registration). Only the newest one of a user is valid.
+model ActivationToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the secret sent in the link
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
   @@index([userId])
 }

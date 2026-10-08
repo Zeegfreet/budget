@@ -2,10 +2,10 @@ import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { FormAlert, Spinner } from '@/components/atoms'
-import { FormField, PasswordField } from '@/components/molecules'
+import { FormField, PasswordField, ResendActivation } from '@/components/molecules'
 import { Button } from '@/components/ui/button'
 import { login } from '@/features/auth/api'
-import { getCredentialsErrorMessage } from '@/features/auth/errors'
+import { getCredentialsErrorMessage, isNotActivated } from '@/features/auth/errors'
 import { authQueries } from '@/features/auth/queries'
 import { safeRedirect } from '@/features/auth/redirect'
 import { EMAIL_PATTERN } from '@/features/auth/validation'
@@ -59,34 +59,40 @@ export function LoginForm({ redirect }: { redirect?: string }) {
   }
 
   return (
-    <form method="post" noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {mutation.isError && (
-        <FormAlert>{getCredentialsErrorMessage(mutation.error)}</FormAlert>
+    <div className="flex flex-col gap-4">
+      <form method="post" noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {mutation.isError && (
+          <FormAlert>{getCredentialsErrorMessage(mutation.error)}</FormAlert>
+        )}
+        <FormField
+          label="E-mail"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          error={fieldErrors.email}
+        />
+        <PasswordField
+          ref={passwordRef}
+          label="Senha"
+          name="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          error={fieldErrors.password}
+        />
+        <Button type="submit" size="lg" className="h-10 w-full" disabled={mutation.isPending}>
+          {mutation.isPending && <Spinner aria-label="Entrando" />}
+          Entrar
+        </Button>
+      </form>
+      {/* Right password, account still waiting for its link */}
+      {isNotActivated(mutation.error) && mutation.variables && (
+        <ResendActivation email={mutation.variables.email} />
       )}
-      <FormField
-        label="E-mail"
-        name="email"
-        type="email"
-        inputMode="email"
-        autoComplete="email"
-        autoCapitalize="none"
-        spellCheck={false}
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        error={fieldErrors.email}
-      />
-      <PasswordField
-        ref={passwordRef}
-        label="Senha"
-        name="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        error={fieldErrors.password}
-      />
-      <Button type="submit" size="lg" className="h-10 w-full" disabled={mutation.isPending}>
-        {mutation.isPending && <Spinner aria-label="Entrando" />}
-        Entrar
-      </Button>
-    </form>
+    </div>
   )
 }

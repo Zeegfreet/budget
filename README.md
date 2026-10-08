@@ -24,6 +24,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 ## Principais recursos
 
 - **Isolamento total por usuário (multi-tenant)**: cada usuário vê e altera apenas as próprias finanças. O dono dos dados vem sempre do contexto de autenticação, nunca do corpo da requisição. Acesso a dados de outro usuário retorna `404`, para não revelar que o recurso existe.
+- **Ativação de conta por e-mail**: o cadastro com e-mail e senha só entra depois de clicar no link enviado por e-mail (SMTP). Quem é adicionado a um grupo sem ter conta recebe um link para ativar a conta criando a senha.
 - **Login com e-mail/senha, GitHub ou Google**: no primeiro acesso por GitHub/Google a conta é criada (ou vinculada pelo e-mail verificado) e o usuário completa o cadastro com nascimento e endereço.
 - **Receitas e despesas pessoais**: valores guardados em centavos (inteiros), sem ponto flutuante, para que totais e divisões fiquem exatos.
 - **Grupos de finanças**: um usuário cria um grupo com receitas e despesas próprias (ex.: aluguel). Só os membros enxergam os dados do grupo.
@@ -38,6 +39,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Fundação do frontend (Tailwind, shadcn/ui, Router, Query, Atomic Design) | — | ✅ | |
 | Pipeline de CI (lint, build, testes unitários e e2e) | ✅ | ✅ | |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
+| Ativação de conta por e-mail (SMTP) | ✅ | ✅ | O cadastro não abre sessão: envia um link de ativação (`/ativar-conta`, 72 h, uso único) e o login fica bloqueado (`403`) até a ativação, com **Reenviar e-mail**. E-mail sem conta adicionado a um grupo recebe o link para concluir o cadastro; quem já tem conta recebe o aviso do convite. Veja [Ativação de conta e e-mails](#ativação-de-conta-e-e-mails) |
 | Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
 | Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta, card centralizado): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
 | Alterar senha | ✅ | ✅ | Tela `/settings/password` (menu da conta): senha atual, nova senha e repetição. A API confere a senha atual, grava a nova e encerra as outras sessões. Veja [Alterar senha](#alterar-senha) |
@@ -48,7 +50,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Receitas e despesas pessoais (lançamentos) | ✅ | ✅ | Lançamentos por categoria e mês, com descrição, dia de vencimento, valor previsto e realizado. No Dashboard, cada categoria se expande nos seus lançamentos (uma linha por série recorrente ou lançamento avulso), editados direto na tabela e refletidos no Extrato; meses já realizados mostram o valor realizado |
 | Extrato mensal (realização e recorrência) | ✅ | ✅ | Tela `/extrato`: lista do mês com navegação entre meses, marcar como realizado (com outro valor, se for o caso), lançar receitas e despesas com repetição por N meses, alterar/excluir "só este" ou "também os próximos" e estender ou encurtar a recorrência pelo selo **3/12**; ajustar o saldo inicial. Veja [Extrato](#extrato) |
 | Grupos de finanças | ✅ | ✅ | Telas `/grupos` e `/grupos/:id` (abas Lançamentos, Balanço, Membros e Rateio): criar, renomear, excluir e sair; lançamentos do grupo com dia de vencimento, recorrência (estender ou encurtar pelo selo **3/12**), "pago por" e balanço mensal por membro com o acerto (quem paga quem) e os **recebimentos**: quem pagou marca a parte de cada um como recebida (botão ✓ verde) e ela sai do saldo. Veja [Grupos](#grupos) |
-| Convites para grupos | ✅ | ✅ | Convite por e-mail; quem tem conta aceita ou recusa em `/grupos`. E-mail sem conta vira **pré-cadastro** com apelido, que já entra no grupo e é assumido no cadastro com o mesmo e-mail. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
+| Convites para grupos | ✅ | ✅ | Convite por e-mail (com aviso enviado por e-mail); quem tem conta aceita ou recusa em `/grupos`. E-mail sem conta vira **pré-cadastro** com apelido, que já entra no grupo e recebe por e-mail o link para ativar a conta (ou é assumido no cadastro com o mesmo e-mail). O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
@@ -67,6 +69,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 - **Passport** (`@nestjs/passport`): estratégia `local` no login e `jwt` (token lido do cookie) no guard global
 - **`@nestjs/jwt`** para o token de acesso, **argon2** (argon2id) para hash de senha, **cookie-parser**
 - **`@nestjs/throttler`** para rate limit (`429`)
+- **[Nodemailer](https://nodemailer.com/)** para enviar e-mails por SMTP (ativação de conta e convites)
 - **Vitest** + **Supertest** para testes unitários e e2e
 - **oxlint** (lint type-aware) e **Prettier**
 
@@ -93,7 +96,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ├── apps/
 │   ├── api/                 # Backend NestJS
 │   │   ├── prisma/          # schema.prisma e migrations
-│   │   ├── src/             # módulos (auth, budget, groups, payment-methods, user, prisma), app.setup.ts
+│   │   ├── src/             # módulos (auth, activation, mail, budget, groups, payment-methods, user, prisma), app.setup.ts
 │   │   └── test/            # testes e2e (*.e2e-spec.ts)
 │   └── web/                 # Frontend React
 │       └── src/
@@ -145,7 +148,20 @@ pnpm start:dev        # http://localhost:5173
 
 Em desenvolvimento, o Vite encaminha `/api/*` para `http://localhost:3000` (removendo o prefixo `/api`) e reescreve o `Path` do cookie de refresh de `/auth` para `/api/auth`. Para apontar para outra API, defina `VITE_API_URL` (veja [apps/web/.env.example](apps/web/.env.example)).
 
-As páginas internas exigem sessão: quem não está autenticado é redirecionado para `http://localhost:5173/login`. Crie uma conta em `/signup` (veja [Autenticação](#autenticação)).
+As páginas internas exigem sessão: quem não está autenticado é redirecionado para `http://localhost:5173/login`. Crie uma conta em `/signup` (veja [Autenticação](#autenticação)) e ative-a pelo link do e-mail.
+
+### 4. E-mails em desenvolvimento
+
+Sem `SMTP_HOST`, a API **não envia** e-mails: ela escreve cada mensagem no log (destinatário, assunto e texto, com o link de ativação), então basta copiar o link do terminal da API. Para ver os e-mails de verdade, suba uma caixa de teste com o [Mailpit](https://mailpit.axllent.org/):
+
+```bash
+docker run --rm -p 1025:1025 -p 8025:8025 axllent/mailpit
+# em apps/api/.env
+SMTP_HOST=localhost
+SMTP_PORT=1025
+```
+
+e abra http://localhost:8025.
 
 ### Variáveis de ambiente
 
@@ -160,7 +176,13 @@ As páginas internas exigem sessão: quem não está autenticado é redirecionad
 | api | `PORT` | `3000` | Porta HTTP da API |
 | api | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | — | Credenciais do OAuth App do GitHub. Sempre as duas juntas; sem elas o botão do GitHub volta ao login com aviso |
 | api | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Credenciais do cliente OAuth do Google. Sempre as duas juntas |
-| api | `WEB_URL` | `http://localhost:5173` | Endereço do web, para onde o callback do OAuth redireciona |
+| api | `WEB_URL` | `http://localhost:5173` | Endereço do web, para onde o callback do OAuth redireciona e base dos links nos e-mails (`/ativar-conta`, `/grupos`) |
+| api | `SMTP_HOST` | — (obrigatória em produção) | Servidor SMTP. Sem ele, os e-mails só vão para o log da API |
+| api | `SMTP_PORT` | `587` | Porta do SMTP (`1025` no Mailpit) |
+| api | `SMTP_SECURE` | `false` | `true` para TLS desde a conexão (porta 465); com `false`, usa STARTTLS quando o servidor oferece |
+| api | `SMTP_USER` / `SMTP_PASS` | — | Credenciais do SMTP. Sempre as duas juntas |
+| api | `MAIL_FROM` | `Budget <no-reply@budget.local>` | Remetente dos e-mails |
+| api | `ACTIVATION_TOKEN_TTL_HOURS` | `72` | Validade do link de ativação |
 | api | `OAUTH_CALLBACK_BASE_URL` | `${WEB_URL}/api` | Endereço da API **como o navegador a vê** (mesmo site do web, para os cookies de sessão chegarem ao web). O callback é `<base>/auth/oauth/<github\|google>/callback` |
 | web | `VITE_API_URL` | `/api` | URL base da API, embutida no bundle no momento do build |
 
@@ -174,8 +196,9 @@ Entrada por **e-mail + senha**, **cadastro** em `/signup` ou **GitHub/Google** (
 
 | Método | Rota | Corpo | Resposta |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | `{ name, email, password, birthDate, cep, city, state }` | `201` com o usuário e os cookies de sessão (já entra logado); `400` em dados inválidos; `409` se o e-mail já estiver cadastrado; `429` após 5 tentativas/min. Um e-mail **pré-cadastrado** por convite de grupo é assumido pelo cadastro (mesmo `id`, grupos mantidos) em vez de dar `409` |
-| `POST` | `/auth/login` | `{ email, password }` | `200` com o usuário e os cookies; `401` `Invalid credentials` (mesma resposta para e-mail inexistente e senha errada); `429` após 5 tentativas/min |
+| `POST` | `/auth/register` | `{ name, email, password, birthDate, cep, city, state }` | `201` com `{ email }` e **sem sessão**: a conta nasce não ativada e o link de ativação vai por e-mail; `400` em dados inválidos; `409` se o e-mail já estiver cadastrado **e ativado**; `429` após 5 tentativas/min. Um e-mail **pré-cadastrado** por convite de grupo, ou um cadastro que ninguém ativou, é assumido (mesmo `id`, grupos mantidos, dados e link novos) em vez de dar `409` |
+| `POST` | `/auth/login` | `{ email, password }` | `200` com o usuário e os cookies; `401` `Invalid credentials` (mesma resposta para e-mail inexistente e senha errada); `403` `Account not activated` (só com a senha certa); `429` após 5 tentativas/min |
+| `GET` / `POST` | `/auth/activation...` | | Ativação pelo link do e-mail. Veja [Ativação de conta e e-mails](#ativação-de-conta-e-e-mails) |
 | `POST` | `/auth/refresh` | — (cookie `refresh_token`) | `200` com o usuário e cookies novos; `401` (e cookies apagados) se o refresh estiver ausente, inválido, expirado ou revogado |
 | `GET` | `/auth/me` | — | `200` com o usuário da sessão, ou `401` |
 | `POST` | `/auth/logout` | — | `204`, revogando a sessão e apagando os cookies (idempotente) |
@@ -209,6 +232,29 @@ Cadastro (`/signup`):
 - Ao completar o CEP, cidade e UF são preenchidas pela [ViaCEP](https://viacep.com.br/) e ficam somente leitura. CEP inexistente bloqueia o envio. Se a ViaCEP estiver fora do ar, cidade e UF podem ser digitadas (UF validada contra as 27 siglas).
 - A ViaCEP usa um cliente HTTP próprio, sem o cookie de sessão da aplicação.
 - Formato enviado: `birthDate` em `YYYY-MM-DD`, `cep` só com os 8 dígitos e `state` com a sigla da UF (ex.: `SP`).
+- Depois do envio, a tela vai para `/verificar-email`: a conta só entra depois de ativada pelo link do e-mail.
+
+### Ativação de conta e e-mails
+
+O módulo `mail` da API envia os e-mails por SMTP (Nodemailer); o módulo `activation` cuida dos links. Uma falha no envio **não derruba** a requisição (fica no log da API) e a pessoa pode pedir o e-mail de novo.
+
+| Quando | E-mail | Link |
+| --- | --- | --- |
+| Cadastro com e-mail e senha | **Ative sua conta no Budget** | `WEB_URL/ativar-conta?token=…` |
+| E-mail sem conta adicionado a um grupo (pré-cadastro) | **<quem convidou> adicionou você ao grupo "<grupo>"** | `WEB_URL/ativar-conta?token=…` (concluir o cadastro) |
+| Usuário cadastrado convidado a um grupo | **<quem convidou> convidou você para o grupo "<grupo>"** | `WEB_URL/grupos` (aceitar ou recusar) |
+| Pedido de reenvio | o de ativação ou o de pré-cadastro (sem o grupo) | `WEB_URL/ativar-conta?token=…` |
+
+| Método | Rota | Corpo | Resposta |
+| --- | --- | --- | --- |
+| `GET` | `/auth/activation?token=` | — | `200` com `{ email, name, kind }`: `ACTIVATE` (cadastro) ou `COMPLETE_SIGNUP` (pré-cadastro; `name` é o apelido). Não consome o link. `404` `Invalid or expired activation link` |
+| `POST` | `/auth/activation` | `{ token }` | Ativa um cadastro: `200` com o usuário e os cookies de sessão. `400` `Sign-up data required` para o link de um pré-cadastro; `404` para link inválido, expirado ou já usado |
+| `POST` | `/auth/activation/signup` | `{ token, name, password, birthDate, cep, city, state }` | Conclui o pré-cadastro (mesmas regras do cadastro; o e-mail vem do link e não é aceito no corpo): a conta já nasce ativa, mantém os grupos e abre a sessão (`200`). `400` em dados inválidos ou `Account already registered` para o link de um cadastro; `404` para link inválido |
+| `POST` | `/auth/activation/resend` | `{ email }` | Sempre `204`, para não revelar quais e-mails existem. Só envia se houver conta aguardando ativação. `429` após 5 pedidos/min |
+
+- O link é um segredo aleatório de 32 bytes; o banco (tabela `ActivationToken`) guarda só o SHA-256. Vale por `ACTIVATION_TOKEN_TTL_HOURS` (72 h), serve **uma vez** e cada link novo invalida os anteriores do usuário.
+- **Contas já existentes** antes desta mudança foram marcadas como ativadas pela migration. Contas criadas pelo GitHub/Google já nascem ativas (o provedor verificou o e-mail). Se o login pelo provedor encontrar um cadastro **não ativado** com o mesmo e-mail, ele é ativado e a senha digitada nesse cadastro é descartada (ninguém provou ser o dono do e-mail).
+- **Web**: o cadastro leva a `/verificar-email` ("Confirme seu e-mail", com **Reenviar e-mail de ativação**). O login de uma conta não ativada mostra o aviso e o mesmo botão. `/ativar-conta` pede um clique em **Ativar minha conta** (nunca ativa ao abrir a página, para leitores de e-mail que abrem links não gastarem o link) e entra no Dashboard; para um pré-cadastro, mostra o formulário (e-mail só leitura, nome com o apelido, senha, nascimento e CEP) e entra em **Grupos**. Link inválido ou expirado oferece um novo.
 
 ### Login com GitHub e Google
 
@@ -360,7 +406,8 @@ A página do grupo (`/grupos/:id`) tem quatro abas. A aba aberta e o mês ficam 
   **Recebimentos** lista, por par ("Bruno deve a Ana (você)"), a parte de cada membro nos itens já pagos. Quem recebe o dinheiro marca a parte como recebida com o botão ✓ verde (clicar de novo desmarca), ou usa **Marcar tudo como recebido**: numa despesa, quem pagou; numa receita, o dono da parte (quem recebeu a receita repassa). Para os outros membros o botão só mostra o estado. Uma parte recebida sai do saldo e do acerto, e para quem devia ela passa a contar como paga no orçamento pessoal. Enquanto houver partes recebidas, trocar o pagador, desfazer o pagamento ou mudar o valor ou a regra do lançamento é bloqueado (`409`); desmarque-as antes.
 - **Membros**: membros e convites pendentes.
   - **Convidar** envia um convite por e-mail. Quem já tem conta vê o convite em `/grupos` e entra ao aceitar.
-  - Se o e-mail não tiver conta, informe um **apelido**: a pessoa é **pré-cadastrada** e já entra no grupo (rateios, balanço, "pago por"), com o selo **Pré-cadastro**. O pré-cadastro não faz login. Ao se cadastrar com o mesmo e-mail, a conta assume o pré-cadastro (mesmos grupos e histórico) e o nome do cadastro substitui o apelido. Outro grupo que convidar o mesmo e-mail usa o apelido já existente.
+  - Toda pessoa convidada recebe um e-mail: quem tem conta, o aviso do convite (com link para `/grupos`); o pré-cadastro, o link para ativar a conta.
+  - Se o e-mail não tiver conta, informe um **apelido**: a pessoa é **pré-cadastrada** e já entra no grupo (rateios, balanço, "pago por"), com o selo **Pré-cadastro**. O pré-cadastro não faz login até ativar a conta pelo link do e-mail (criando a senha e completando o cadastro) ou se cadastrar com o mesmo e-mail; nos dois casos a conta assume o pré-cadastro (mesmos grupos e histórico) e o nome informado substitui o apelido. Outro grupo que convidar o mesmo e-mail usa o apelido já existente.
   - O convite pode ser cancelado enquanto estiver pendente.
   - O dono pode **remover** membros.
 - **Rateio**: regras de divisão do grupo (criar, editar e excluir).
@@ -477,7 +524,8 @@ pnpm test                                                      # unitários
 DATABASE_URL=file:./test.db pnpm prisma migrate deploy --config prisma7.config.ts
 DATABASE_URL=file:./test.db pnpm test:e2e                      # e2e em banco isolado (nunca o dev.db)
 # Os e2e usam JWT_ACCESS_SECRET=e2e-test-secret se a variável não estiver definida
-# e credenciais OAuth falsas (vitest.config.e2e.ts); GitHub e Google são simulados com um mock de fetch
+# e credenciais OAuth falsas (vitest.config.e2e.ts); GitHub e Google são simulados com um mock de fetch.
+# Os e-mails vão para uma caixa em memória (test/mail.ts): o helper signUp cadastra e ativa a conta pelo link
 
 # Web
 cd apps/web
@@ -525,6 +573,9 @@ export WEB_URL="https://budget.exemplo.com"          # destino do callback do OA
 # export OAUTH_CALLBACK_BASE_URL=...                 # padrão: $WEB_URL/api (a API atrás do Nginx)
 export GITHUB_CLIENT_ID="..." GITHUB_CLIENT_SECRET="..."   # opcionais, sempre em pares
 export GOOGLE_CLIENT_ID="..." GOOGLE_CLIENT_SECRET="..."
+export SMTP_HOST="smtp.exemplo.com" SMTP_PORT=587       # obrigatório em produção (links de ativação)
+export SMTP_USER="..." SMTP_PASS="..."                 # se o servidor exigir autenticação
+export MAIL_FROM="Budget <no-reply@budget.exemplo.com>"
 pnpm prisma migrate deploy --config prisma7.config.ts  # aplica migrations pendentes (rode a cada deploy)
 pnpm start:prod                                        # node dist/main
 ```
@@ -567,4 +618,5 @@ server {
 - [ ] `JWT_ACCESS_SECRET` forte e fora do repositório; `NODE_ENV=production` e `TRUST_PROXY` definidos
 - [ ] `proxy_cookie_path /auth /api/auth;` no Nginx (senão o refresh e o callback do OAuth não recebem os cookies)
 - [ ] `WEB_URL` com o domínio real e os callbacks `https://<domínio>/api/auth/oauth/{github,google}/callback` cadastrados no GitHub e no Google; segredos OAuth fora do repositório
+- [ ] SMTP configurado (`SMTP_HOST`, credenciais, `MAIL_FROM` de um domínio com SPF/DKIM) e `WEB_URL` com o domínio real, pois os links dos e-mails usam ele
 - [ ] Avaliar se o Swagger (`/docs`) deve ficar exposto em produção

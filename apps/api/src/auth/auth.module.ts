@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ActivationModule } from '../activation/activation.module.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { UserModule } from '../user/user.module.js';
 import { AUTH_CONFIG, authConfigFactory } from './auth.config.js';
@@ -19,6 +20,7 @@ import { LocalStrategy } from './strategies/local.strategy.js';
   imports: [
     UserModule,
     PrismaModule,
+    ActivationModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

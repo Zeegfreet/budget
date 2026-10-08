@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ActivationModule } from '../activation/activation.module.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { UserModule } from '../user/user.module.js';
 import { GroupTransactionController } from './group-transaction.controller.js';
@@ -14,7 +15,7 @@ import { SplitMethodController } from './split-method.controller.js';
 import { SplitMethodService } from './split-method.service.js';
 
 @Module({
-  imports: [PrismaModule, UserModule],
+  imports: [PrismaModule, UserModule, ActivationModule],
   controllers: [
     GroupController,
     GroupInvitationController,

@@ -102,16 +102,20 @@ export class UserService {
   }
 
   /**
-   * Completes the pre-registration of this e-mail with the sign-up data,
-   * keeping its id (and so its group memberships). `null` when there is no
-   * pre-registration (the e-mail is free or already registered).
+   * Takes over a not yet activated account of this e-mail with the sign-up
+   * data: a pre-registration or a sign-up nobody activated (whoever owns the
+   * inbox activates it later). Keeps the id, and so the group memberships.
+   * `null` when there is no such account (the e-mail is free or active).
    */
-  async claimPending(
+  async claimUnverified(
     email: string,
-    data: Omit<Prisma.UserUpdateManyMutationInput, 'email' | 'pending'>,
+    data: Omit<
+      Prisma.UserUpdateManyMutationInput,
+      'email' | 'pending' | 'emailVerifiedAt'
+    >,
   ): Promise<AuthUser | null> {
     const { count } = await this.prisma.user.updateMany({
-      where: { email, pending: true },
+      where: { email, emailVerifiedAt: null },
       data: { ...data, pending: false },
     });
     if (count === 0) return null;

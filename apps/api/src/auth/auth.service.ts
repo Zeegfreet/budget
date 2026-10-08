@@ -8,6 +8,11 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { AccountMailer } from '../activation/account-mailer.js';
+import {
+  ActivationService,
+  invalidActivationLink,
+} from '../activation/activation.service.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import {
   type AuthUser,
@@ -16,6 +21,10 @@ import {
 } from '../user/user.service.js';
 import type { AuthTokens } from './auth.cookies.js';
 import type { ChangePasswordDto } from './dto/change-password.dto.js';
+import type {
+  ActivationInfoDto,
+  CompleteSignupDto,
+} from './dto/activation.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import { MAX_PASSWORD_LENGTH } from './dto/register.dto.js';
 import type { AccessTokenPayload } from './strategies/jwt.strategy.js';
@@ -26,7 +35,15 @@ export interface AuthResult {
   tokens: AuthTokens;
 }
 
+export interface RegisterResult {
+  /** Where the activation link was sent */
+  email: string;
+}
+
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+/** `YYYY-MM-DD` → midnight UTC, how birth dates are stored. */
+const toBirthDate = (date: string) => new Date(`${date}T00:00:00.000Z`);
 
 @Injectable()
 export class AuthService {
@@ -37,20 +54,22 @@ export class AuthService {
     private readonly users: UserService,
     private readonly sessions: SessionService,
     private readonly jwt: JwtService,
+    private readonly activation: ActivationService,
+    private readonly mailer: AccountMailer,
   ) {}
 
-  async register(
-    dto: RegisterDto,
-    meta: SessionMeta = {},
-  ): Promise<AuthResult> {
-    const passwordHash = await argon2.hash(dto.password, {
-      type: argon2.argon2id,
-    });
+  /**
+   * Creates the account not activated (no session) and e-mails the
+   * activation link. An e-mail whose account was never activated (a
+   * pre-registration or an earlier sign-up) is taken over: same id, new data,
+   * new link. 409 only for an active account.
+   */
+  async register(dto: RegisterDto): Promise<RegisterResult> {
     const email = normalizeEmail(dto.email);
     const profile = {
       name: dto.name,
-      passwordHash,
-      birthDate: new Date(`${dto.birthDate}T00:00:00.000Z`),
+      passwordHash: await this.hashPassword(dto.password),
+      birthDate: toBirthDate(dto.birthDate),
       cep: dto.cep,
       city: dto.city,
       state: dto.state,
@@ -60,14 +79,55 @@ export class AuthService {
       user = await this.users.create({ email, ...profile });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      // Pre-registered by a group invitation: the account takes it over
-      user = await this.users.claimPending(email, profile);
+      user = await this.users.claimUnverified(email, profile);
       if (!user) throw new ConflictException('E-mail already registered');
     }
+    await this.mailer.sendActivation(user);
+    return { email };
+  }
+
+  /** What a link is for, so the web shows the right form; 404 if invalid. */
+  async activationInfo(token: string): Promise<ActivationInfoDto> {
+    const target = await this.activation.inspect(token);
+    if (!target) throw invalidActivationLink();
+    return {
+      email: target.email,
+      name: target.name,
+      kind: target.pending ? 'COMPLETE_SIGNUP' : 'ACTIVATE',
+    };
+  }
+
+  /** Activates a signed-up account through its e-mail link and signs it in. */
+  async activate(token: string, meta: SessionMeta = {}): Promise<AuthResult> {
+    const user = await this.activation.activate(token);
     return this.signIn(user, meta);
   }
 
-  /** Returns the user for valid credentials, `null` otherwise (whatever the reason). */
+  /**
+   * Finishes a pre-registration through its e-mail link (the link proves the
+   * e-mail, so the account starts active) and signs it in.
+   */
+  async completeSignup(
+    { token, password, birthDate, ...profile }: CompleteSignupDto,
+    meta: SessionMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.activation.completeSignup(token, {
+      ...profile,
+      passwordHash: await this.hashPassword(password),
+      birthDate: toBirthDate(birthDate),
+    });
+    return this.signIn(user, meta);
+  }
+
+  /** E-mails the link again; silent for unknown or active e-mails. */
+  resendActivation(email: string): Promise<void> {
+    return this.mailer.resend(normalizeEmail(email));
+  }
+
+  /**
+   * Returns the user for valid credentials, `null` otherwise (whatever the
+   * reason); 403 when they are right but the account is not activated yet.
+   */
   async validateCredentials(
     email: unknown,
     password: unknown,
@@ -81,6 +141,11 @@ export class AuthService {
     const hash = usable ?? (await this.getDummyHash());
     const valid = await argon2.verify(hash, password).catch(() => false);
     if (!user || !usable || !valid) return null;
+    // Only with the right password, so it doesn't reveal the e-mail exists;
+    // 403 (not 401) so the web doesn't take it for an expired session
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException('Account not activated');
+    }
     return { id: user.id, email: user.email, name: user.name };
   }
 
@@ -107,9 +172,7 @@ export class AuthService {
       );
     }
 
-    const passwordHash = await argon2.hash(newPassword, {
-      type: argon2.argon2id,
-    });
+    const passwordHash = await this.hashPassword(newPassword);
     if (!(await this.users.updatePasswordHash(userId, passwordHash))) {
       throw new NotFoundException('User not found');
     }
@@ -148,6 +211,10 @@ export class AuthService {
 
   logout(refreshToken: unknown) {
     return this.sessions.revoke(refreshToken);
+  }
+
+  private hashPassword(password: string) {
+    return argon2.hash(password, { type: argon2.argon2id });
   }
 
   private signAccessToken(userId: number) {

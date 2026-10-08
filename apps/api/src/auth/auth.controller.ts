@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Inject,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -15,6 +16,7 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiCookieAuth,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -39,6 +41,13 @@ import {
 } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { AuthUserDto } from './dto/auth-user.dto.js';
+import {
+  ActivationInfoDto,
+  ActivationTokenDto,
+  CompleteSignupDto,
+  RegisterResultDto,
+  ResendActivationDto,
+} from './dto/activation.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -63,20 +72,91 @@ export class AuthController {
     @Inject(AUTH_CONFIG) private readonly config: AuthConfig,
   ) {}
 
+  /**
+   * Creates the account without a session: it signs in only after the
+   * activation link sent by e-mail (`POST /auth/activation`).
+   */
   @Public()
   @Throttle(CREDENTIALS_THROTTLE)
   @Post('register')
+  @ApiCreatedResponse({ type: RegisterResultDto })
   @ApiConflictResponse({ description: 'E-mail already registered' })
   @ApiTooManyRequestsResponse()
-  async register(
-    @Body() dto: RegisterDto,
+  register(@Body() dto: RegisterDto): Promise<RegisterResultDto> {
+    return this.authService.register(dto);
+  }
+
+  /** What an activation link is for (no side effects, the link stays valid). */
+  @Public()
+  @Get('activation')
+  @ApiOkResponse({ type: ActivationInfoDto })
+  @ApiNotFoundResponse({ description: 'Invalid or expired activation link' })
+  activationInfo(
+    @Query() { token }: ActivationTokenDto,
+  ): Promise<ActivationInfoDto> {
+    return this.authService.activationInfo(token);
+  }
+
+  /** Activates a signed-up account with its link and opens a session. */
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('activation')
+  @ApiOkResponse({ type: AuthUserDto })
+  @ApiBadRequestResponse({
+    description: "A pre-registration's link (use `/auth/activation/signup`)",
+  })
+  @ApiNotFoundResponse({ description: 'Invalid or expired activation link' })
+  @ApiTooManyRequestsResponse()
+  async activate(
+    @Body() { token }: ActivationTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthUserDto> {
     return this.open(
       res,
-      await this.authService.register(dto, sessionMeta(req)),
+      await this.authService.activate(token, sessionMeta(req)),
     );
+  }
+
+  /**
+   * Finishes a pre-registration (someone added to a group by e-mail) with the
+   * sign-up data and opens a session; the account starts active.
+   */
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('activation/signup')
+  @ApiOkResponse({ type: AuthUserDto })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid body, or the link of an account that only needs activating',
+  })
+  @ApiNotFoundResponse({ description: 'Invalid or expired activation link' })
+  @ApiTooManyRequestsResponse()
+  async completeSignup(
+    @Body() dto: CompleteSignupDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthUserDto> {
+    return this.open(
+      res,
+      await this.authService.completeSignup(dto, sessionMeta(req)),
+    );
+  }
+
+  /**
+   * Sends the activation link again. Always 204, so it doesn't reveal which
+   * e-mails have an account.
+   */
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('activation/resend')
+  @ApiNoContentResponse()
+  @ApiTooManyRequestsResponse()
+  resendActivation(@Body() { email }: ResendActivationDto): Promise<void> {
+    return this.authService.resendActivation(email);
   }
 
   @Public()
@@ -87,6 +167,9 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ type: AuthUserDto })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials' })
+  @ApiForbiddenResponse({
+    description: 'Right credentials, but the account is not activated',
+  })
   @ApiTooManyRequestsResponse()
   async login(
     @Req() req: Request & { user: AuthUser },

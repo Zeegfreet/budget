@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { webUrlFrom, withoutTrailingSlash } from '../../config/web-url.js';
 import type { OAuthProviderId } from './providers.js';
 
 export const OAUTH_CONFIG = Symbol('OAUTH_CONFIG');
@@ -20,12 +21,8 @@ export interface OAuthConfig {
   clients: Partial<Record<OAuthProviderId, OAuthClient>>;
 }
 
-const withoutTrailingSlash = (url: string) => url.replace(/\/+$/, '');
-
 export function oauthConfigFactory(config: ConfigService): OAuthConfig {
-  const webUrl = withoutTrailingSlash(
-    config.get<string>('WEB_URL') ?? 'http://localhost:5173',
-  );
+  const webUrl = webUrlFrom(config);
   const client = (prefix: string): OAuthClient | undefined => {
     const clientId = config.get<string>(`${prefix}_CLIENT_ID`);
     const clientSecret = config.get<string>(`${prefix}_CLIENT_SECRET`);

@@ -46,6 +46,7 @@ describe('OAuthService', () => {
   const prisma = {
     oAuthAccount: { findUnique: vi.fn(), create: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+    activationToken: { deleteMany: vi.fn() },
     $transaction: vi.fn(),
   };
   const service = new OAuthService(config, prisma as unknown as PrismaService);
@@ -56,6 +57,7 @@ describe('OAuthService', () => {
     prisma.oAuthAccount.findUnique.mockResolvedValue(null);
     prisma.oAuthAccount.create.mockReturnValue('create-link');
     prisma.user.updateMany.mockReturnValue('claim');
+    prisma.activationToken.deleteMany.mockReturnValue('drop-links');
     prisma.$transaction.mockResolvedValue([]);
   });
 
@@ -167,23 +169,26 @@ describe('OAuthService', () => {
       expect(prisma.user.findUnique).not.toHaveBeenCalled();
     });
 
-    it('creates a user with only name and e-mail, linked to the account', async () => {
+    it('creates an active user with only name and e-mail, linked to the account', async () => {
+      vi.useFakeTimers({ now: new Date('2026-10-08T12:00:00Z') });
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue(user);
 
       await expect(service.resolveUser('github', profile)).resolves.toBe(user);
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { email: 'ana@example.com' },
-        select: { ...authUserSelect, pending: true },
+        select: { ...authUserSelect, pending: true, emailVerifiedAt: true },
       });
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: {
           email: 'ana@example.com',
           name: 'Ana Souza',
+          emailVerifiedAt: new Date('2026-10-08T12:00:00Z'),
           oauthAccounts: { create: account },
         },
         select: authUserSelect,
       });
+      vi.useRealTimers();
     });
 
     it('links a registered user with the same e-mail', async () => {
@@ -191,6 +196,7 @@ describe('OAuthService', () => {
         ...user,
         name: 'Ana',
         pending: false,
+        emailVerifiedAt: new Date('2026-01-01'),
       });
 
       await expect(service.resolveUser('github', profile)).resolves.toEqual({
@@ -209,17 +215,50 @@ describe('OAuthService', () => {
         ...user,
         name: 'Aninha',
         pending: true,
+        emailVerifiedAt: null,
       });
 
       await expect(service.resolveUser('github', profile)).resolves.toEqual(
         user,
       );
       expect(prisma.user.updateMany).toHaveBeenCalledWith({
-        where: { id: 1, pending: true },
-        data: { pending: false, name: 'Ana Souza' },
+        where: { id: 1, emailVerifiedAt: null },
+        data: {
+          emailVerifiedAt: expect.any(Date),
+          passwordHash: null,
+          pending: false,
+          name: 'Ana Souza',
+        },
+      });
+      expect(prisma.activationToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 1 },
       });
       expect(prisma.$transaction).toHaveBeenCalledWith([
         'claim',
+        'drop-links',
+        'create-link',
+      ]);
+    });
+
+    it('activates a sign-up nobody activated, dropping its unproven password', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...user,
+        name: 'Ana',
+        pending: false,
+        emailVerifiedAt: null,
+      });
+
+      await expect(service.resolveUser('github', profile)).resolves.toEqual({
+        ...user,
+        name: 'Ana',
+      });
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 1, emailVerifiedAt: null },
+        data: { emailVerifiedAt: expect.any(Date), passwordHash: null },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        'claim',
+        'drop-links',
         'create-link',
       ]);
     });

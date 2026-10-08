@@ -20,6 +20,7 @@ vi.mock('@/features/auth/api', () => ({
   login: vi.fn(),
   logout: vi.fn(),
   register: vi.fn(),
+  resendActivation: vi.fn(),
 }))
 vi.mock('@/features/address/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/address/api')>()),
@@ -196,7 +197,7 @@ describe('Sign-up route (/signup)', () => {
 
     it('lets the user type city and UF when the lookup service is down', async () => {
       lookupCepMock.mockRejectedValue(new Error('Network Error'))
-      registerMock.mockResolvedValue(ana)
+      registerMock.mockResolvedValue({ email: 'ana@example.com' })
       await renderRoute('/signup')
 
       await fill()
@@ -227,9 +228,9 @@ describe('Sign-up route (/signup)', () => {
   })
 
   describe('sign-up', () => {
-    it('sends the normalized data and goes to the home page signed in', async () => {
-      registerMock.mockResolvedValue(ana)
-      const { router } = await renderRoute('/signup')
+    it('sends the normalized data and asks to confirm the e-mail, without signing in', async () => {
+      registerMock.mockResolvedValue({ email: 'ana@example.com' })
+      const { router } = await renderRoute('/signup?redirect=%2Fgrupos')
 
       await fillValidForm({ name: '  Ana Souza ', email: ' ana@example.com  ' })
       await submit()
@@ -246,30 +247,10 @@ describe('Sign-up route (/signup)', () => {
         },
         expect.anything(),
       )
-      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
-      expect(router.state.location.pathname).toBe('/')
-      expect(screen.getByRole('button', { name: /menu da conta/i })).toHaveTextContent('ana@example.com')
-    })
-
-    it('returns to the internal page in ?redirect', async () => {
-      registerMock.mockResolvedValue(ana)
-      const { router } = await renderRoute('/signup?redirect=%2F%3Ftab%3Dgroups')
-
-      await fillValidForm()
-      await submit()
-
-      await waitFor(() => expect(router.state.location.href).toBe('/?tab=groups'))
-    })
-
-    it('ignores an external ?redirect (open redirect)', async () => {
-      registerMock.mockResolvedValue(ana)
-      const { router } = await renderRoute('/signup?redirect=%2F%2Fevil.com')
-
-      await fillValidForm()
-      await submit()
-
-      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
-      expect(router.state.location.href).toBe('/')
+      expect(await screen.findByRole('heading', { name: 'Confirme seu e-mail' })).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/verificar-email')
+      expect(router.state.location.search).toEqual({ email: 'ana@example.com' })
+      expect(screen.getByText('ana@example.com')).toBeInTheDocument()
     })
 
     it('disables the submit button while creating the account', async () => {

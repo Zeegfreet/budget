@@ -4,7 +4,13 @@ import { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { codeChallenge } from '../src/auth/oauth/oauth-state.js';
 import { createGroup } from './groups.js';
-import { type Agent, createTestApp, resetDatabase, signUp } from './utils.js';
+import {
+  type Agent,
+  createTestApp,
+  resetDatabase,
+  signUp,
+  userBody,
+} from './utils.js';
 
 const WEB = 'http://web.test';
 
@@ -282,6 +288,44 @@ describe('OAuth sign-in (e2e)', () => {
       });
       const detail = await client.get(`/groups/${group.id}`).expect(200);
       expect(detail.body.members).toHaveLength(2);
+      // Active: the old link has nothing left to do
+      expect(await prisma.activationToken.count()).toBe(0);
+    });
+
+    it('activates a sign-up nobody activated, dropping its password', async () => {
+      await agent()
+        .post('/auth/register')
+        .send(userBody('Ana', 'ana@example.com'))
+        .expect(201);
+      const registered = await prisma.user.findUniqueOrThrow({
+        where: { email: 'ana@example.com' },
+      });
+
+      const { client } = await signInWith('github');
+
+      expect(await me(client)).toMatchObject({
+        id: registered.id,
+        hasPassword: false,
+      });
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { id: registered.id },
+      });
+      expect(user.emailVerifiedAt).toBeInstanceOf(Date);
+      expect(await prisma.activationToken.count()).toBe(0);
+      // Whoever typed that password never proved the e-mail
+      await agent()
+        .post('/auth/login')
+        .send({ email: 'ana@example.com', password: 'segredo123' })
+        .expect(401);
+    });
+
+    it('creates the account already active', async () => {
+      await signInWith('github');
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: 'ana@example.com' },
+      });
+      expect(user.emailVerifiedAt).toBeInstanceOf(Date);
     });
   });
 
