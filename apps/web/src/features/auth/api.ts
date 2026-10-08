@@ -5,8 +5,10 @@ import type {
   ChangePasswordInput,
   CompleteSignupInput,
   LoginInput,
+  PasswordResetInfo,
   RegisterInput,
   RegisterResult,
+  ResetPasswordInput,
 } from './types'
 
 // The session lives in an httpOnly cookie set by the API, so none of these
@@ -58,5 +60,22 @@ export async function logout(): Promise<void> {
 /** Changes the password; the API ends the other sessions and renews this one's cookies. */
 export async function changePassword(input: ChangePasswordInput): Promise<AuthUser> {
   const { data } = await api.post<AuthUser>('/auth/password', input)
+  return data
+}
+
+/** E-mails a link to set a new password (the API answers the same for any e-mail). */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await api.post('/auth/password/forgot', { email })
+}
+
+/** Whose password a reset link sets; 404 when invalid or expired. */
+export async function fetchPasswordReset(token: string): Promise<PasswordResetInfo> {
+  const { data } = await api.get<PasswordResetInfo>('/auth/password/reset', { params: { token } })
+  return data
+}
+
+/** Sets the new password with the link; the API ends the other sessions and opens this one. */
+export async function resetPassword(input: ResetPasswordInput): Promise<AuthUser> {
+  const { data } = await api.post<AuthUser>('/auth/password/reset', input)
   return data
 }

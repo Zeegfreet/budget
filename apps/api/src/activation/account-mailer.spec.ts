@@ -1,6 +1,7 @@
 import type { MailService } from '../mail/mail.service.js';
 import { AccountMailer } from './account-mailer.js';
 import type { ActivationService } from './activation.service.js';
+import type { PasswordResetService } from './password-reset.service.js';
 
 const ana = { id: 1, email: 'ana@example.com', name: 'Ana' };
 
@@ -12,9 +13,17 @@ describe('AccountMailer', () => {
     webUrlFor: (path: string) => `http://web.test${path}`,
     findUnactivated: vi.fn(),
   };
+  const passwordReset = {
+    ttlMinutes: 60,
+    issue: vi.fn(),
+    linkFor: (token: string) =>
+      `http://web.test/redefinir-senha?token=${token}`,
+    findTarget: vi.fn(),
+  };
   const mail = { send: vi.fn() };
   const mailer = new AccountMailer(
     activation as unknown as ActivationService,
+    passwordReset as unknown as PasswordResetService,
     mail as unknown as MailService,
   );
   const sent = () =>
@@ -27,6 +36,7 @@ describe('AccountMailer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     activation.issue.mockResolvedValue('tok');
+    passwordReset.issue.mockResolvedValue('reset');
     mail.send.mockResolvedValue(true);
   });
 
@@ -79,5 +89,50 @@ describe('AccountMailer', () => {
     activation.findUnactivated.mockResolvedValueOnce(null);
     await mailer.resend('x@example.com');
     expect(mail.send).not.toHaveBeenCalled();
+  });
+
+  describe('sendPasswordReset', () => {
+    it('sends a reset link to an account', async () => {
+      passwordReset.findTarget.mockResolvedValue({ ...ana, pending: false });
+
+      await mailer.sendPasswordReset('ana@example.com');
+
+      expect(passwordReset.issue).toHaveBeenCalledWith(1);
+      expect(activation.issue).not.toHaveBeenCalled();
+      expect(sent()).toMatchObject({
+        to: 'ana@example.com',
+        subject: 'Redefina sua senha no Budget',
+      });
+      expect(sent().text).toContain(
+        'http://web.test/redefinir-senha?token=reset',
+      );
+      expect(sent().text).toContain('60 minutos');
+    });
+
+    it('sends the sign-up link to a pre-registration', async () => {
+      passwordReset.findTarget.mockResolvedValue({ ...ana, pending: true });
+
+      await mailer.sendPasswordReset('ana@example.com');
+
+      expect(passwordReset.issue).not.toHaveBeenCalled();
+      expect(sent().subject).toBe('Conclua seu cadastro no Budget');
+      expect(sent().text).toContain('ativar-conta?token=tok');
+    });
+
+    it('sends nothing for an unknown e-mail', async () => {
+      passwordReset.findTarget.mockResolvedValue(null);
+
+      await mailer.sendPasswordReset('x@example.com');
+
+      expect(passwordReset.issue).not.toHaveBeenCalled();
+      expect(mail.send).not.toHaveBeenCalled();
+    });
+  });
+
+  it('warns that the password changed, linking to the login', async () => {
+    await expect(mailer.sendPasswordChanged(ana)).resolves.toBe(true);
+
+    expect(sent().subject).toBe('Sua senha do Budget foi alterada');
+    expect(sent().text).toContain('http://web.test/login');
   });
 });

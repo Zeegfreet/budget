@@ -64,3 +64,15 @@ export interface ChangePasswordInput {
   currentPassword: string
   newPassword: string
 }
+
+/** Whose password a reset link sets (`GET /auth/password/reset`). */
+export interface PasswordResetInfo {
+  email: string
+  name: string
+}
+
+/** Body of `POST /auth/password/reset`. */
+export interface ResetPasswordInput {
+  token: string
+  password: string
+}

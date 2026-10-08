@@ -68,6 +68,9 @@ function render({
 const validFor = (hours: number) =>
   `O link vale por ${hours} ${hours === 1 ? 'hora' : 'horas'} e só pode ser usado uma vez.`;
 
+const validForMinutes = (minutes: number) =>
+  `O link vale por ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'} e só pode ser usado uma vez.`;
+
 /** After a sign-up with e-mail and password: proves the e-mail before the first sign-in. */
 export function activationEmail({
   name,
@@ -143,5 +146,46 @@ export function groupInvitationEmail({
       'Entre no Budget para aceitar ou recusar o convite.',
     ],
     action: { label: 'Ver convite', url },
+  });
+}
+
+/** "Esqueci minha senha": the link sets a new password. */
+export function passwordResetEmail({
+  name,
+  url,
+  ttlMinutes,
+}: {
+  name: string;
+  url: string;
+  ttlMinutes: number;
+}): MailContent {
+  return render({
+    subject: 'Redefina sua senha no Budget',
+    greeting: `Olá, ${name}!`,
+    paragraphs: [
+      'Recebemos um pedido para redefinir a senha da sua conta no Budget. Para criar uma nova senha, use o botão abaixo.',
+      'Se você não pediu, ignore este e-mail: sua senha continua a mesma.',
+    ],
+    action: { label: 'Redefinir senha', url },
+    note: validForMinutes(ttlMinutes),
+  });
+}
+
+/** After a reset through the e-mailed link, so a stranger's reset doesn't go unnoticed. */
+export function passwordChangedEmail({
+  name,
+  url,
+}: {
+  name: string;
+  url: string;
+}): MailContent {
+  return render({
+    subject: 'Sua senha do Budget foi alterada',
+    greeting: `Olá, ${name}!`,
+    paragraphs: [
+      'A senha da sua conta no Budget acabou de ser redefinida, e os aparelhos conectados foram desconectados.',
+      'Se não foi você, peça um novo link de redefinição na tela de login para recuperar o acesso.',
+    ],
+    action: { label: 'Entrar no Budget', url },
   });
 }

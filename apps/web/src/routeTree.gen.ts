@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AtivarContaRouteImport } from './routes/ativar-conta'
 import { Route as CompletarCadastroRouteImport } from './routes/completar-cadastro'
+import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
@@ -38,9 +40,19 @@ const CompletarCadastroRoute = CompletarCadastroRouteImport.update({
   path: '/completar-cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
+  id: '/esqueci-senha',
+  path: '/esqueci-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
+  id: '/redefinir-senha',
+  path: '/redefinir-senha',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -100,7 +112,9 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/ativar-conta': typeof AtivarContaRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/signup': typeof SignupRoute
   '/verificar-email': typeof VerificarEmailRoute
   '/extrato': typeof AppExtratoRoute
@@ -114,7 +128,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/ativar-conta': typeof AtivarContaRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/signup': typeof SignupRoute
   '/verificar-email': typeof VerificarEmailRoute
   '/extrato': typeof AppExtratoRoute
@@ -131,7 +147,9 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/ativar-conta': typeof AtivarContaRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/signup': typeof SignupRoute
   '/verificar-email': typeof VerificarEmailRoute
   '/_app/extrato': typeof AppExtratoRoute
@@ -149,7 +167,9 @@ export interface FileRouteTypes {
     | '/'
     | '/ativar-conta'
     | '/completar-cadastro'
+    | '/esqueci-senha'
     | '/login'
+    | '/redefinir-senha'
     | '/signup'
     | '/verificar-email'
     | '/extrato'
@@ -163,7 +183,9 @@ export interface FileRouteTypes {
   to:
     | '/ativar-conta'
     | '/completar-cadastro'
+    | '/esqueci-senha'
     | '/login'
+    | '/redefinir-senha'
     | '/signup'
     | '/verificar-email'
     | '/extrato'
@@ -179,7 +201,9 @@ export interface FileRouteTypes {
     | '/_app'
     | '/ativar-conta'
     | '/completar-cadastro'
+    | '/esqueci-senha'
     | '/login'
+    | '/redefinir-senha'
     | '/signup'
     | '/verificar-email'
     | '/_app/extrato'
@@ -196,7 +220,9 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AtivarContaRoute: typeof AtivarContaRoute
   CompletarCadastroRoute: typeof CompletarCadastroRoute
+  EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   LoginRoute: typeof LoginRoute
+  RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   SignupRoute: typeof SignupRoute
   VerificarEmailRoute: typeof VerificarEmailRoute
 }
@@ -224,11 +250,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CompletarCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/esqueci-senha': {
+      id: '/esqueci-senha'
+      path: '/esqueci-senha'
+      fullPath: '/esqueci-senha'
+      preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/redefinir-senha': {
+      id: '/redefinir-senha'
+      path: '/redefinir-senha'
+      fullPath: '/redefinir-senha'
+      preLoaderRoute: typeof RedefinirSenhaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -332,7 +372,9 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AtivarContaRoute: AtivarContaRoute,
   CompletarCadastroRoute: CompletarCadastroRoute,
+  EsqueciSenhaRoute: EsqueciSenhaRoute,
   LoginRoute: LoginRoute,
+  RedefinirSenhaRoute: RedefinirSenhaRoute,
   SignupRoute: SignupRoute,
   VerificarEmailRoute: VerificarEmailRoute,
 }

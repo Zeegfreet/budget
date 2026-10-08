@@ -50,6 +50,12 @@ import {
 } from './dto/activation.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import {
+  ForgotPasswordDto,
+  PasswordResetInfoDto,
+  PasswordResetTokenDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
 import type { SessionMeta } from './session.service.js';
@@ -239,6 +245,60 @@ export class AuthController {
     return this.open(
       res,
       await this.authService.changePassword(user.id, dto, sessionMeta(req)),
+    );
+  }
+
+  /**
+   * "Esqueci minha senha": e-mails a link that sets a new password (a
+   * pre-registration gets the link that finishes the sign-up). Always 204, so
+   * it doesn't reveal which e-mails have an account.
+   */
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('password/forgot')
+  @ApiNoContentResponse()
+  @ApiBadRequestResponse({ description: 'Invalid e-mail' })
+  @ApiTooManyRequestsResponse()
+  forgotPassword(@Body() { email }: ForgotPasswordDto): Promise<void> {
+    return this.authService.forgotPassword(email);
+  }
+
+  /** Whose password a reset link sets (no side effects, the link stays valid). */
+  @Public()
+  @Get('password/reset')
+  @ApiOkResponse({ type: PasswordResetInfoDto })
+  @ApiNotFoundResponse({
+    description: 'Invalid or expired password reset link',
+  })
+  passwordResetInfo(
+    @Query() { token }: PasswordResetTokenDto,
+  ): Promise<PasswordResetInfoDto> {
+    return this.authService.passwordResetInfo(token);
+  }
+
+  /**
+   * Sets a new password with the e-mailed link (activating the account if it
+   * wasn't), ends every session of the user and opens one for this client.
+   */
+  @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('password/reset')
+  @ApiOkResponse({ type: AuthUserDto })
+  @ApiBadRequestResponse({ description: 'Invalid body' })
+  @ApiNotFoundResponse({
+    description: 'Invalid or expired password reset link',
+  })
+  @ApiTooManyRequestsResponse()
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthUserDto> {
+    return this.open(
+      res,
+      await this.authService.resetPassword(dto, sessionMeta(req)),
     );
   }
 

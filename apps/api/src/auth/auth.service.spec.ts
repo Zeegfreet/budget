@@ -9,6 +9,7 @@ import type { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import type { AccountMailer } from '../activation/account-mailer.js';
 import type { ActivationService } from '../activation/activation.service.js';
+import type { PasswordResetService } from '../activation/password-reset.service.js';
 import { Prisma } from '../prisma/generated/client.js';
 import type { UserService } from '../user/user.service.js';
 import { AuthService } from './auth.service.js';
@@ -48,13 +49,24 @@ describe('AuthService', () => {
     activate: vi.fn(),
     completeSignup: vi.fn(),
   };
-  const mailer = { sendActivation: vi.fn(), resend: vi.fn() };
+  const mailer = {
+    sendActivation: vi.fn(),
+    resend: vi.fn(),
+    sendPasswordReset: vi.fn(),
+    sendPasswordChanged: vi.fn(),
+  };
+  const passwordReset = {
+    inspect: vi.fn(),
+    reset: vi.fn(),
+    revokeFor: vi.fn(),
+  };
   const service = new AuthService(
     users as unknown as UserService,
     sessions as unknown as SessionService,
     jwt as unknown as JwtService,
     activation as unknown as ActivationService,
     mailer as unknown as AccountMailer,
+    passwordReset as unknown as PasswordResetService,
   );
 
   beforeEach(() => {
@@ -395,6 +407,7 @@ describe('AuthService', () => {
       expect(id).toBe(1);
       await expect(argon2.verify(hash, 'novaSenha456')).resolves.toBe(true);
       expect(sessions.revokeAllForUser).toHaveBeenCalledWith(1);
+      expect(passwordReset.revokeFor).toHaveBeenCalledWith(1);
       expect(sessions.create).toHaveBeenCalledWith(1, { ip: '::1' });
       expect(
         sessions.revokeAllForUser.mock.invocationCallOrder[0],
@@ -423,6 +436,64 @@ describe('AuthService', () => {
         NotFoundException,
       );
       expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('password reset', () => {
+    it('e-mails the link to the normalized e-mail', async () => {
+      await service.forgotPassword('  Ana@Example.com ');
+
+      expect(mailer.sendPasswordReset).toHaveBeenCalledWith('ana@example.com');
+    });
+
+    it('describes a link by its account', async () => {
+      passwordReset.inspect.mockResolvedValue(authUser);
+
+      await expect(service.passwordResetInfo('tok')).resolves.toEqual({
+        email: 'ana@example.com',
+        name: 'Ana Souza',
+      });
+    });
+
+    it('is 404 for an invalid link', async () => {
+      passwordReset.inspect.mockResolvedValue(null);
+
+      await expect(service.passwordResetInfo('tok')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('stores the hashed password, ends every session, warns and signs in', async () => {
+      passwordReset.reset.mockResolvedValue(authUser);
+
+      const result = await service.resetPassword(
+        { token: 'tok', password: 'novaSenha456' },
+        { ip: '::1' },
+      );
+
+      expect(result).toEqual({
+        user: sessionUser,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      });
+      const [token, hash] = passwordReset.reset.mock.calls[0];
+      expect(token).toBe('tok');
+      await expect(argon2.verify(hash, 'novaSenha456')).resolves.toBe(true);
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(1);
+      expect(mailer.sendPasswordChanged).toHaveBeenCalledWith(authUser);
+      expect(sessions.create).toHaveBeenCalledWith(1, { ip: '::1' });
+      expect(
+        sessions.revokeAllForUser.mock.invocationCallOrder[0],
+      ).toBeLessThan(sessions.create.mock.invocationCallOrder[0]);
+    });
+
+    it('keeps the sessions when the link is refused', async () => {
+      passwordReset.reset.mockRejectedValue(new NotFoundException());
+
+      await expect(
+        service.resetPassword({ token: 'tok', password: 'novaSenha456' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+      expect(mailer.sendPasswordChanged).not.toHaveBeenCalled();
     });
   });
 });

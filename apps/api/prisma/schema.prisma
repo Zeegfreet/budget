@@ -52,6 +52,7 @@ model User {
   paymentMethods      PaymentMethod[]
   oauthAccounts       OAuthAccount[]
   activationTokens    ActivationToken[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -79,6 +80,19 @@ model Session {
 /// One-time link sent by e-mail to activate the account (or finish a
 /// pre-registration). Only the newest one of a user is valid.
 model ActivationToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the secret sent in the link
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// One-time link that sets a new password ("Esqueci minha senha")
+model PasswordResetToken {
   id        Int      @id @default(autoincrement())
   userId    Int
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

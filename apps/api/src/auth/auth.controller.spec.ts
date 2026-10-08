@@ -27,6 +27,9 @@ describe('AuthController', () => {
     activate: vi.fn(),
     completeSignup: vi.fn(),
     resendActivation: vi.fn(),
+    forgotPassword: vi.fn(),
+    passwordResetInfo: vi.fn(),
+    resetPassword: vi.fn(),
   };
   const controller = new AuthController(
     authService as unknown as AuthService,
@@ -183,6 +186,37 @@ describe('AuthController', () => {
       controller.changePassword({ id: 1 }, dto, req(), res),
     ).resolves.toEqual(authUser);
     expect(authService.changePassword).toHaveBeenCalledWith(1, dto, {
+      userAgent: 'agent',
+      ip: '::1',
+    });
+    expectSessionCookies();
+  });
+
+  it('forgotPassword asks for the link without opening a session', async () => {
+    await controller.forgotPassword({ email: 'ana@example.com' });
+
+    expect(authService.forgotPassword).toHaveBeenCalledWith('ana@example.com');
+    expect(res.cookie).not.toHaveBeenCalled();
+  });
+
+  it('passwordResetInfo describes the link', async () => {
+    const info = { email: 'ana@example.com', name: 'Ana' };
+    authService.passwordResetInfo.mockResolvedValue(info);
+
+    await expect(
+      controller.passwordResetInfo({ token: 'tok' }),
+    ).resolves.toEqual(info);
+    expect(authService.passwordResetInfo).toHaveBeenCalledWith('tok');
+  });
+
+  it('resetPassword sets the session cookies and returns the user', async () => {
+    authService.resetPassword.mockResolvedValue(result);
+    const dto = { token: 'tok', password: 'novaSenha456' };
+
+    await expect(controller.resetPassword(dto, req(), res)).resolves.toEqual(
+      authUser,
+    );
+    expect(authService.resetPassword).toHaveBeenCalledWith(dto, {
       userAgent: 'agent',
       ip: '::1',
     });

@@ -39,9 +39,14 @@ export function mailOf(app: INestApplication): MemoryMailTransport {
   return app.get<MemoryMailTransport>(MAIL_TRANSPORT);
 }
 
-/** The activation token in a message's link. */
-export function tokenFrom(message: MailMessage): string {
-  const match = /ativar-conta\?token=([A-Za-z0-9_-]+)/.exec(message.text);
-  if (!match) throw new Error(`No activation link in "${message.subject}"`);
+/** The token in a message's link to `page` (the activation page by default). */
+export function tokenFrom(
+  message: MailMessage,
+  page: 'ativar-conta' | 'redefinir-senha' = 'ativar-conta',
+): string {
+  const match = new RegExp(`${page}\\?token=([A-Za-z0-9_-]+)`).exec(
+    message.text,
+  );
+  if (!match) throw new Error(`No ${page} link in "${message.subject}"`);
   return match[1];
 }

@@ -1,6 +1,8 @@
 import {
   activationEmail,
   groupInvitationEmail,
+  passwordChangedEmail,
+  passwordResetEmail,
   preRegistrationEmail,
 } from './templates.js';
 
@@ -69,5 +71,33 @@ describe('mail templates', () => {
     );
     expect(mail.text).toContain('Ver convite: http://web.test/grupos');
     expect(mail.text).not.toContain('O link vale');
+  });
+
+  it('password reset: link, expiry in minutes and how to ignore it', () => {
+    const resetUrl = 'http://web.test/redefinir-senha?token=abc';
+    const mail = passwordResetEmail({
+      name: 'Ana',
+      url: resetUrl,
+      ttlMinutes: 60,
+    });
+
+    expect(mail.subject).toBe('Redefina sua senha no Budget');
+    expect(mail.text).toContain('Olá, Ana!');
+    expect(mail.text).toContain(`Redefinir senha: ${resetUrl}`);
+    expect(mail.text).toContain('60 minutos');
+    expect(mail.text).toContain('sua senha continua a mesma');
+    expect(
+      passwordResetEmail({ name: 'Ana', url: resetUrl, ttlMinutes: 1 }).text,
+    ).toContain('1 minuto ');
+  });
+
+  it('password changed: warns and links to the login', () => {
+    const mail = passwordChangedEmail({
+      name: 'Ana',
+      url: 'http://web.test/login',
+    });
+
+    expect(mail.subject).toBe('Sua senha do Budget foi alterada');
+    expect(mail.text).toContain('Entrar no Budget: http://web.test/login');
   });
 });

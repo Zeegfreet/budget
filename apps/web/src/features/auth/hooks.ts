@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { activate, changePassword, completeSignup, logout, resendActivation } from './api'
+import {
+  activate,
+  changePassword,
+  completeSignup,
+  logout,
+  requestPasswordReset,
+  resendActivation,
+  resetPassword,
+} from './api'
 import { authQueries } from './queries'
 
 /** Ends the session and goes back to /login. */
@@ -51,4 +59,19 @@ export function useCompleteSignup() {
 /** Asks for the activation e-mail again. */
 export function useResendActivation() {
   return useMutation({ mutationFn: resendActivation })
+}
+
+/** Asks for the e-mail with a link to set a new password. */
+export function useRequestPasswordReset() {
+  return useMutation({ mutationFn: requestPasswordReset })
+}
+
+/** Sets a new password through its e-mail link; the new session becomes the current user. */
+export function useResetPassword() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: resetPassword,
+    onSuccess: (user) => queryClient.setQueryData(authQueries.me().queryKey, user),
+  })
 }

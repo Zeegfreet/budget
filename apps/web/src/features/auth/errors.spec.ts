@@ -24,6 +24,13 @@ import {
   invalidCredentialsMessage,
   serverUnavailableMessage,
   tooManyAttemptsMessage,
+  defaultForgotPasswordErrorMessage,
+  defaultPasswordResetErrorMessage,
+  getForgotPasswordErrorMessage,
+  getPasswordResetErrorMessage,
+  invalidPasswordMessage,
+  invalidPasswordResetLinkMessage,
+  isInvalidPasswordResetLink,
 } from './errors'
 
 describe('getLoginErrorMessage', () => {
@@ -138,5 +145,37 @@ describe('getResendErrorMessage', () => {
     [400, defaultResendErrorMessage],
   ])('maps %i', (status, message) => {
     expect(getResendErrorMessage(new ApiError(status, ['x']))).toBe(message)
+  })
+})
+
+describe('getForgotPasswordErrorMessage', () => {
+  it.each([
+    [400, 'Informe um e-mail válido.'],
+    [429, tooManyAttemptsMessage],
+    [0, serverUnavailableMessage],
+    [404, serverUnavailableMessage],
+    [503, serverUnavailableMessage],
+    [418, defaultForgotPasswordErrorMessage],
+  ])('maps %i', (status, message) => {
+    expect(getForgotPasswordErrorMessage(new ApiError(status, ['x']))).toBe(message)
+  })
+})
+
+describe('getPasswordResetErrorMessage', () => {
+  it.each([
+    [404, invalidPasswordResetLinkMessage],
+    [400, invalidPasswordMessage],
+    [429, tooManyAttemptsMessage],
+    [0, serverUnavailableMessage],
+    [500, serverUnavailableMessage],
+    [418, defaultPasswordResetErrorMessage],
+  ])('maps %i', (status, message) => {
+    expect(getPasswordResetErrorMessage(new ApiError(status, ['x']))).toBe(message)
+  })
+
+  it('tells an invalid link apart', () => {
+    expect(isInvalidPasswordResetLink(new ApiError(404, ['x']))).toBe(true)
+    expect(isInvalidPasswordResetLink(new ApiError(400, ['x']))).toBe(false)
+    expect(getPasswordResetErrorMessage(new Error('x'))).toBe(defaultPasswordResetErrorMessage)
   })
 })

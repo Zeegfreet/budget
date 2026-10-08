@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { createHash, randomBytes } from 'node:crypto';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type AuthUser, authUserSelect } from '../user/user.service.js';
@@ -12,15 +11,9 @@ import {
   ACTIVATION_CONFIG,
   type ActivationConfig,
 } from './activation.config.js';
+import { hashToken, isTokenShaped, newToken } from './token.js';
 
 const HOUR_MS = 60 * 60 * 1000;
-
-const hashToken = (token: string) =>
-  createHash('sha256').update(token).digest('hex');
-
-/** 32 random bytes in base64url; anything else can't be a token. */
-const isTokenShaped = (token: unknown): token is string =>
-  typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token);
 
 /** Who an activation link belongs to. */
 export interface ActivationTarget extends AuthUser {
@@ -68,7 +61,7 @@ export class ActivationService {
 
   /** New link for the user (the older ones stop working); returns the secret. */
   async issue(userId: number, now = new Date()): Promise<string> {
-    const token = randomBytes(32).toString('base64url');
+    const token = newToken();
     await this.prisma.$transaction([
       this.prisma.activationToken.deleteMany({ where: { userId } }),
       this.prisma.activationToken.create({

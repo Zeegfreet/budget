@@ -13,6 +13,10 @@ import {
   ActivationService,
   invalidActivationLink,
 } from '../activation/activation.service.js';
+import {
+  invalidPasswordResetLink,
+  PasswordResetService,
+} from '../activation/password-reset.service.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import {
   type AuthUser,
@@ -25,6 +29,10 @@ import type {
   ActivationInfoDto,
   CompleteSignupDto,
 } from './dto/activation.dto.js';
+import type {
+  PasswordResetInfoDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import { MAX_PASSWORD_LENGTH } from './dto/register.dto.js';
 import type { AccessTokenPayload } from './strategies/jwt.strategy.js';
@@ -56,6 +64,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly activation: ActivationService,
     private readonly mailer: AccountMailer,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   /**
@@ -124,6 +133,36 @@ export class AuthService {
     return this.mailer.resend(normalizeEmail(email));
   }
 
+  /** "Esqueci minha senha": e-mails a reset link; silent for unknown e-mails. */
+  forgotPassword(email: string): Promise<void> {
+    return this.mailer.sendPasswordReset(normalizeEmail(email));
+  }
+
+  /** Whose password a reset link sets, so the web shows it; 404 if invalid. */
+  async passwordResetInfo(token: string): Promise<PasswordResetInfoDto> {
+    const target = await this.passwordReset.inspect(token);
+    if (!target) throw invalidPasswordResetLink();
+    return { email: target.email, name: target.name };
+  }
+
+  /**
+   * Sets a new password through the e-mailed link (activating the account if
+   * it wasn't), ends every session of the user, warns them by e-mail and
+   * signs this client in.
+   */
+  async resetPassword(
+    { token, password }: ResetPasswordDto,
+    meta: SessionMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.passwordReset.reset(
+      token,
+      await this.hashPassword(password),
+    );
+    await this.sessions.revokeAllForUser(user.id);
+    await this.mailer.sendPasswordChanged(user);
+    return this.signIn(user, meta);
+  }
+
   /**
    * Returns the user for valid credentials, `null` otherwise (whatever the
    * reason); 403 when they are right but the account is not activated yet.
@@ -177,6 +216,8 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
     await this.sessions.revokeAllForUser(userId);
+    // A reset link asked for before the change must not undo it
+    await this.passwordReset.revokeFor(userId);
     return this.signIn(
       { id: user.id, email: user.email, name: user.name },
       meta,

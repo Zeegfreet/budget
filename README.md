@@ -25,6 +25,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 
 - **Isolamento total por usuário (multi-tenant)**: cada usuário vê e altera apenas as próprias finanças. O dono dos dados vem sempre do contexto de autenticação, nunca do corpo da requisição. Acesso a dados de outro usuário retorna `404`, para não revelar que o recurso existe.
 - **Ativação de conta por e-mail**: o cadastro com e-mail e senha só entra depois de clicar no link enviado por e-mail (SMTP). Quem é adicionado a um grupo sem ter conta recebe um link para ativar a conta criando a senha.
+- **Recuperação de senha**: em "Esqueci minha senha" o usuário recebe por e-mail um link de uso único (60 min) para criar uma nova senha; os outros aparelhos são desconectados.
 - **Login com e-mail/senha, GitHub ou Google**: no primeiro acesso por GitHub/Google a conta é criada (ou vinculada pelo e-mail verificado) e o usuário completa o cadastro com nascimento e endereço.
 - **Receitas e despesas pessoais**: valores guardados em centavos (inteiros), sem ponto flutuante, para que totais e divisões fiquem exatos.
 - **Grupos de finanças**: um usuário cria um grupo com receitas e despesas próprias (ex.: aluguel). Só os membros enxergam os dados do grupo.
@@ -43,6 +44,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
 | Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta, card centralizado): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
 | Alterar senha | ✅ | ✅ | Tela `/settings/password` (menu da conta): senha atual, nova senha e repetição. A API confere a senha atual, grava a nova e encerra as outras sessões. Veja [Alterar senha](#alterar-senha) |
+| Recuperação de senha (Esqueci minha senha) | ✅ | ✅ | Link **Esqueci minha senha** no login → `/esqueci-senha` (e-mail) → link por e-mail para `/redefinir-senha` (60 min, uso único) com nova senha e repetição. Sempre a mesma resposta, exista o e-mail ou não; ao redefinir, as sessões são encerradas, a conta entra logada e recebe um aviso por e-mail. Veja [Recuperação de senha](#recuperação-de-senha) |
 | Login com GitHub e Google (OAuth) | ✅ | ✅ | Authorization Code + PKCE, vínculo automático por e-mail verificado e tela **Completar cadastro** no primeiro acesso |
 | Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`), com coluna de total do período. Veja [Dashboard](#dashboard) |
 | Categorias de receitas e despesas | ✅ | ✅ | Tipos e categorias padrão criados no primeiro acesso; criar, editar, inativar/reativar e excluir pela própria tabela do Dashboard ou pelo menu **Categorias** do Extrato |
@@ -183,6 +185,7 @@ e abra http://localhost:8025.
 | api | `SMTP_USER` / `SMTP_PASS` | — | Credenciais do SMTP. Sempre as duas juntas |
 | api | `MAIL_FROM` | `Budget <no-reply@budget.local>` | Remetente dos e-mails |
 | api | `ACTIVATION_TOKEN_TTL_HOURS` | `72` | Validade do link de ativação |
+| api | `PASSWORD_RESET_TOKEN_TTL_MINUTES` | `60` | Validade do link de redefinição de senha |
 | api | `OAUTH_CALLBACK_BASE_URL` | `${WEB_URL}/api` | Endereço da API **como o navegador a vê** (mesmo site do web, para os cookies de sessão chegarem ao web). O callback é `<base>/auth/oauth/<github\|google>/callback` |
 | web | `VITE_API_URL` | `/api` | URL base da API, embutida no bundle no momento do build |
 
@@ -203,6 +206,7 @@ Entrada por **e-mail + senha**, **cadastro** em `/signup` ou **GitHub/Google** (
 | `GET` | `/auth/me` | — | `200` com o usuário da sessão, ou `401` |
 | `POST` | `/auth/logout` | — | `204`, revogando a sessão e apagando os cookies (idempotente) |
 | `POST` | `/auth/password` | `{ currentPassword, newPassword }` | `200` com o usuário e cookies novos. Veja [Alterar senha](#alterar-senha) |
+| `POST` / `GET` | `/auth/password/forgot`, `/auth/password/reset` | | Esqueci minha senha. Veja [Recuperação de senha](#recuperação-de-senha) |
 
 O usuário retornado é sempre `{ id, email, name, needsProfile, hasPassword }`: hash de senha e demais dados nunca saem da API. `needsProfile` indica uma conta criada pelo GitHub/Google que ainda não informou nascimento e endereço; `hasPassword` é `false` para quem só entra pelo GitHub/Google.
 
@@ -267,7 +271,7 @@ O módulo `mail` da API envia os e-mails por SMTP (Nodemailer); o módulo `activ
 - **Quem entra**: a conta vinculada (`OAuthAccount`, pelo id estável do provedor, mesmo que o e-mail mude lá) → senão, o **e-mail verificado** pelo provedor: uma conta com senha recebe o vínculo (as duas formas de entrar continuam valendo) e um **pré-cadastro** de convite é assumido (mesmo `id`, grupos mantidos, o nome do provedor substitui o apelido) → senão, uma conta nova só com nome e e-mail. Sem e-mail verificado (GitHub: o primário verificado, ou outro verificado; Google: `email_verified`) não há vínculo nem conta nova.
 - **Códigos de erro** (traduzidos na tela de login): `access_denied` (consentimento cancelado), `oauth_state` (fluxo expirado, adulterado ou de outro navegador), `oauth_email` (sem e-mail verificado), `oauth_failed` (falha no provedor), `oauth_unavailable` (provedor não configurado).
 - **Completar cadastro**: no primeiro acesso pelo GitHub/Google faltam nascimento e endereço (`needsProfile: true`). O layout interno (`_app`) leva o usuário para `/completar-cadastro?redirect=<página>`, que mostra o e-mail, o nome vindo do provedor (editável), a data de nascimento e o CEP (ViaCEP), com as mesmas regras do cadastro, e salva com `PATCH /users/me`. Depois segue para a página pedida. A tela também tem **Sair**.
-- Uma conta só com GitHub/Google **não tem senha**: o login por e-mail/senha responde `401`, `POST /auth/password` responde `404` e a tela **Alterar senha** explica isso em vez de mostrar o formulário.
+- Uma conta só com GitHub/Google **não tem senha**: o login por e-mail/senha responde `401`, `POST /auth/password` responde `404` e a tela **Alterar senha** explica isso em vez de mostrar o formulário. Para criar uma senha, use **Esqueci minha senha** (veja [Recuperação de senha](#recuperação-de-senha)).
 - O `?redirect=` é saneado na API e no web (só caminhos internos; `//site.com` vira `/`).
 
 #### Configurando os provedores
@@ -295,6 +299,19 @@ Não existe rota para ler ou alterar outro usuário: o perfil é sempre o do tok
 - A nova senha é gravada com argon2id e **todas as sessões do usuário são revogadas**; a resposta abre uma nova sessão para quem fez a troca. Nos outros aparelhos o refresh deixa de funcionar e o token de acesso só vale até expirar (no máximo 15 min).
 - A senha atual errada responde `403` (e não `401`) para o cliente não confundir com sessão expirada e tentar um refresh.
 - No web, a tela **Alterar senha** (`/settings/password`) pede senha atual, nova senha e repetição da nova; valida no navegador (mín. 8 caracteres, repetição igual, diferente da atual), mostra "Senha atual incorreta." no próprio campo e limpa os campos após cada resposta da API.
+- Trocar a senha também invalida um link de **Esqueci minha senha** ainda não usado.
+
+### Recuperação de senha
+
+| Método | Rota | Corpo | Resposta |
+| --- | --- | --- | --- |
+| `POST` | `/auth/password/forgot` | `{ email }` | Sempre `204`, para não revelar quais e-mails existem. E-mail desconhecido: nada é enviado; **pré-cadastro** de convite: recebe o link para concluir o cadastro (`/ativar-conta`); qualquer outra conta: link de redefinição. `400` em e-mail inválido; `429` após 5 pedidos/min |
+| `GET` | `/auth/password/reset?token=` | — | `200` com `{ email, name }` (não usa o link); `404` `Invalid or expired password reset link` |
+| `POST` | `/auth/password/reset` | `{ token, password }` | `200` com o usuário e cookies de sessão novos; `400` em corpo inválido (senha fora de 8–128 caracteres, campos fora da lista); `404` para link inválido, expirado, já usado ou substituído; `429` após 5 tentativas/min |
+
+- O link (`<WEB_URL>/redefinir-senha?token=`) é um segredo aleatório de 32 bytes; o banco (tabela `PasswordResetToken`) guarda só o SHA-256. Vale por `PASSWORD_RESET_TOKEN_TTL_MINUTES` (60 min), serve **uma vez** e cada pedido novo invalida o link anterior. Pedir o link não muda nada na conta: a senha antiga continua valendo até o link ser usado.
+- Ao redefinir: a nova senha é gravada com argon2id, **todas as sessões do usuário são revogadas**, quem usou o link entra logado e a conta recebe o e-mail "Sua senha do Budget foi alterada". Como o link prova o e-mail, uma conta ainda **não ativada** passa a ativada (e seus links de ativação deixam de valer), e uma conta só com GitHub/Google passa a ter senha.
+- No web: o login tem o link **Esqueci minha senha** (leva o e-mail já digitado) para `/esqueci-senha`, que mostra sempre a mesma mensagem após o envio. `/redefinir-senha` confere o link ao abrir (sem usá-lo), mostra o e-mail da conta e pede a nova senha e a repetição; o link só é usado ao enviar o formulário. Link inválido ou expirado oferece **Pedir novo link**.
 
 ### Proxy reverso e cookies
 

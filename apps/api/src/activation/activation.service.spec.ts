@@ -21,6 +21,7 @@ describe('ActivationService', () => {
   };
   const service = new ActivationService(prisma as unknown as PrismaService, {
     ttlHours: 72,
+    resetTtlMinutes: 60,
     webUrl: 'http://web.test',
   });
 

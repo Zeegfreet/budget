@@ -8,6 +8,7 @@ import {
   activationConfigFactory,
 } from './activation.config.js';
 import { ActivationService } from './activation.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 
 @Module({
   imports: [PrismaModule, MailModule],
@@ -18,8 +19,9 @@ import { ActivationService } from './activation.service.js';
       useFactory: activationConfigFactory,
     },
     ActivationService,
+    PasswordResetService,
     AccountMailer,
   ],
-  exports: [ActivationService, AccountMailer],
+  exports: [ActivationService, PasswordResetService, AccountMailer],
 })
 export class ActivationModule {}

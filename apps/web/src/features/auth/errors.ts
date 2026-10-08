@@ -122,3 +122,40 @@ export function getResendErrorMessage(error: unknown) {
   }
   return defaultResendErrorMessage
 }
+
+export const passwordResetSentMessage =
+  'Se houver uma conta com este e-mail, enviamos um link para redefinir a senha.'
+export const defaultForgotPasswordErrorMessage = 'Não foi possível enviar o e-mail. Tente novamente.'
+
+/** Message for a failed "Esqueci minha senha" request. */
+export function getForgotPasswordErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 400) return 'Informe um e-mail válido.'
+    if (error.status === 429) return tooManyAttemptsMessage
+    if (error.status === 0 || error.status === 404 || error.status >= 500) {
+      return serverUnavailableMessage
+    }
+  }
+  return defaultForgotPasswordErrorMessage
+}
+
+export const invalidPasswordResetLinkMessage =
+  'Este link de redefinição é inválido ou expirou. Peça um novo.'
+export const invalidPasswordMessage = 'Confira a nova senha.'
+export const defaultPasswordResetErrorMessage = 'Não foi possível redefinir a senha. Tente novamente.'
+
+/** Whether a reset link was refused for being invalid, expired or already used. */
+export function isInvalidPasswordResetLink(error: unknown) {
+  return error instanceof ApiError && error.status === 404
+}
+
+/** Message for a failed reset (link check or the new password). */
+export function getPasswordResetErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return invalidPasswordResetLinkMessage
+    if (error.status === 400) return invalidPasswordMessage
+    if (error.status === 429) return tooManyAttemptsMessage
+    if (error.status === 0 || error.status >= 500) return serverUnavailableMessage
+  }
+  return defaultPasswordResetErrorMessage
+}

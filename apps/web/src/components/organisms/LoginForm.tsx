@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { FormAlert, Spinner } from '@/components/atoms'
 import { FormField, PasswordField, ResendActivation } from '@/components/molecules'
 import { Button } from '@/components/ui/button'
@@ -84,6 +84,13 @@ export function LoginForm({ redirect }: { redirect?: string }) {
           onChange={(e) => setPassword(e.target.value)}
           error={fieldErrors.password}
         />
+        <Link
+          to="/esqueci-senha"
+          search={email.trim() ? { email: email.trim() } : {}}
+          className="-mt-2 self-end text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Esqueci minha senha
+        </Link>
         <Button type="submit" size="lg" className="h-10 w-full" disabled={mutation.isPending}>
           {mutation.isPending && <Spinner aria-label="Entrando" />}
           Entrar

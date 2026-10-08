@@ -23,6 +23,7 @@ describe('validateEnv', () => {
       SMTP_USER: 'budget',
       SMTP_PASS: 'smtp-secret',
       ACTIVATION_TOKEN_TTL_HOURS: '48',
+      PASSWORD_RESET_TOKEN_TTL_MINUTES: '30',
     };
     expect(validateEnv(env)).toEqual(env);
   });
@@ -42,6 +43,7 @@ describe('validateEnv', () => {
     ['SMTP_PORT', 'smtp'],
     ['SMTP_SECURE', '1'],
     ['ACTIVATION_TOKEN_TTL_HOURS', '-1'],
+    ['PASSWORD_RESET_TOKEN_TTL_MINUTES', '0'],
   ])('rejects %s=%s', (key, value) => {
     expect(() => validateEnv({ ...valid, [key]: value })).toThrow(key);
   });

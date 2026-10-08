@@ -22,6 +22,7 @@ vi.mock('@/features/auth/api', () => ({
   login: vi.fn(),
   logout: vi.fn(),
   resendActivation: vi.fn(),
+  requestPasswordReset: vi.fn(),
 }))
 
 const fetchMeMock = vi.mocked(fetchMe)
@@ -64,7 +65,7 @@ describe('Login route (/login)', () => {
         'href',
         '/api/auth/oauth/google',
       )
-      expect(screen.getAllByRole('link')).toHaveLength(3)
+      expect(screen.getAllByRole('link')).toHaveLength(4)
       expect(screen.queryByText(/Microsoft/)).not.toBeInTheDocument()
     })
 
@@ -84,6 +85,21 @@ describe('Login route (/login)', () => {
         'href',
         '/signup?redirect=%2Fgroups',
       )
+    })
+
+    it('links to the password recovery, carrying the typed e-mail', async () => {
+      const { router } = await renderRoute('/login')
+      const forgot = () => screen.getByRole('link', { name: 'Esqueci minha senha' })
+
+      expect(forgot()).toHaveAttribute('href', '/esqueci-senha')
+      await userEvent.type(screen.getByLabelText('E-mail'), ' ana@example.com ')
+      expect(forgot()).toHaveAttribute('href', '/esqueci-senha?email=ana%40example.com')
+
+      await userEvent.click(forgot())
+
+      expect(await screen.findByRole('heading', { name: 'Esqueci minha senha' })).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/esqueci-senha')
+      expect(screen.getByLabelText('E-mail')).toHaveValue('ana@example.com')
     })
 
     it('toggles password visibility', async () => {

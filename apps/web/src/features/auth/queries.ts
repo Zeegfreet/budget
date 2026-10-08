@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { fetchActivation, fetchMe } from './api'
+import { fetchActivation, fetchMe, fetchPasswordReset } from './api'
 
 export const authQueries = {
   /** Current session. Rejects with `ApiError` 401 when signed out. */
@@ -18,6 +18,17 @@ export const activationQueries = {
     queryOptions({
       queryKey: ['activation', token],
       queryFn: () => fetchActivation(token),
+      retry: false,
+      staleTime: Infinity,
+    }),
+}
+
+export const passwordResetQueries = {
+  /** The account behind a password reset link (no side effects; the link stays valid). */
+  byToken: (token: string) =>
+    queryOptions({
+      queryKey: ['password-reset', token],
+      queryFn: () => fetchPasswordReset(token),
       retry: false,
       staleTime: Infinity,
     }),

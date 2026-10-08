@@ -4,6 +4,7 @@ const positiveIntegers = [
   'REFRESH_TOKEN_TTL_DAYS',
   'SMTP_PORT',
   'ACTIVATION_TOKEN_TTL_HOURS',
+  'PASSWORD_RESET_TOKEN_TTL_MINUTES',
 ] as const;
 const booleans = ['COOKIE_SECURE', 'SMTP_SECURE'] as const;
 /** Optional credentials that only make sense together */
