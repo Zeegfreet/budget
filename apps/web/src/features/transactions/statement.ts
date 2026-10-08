@@ -5,16 +5,22 @@ import type { Transaction } from './types'
 export interface StatementShare {
   group: { id: number; name: string }
   item: GroupStatementItem & { category: NonNullable<GroupStatementItem['category']> }
+  /** Where the user pays their expense shares of the group (`null` for incomes or when unset) */
+  paymentMethod: { id: number; name: string } | null
 }
+
+/** One row of a type: a personal transaction or a linked group share */
+export type StatementItem =
+  | { kind: 'transaction'; transaction: Transaction }
+  | { kind: 'share'; share: StatementShare }
 
 /** The transactions of one type ("Despesas Básicas") within a section */
 export interface StatementGroup {
   id: number
   name: string
   active: boolean
-  transactions: Transaction[]
-  /** The user's group shares linked to categories of this type (read-only here) */
-  shares: StatementShare[]
+  /** Its transactions, then the user's group shares linked to its categories (read-only here) */
+  items: StatementItem[]
   /** Subtotal: realized amounts, or planned while pending */
   effectiveCents: number
 }
@@ -59,17 +65,17 @@ function groupByType(items: Transaction[], shares: StatementShare[], groupOrder:
   const groups = new Map<number, StatementGroup>()
   const of = ({ id, name, active }: { id: number; name: string; active: boolean }) => {
     let group = groups.get(id)
-    if (!group) groups.set(id, (group = { id, name, active, transactions: [], shares: [], effectiveCents: 0 }))
+    if (!group) groups.set(id, (group = { id, name, active, items: [], effectiveCents: 0 }))
     return group
   }
   for (const t of items) {
     const group = of(t.category.group)
-    group.transactions.push(t)
+    group.items.push({ kind: 'transaction', transaction: t })
     group.effectiveCents += effectiveCents(t)
   }
   for (const share of shares) {
     const group = of(share.item.category.group)
-    group.shares.push(share)
+    group.items.push({ kind: 'share', share })
     group.effectiveCents += share.item.shareCents
   }
   const rank = (id: number) => {
@@ -82,8 +88,18 @@ function groupByType(items: Transaction[], shares: StatementShare[], groupOrder:
 
 /** The shares of `statements` that count in the budget (linked to a category) */
 export function linkedShares(statements: GroupStatement[]): StatementShare[] {
-  return statements.flatMap(({ group, items }) =>
-    items.flatMap((item) => (item.category ? [{ group, item: { ...item, category: item.category } }] : [])),
+  return statements.flatMap(({ group, link, items }) =>
+    items.flatMap((item) => {
+      if (!item.category) return []
+      const method = item.kind === 'EXPENSE' ? link.paymentMethod : null
+      return [
+        {
+          group,
+          item: { ...item, category: item.category },
+          paymentMethod: method && { id: method.id, name: method.name },
+        },
+      ]
+    }),
   )
 }
 
@@ -129,6 +145,14 @@ export function buildStatement(
   const [income, expense] = sections
   return { sections, balanceCents: income.effectiveCents - expense.effectiveCents }
 }
+
+/** Whether the item is done: a realized transaction or a share the user settled */
+export const isItemDone = (item: StatementItem) =>
+  item.kind === 'transaction' ? item.transaction.realizedCents !== null : item.share.item.paid
+
+/** What the item counts in the balance */
+export const itemCents = (item: StatementItem) =>
+  item.kind === 'transaction' ? effectiveCents(item.transaction) : item.share.item.shareCents
 
 /** Whether a change may also apply to later occurrences of its series */
 export const hasFollowing = (t: Transaction) => t.series !== null && t.series.index < t.series.count

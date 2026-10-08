@@ -8,7 +8,19 @@ import {
   salaryTransaction,
 } from '@/test/transactions'
 import { makeGroupStatement, makeStatementItem } from '@/test/budget'
-import { buildStatement, effectiveCents, hasFollowing, linkedShares, transactionTitle } from './statement'
+import {
+  buildStatement,
+  effectiveCents,
+  hasFollowing,
+  isItemDone,
+  itemCents,
+  linkedShares,
+  transactionTitle,
+  type StatementItem,
+} from './statement'
+
+const itemKey = (item: StatementItem) =>
+  item.kind === 'transaction' ? `t${item.transaction.id}` : `s${item.share.item.transactionId}`
 
 describe('buildStatement', () => {
   it('adds the linked group shares to their category’s type and to the totals', () => {
@@ -30,8 +42,8 @@ describe('buildStatement', () => {
     })
     const [basics] = expense.groups
     expect(basics).toMatchObject({ name: 'Despesas Básicas', effectiveCents: 360000 })
-    expect(basics.transactions.map((t) => t.id)).toEqual([2, 3])
-    expect(basics.shares.map((s) => [s.group.name, s.item.description])).toEqual([
+    expect(basics.items.map(itemKey)).toEqual(['t2', 't3', 's10', 's11'])
+    expect(expense.shares.map((s) => [s.group.name, s.item.description])).toEqual([
       ['República', 'Aluguel'],
       ['República', 'Água'],
     ])
@@ -41,6 +53,21 @@ describe('buildStatement', () => {
   it('keeps only the linked shares', () => {
     expect(linkedShares([makeGroupStatement()]).map((s) => s.item.transactionId)).toEqual([10])
     expect(linkedShares([])).toEqual([])
+  })
+
+  it('carries the payment method of the expense shares only', () => {
+    const card = { id: 5, name: 'Nubank', dueDay: 15 }
+    const statement = makeGroupStatement({
+      link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: { id: 4, name: 'Salário' }, paymentMethod: card },
+      items: [
+        makeStatementItem(10),
+        makeStatementItem(12, { kind: 'INCOME', category: categories.salary }),
+      ],
+    })
+    expect(linkedShares([statement]).map((s) => [s.item.transactionId, s.paymentMethod])).toEqual([
+      [10, { id: 5, name: 'Nubank' }],
+      [12, null],
+    ])
   })
 
   it('splits by kind, keeping the order, and totals planned, realized and pending', () => {
@@ -66,11 +93,11 @@ describe('buildStatement', () => {
     const statement = buildStatement([cinema, ...octoberTransactions], [10, 20, 30])
 
     const groups = (i: number) =>
-      statement.sections[i].groups.map((g) => [g.name, g.transactions.map((t) => t.id), g.effectiveCents])
-    expect(groups(0)).toEqual([['Salário', [1], 500000]])
+      statement.sections[i].groups.map((g) => [g.name, g.items.map(itemKey), g.effectiveCents])
+    expect(groups(0)).toEqual([['Salário', ['t1'], 500000]])
     expect(groups(1)).toEqual([
-      ['Despesas Básicas', [2, 3], 255000],
-      ['Custos de Vida', [4], 25000],
+      ['Despesas Básicas', ['t2', 't3'], 255000],
+      ['Custos de Vida', ['t4'], 25000],
     ])
     // The flat list keeps the server order
     expect(statement.sections[1].transactions.map((t) => t.id)).toEqual([4, 2, 3])
@@ -104,6 +131,18 @@ describe('transaction helpers', () => {
   it('uses the realized amount when there is one', () => {
     expect(effectiveCents(foodTransaction)).toBe(75000)
     expect(effectiveCents(rentTransaction)).toBe(180000)
+  })
+
+  it('tells whether an item is done and what it counts', () => {
+    const [paidShare] = linkedShares([makeGroupStatement()])
+    const unsettled = { ...paidShare, item: { ...paidShare.item, paid: false, groupPaid: true } }
+    expect(isItemDone({ kind: 'transaction', transaction: foodTransaction })).toBe(true)
+    expect(isItemDone({ kind: 'transaction', transaction: rentTransaction })).toBe(false)
+    expect(isItemDone({ kind: 'share', share: paidShare })).toBe(true)
+    // Someone else paid, but the user still owes their share
+    expect(isItemDone({ kind: 'share', share: unsettled })).toBe(false)
+    expect(itemCents({ kind: 'transaction', transaction: foodTransaction })).toBe(75000)
+    expect(itemCents({ kind: 'share', share: paidShare })).toBe(100000)
   })
 
   it('tells whether later occurrences exist', () => {
