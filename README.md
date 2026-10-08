@@ -57,7 +57,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
-| Docker / deploy em containers | ✅ | ✅ | Imagem única [`zeegfreet/budget`](https://hub.docker.com/r/zeegfreet/budget) (amd64 + arm64): a API sob `/api` serve também o build do web e aplica as migrations ao subir. Build com `scripts/docker-build.sh`, publicação no Docker Hub por tag `v*` e exemplo com Traefik + Let's Encrypt em `docker-compose.prod.yml`. Veja [Deploy](#deploy) |
+| Docker / deploy em containers | ✅ | ✅ | Imagem única [`zeegfreet/budget`](https://hub.docker.com/r/zeegfreet/budget) (amd64 + arm64): a API sob `/api` serve também o build do web e aplica as migrations ao subir. Build com `scripts/docker-build.sh`, publicação no Docker Hub pelo CI a cada merge na `main` (`latest`) e em tags `v*` (versões fixas) e exemplo com Traefik + Let's Encrypt em `docker-compose.prod.yml`. Veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 
@@ -115,7 +115,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ├── docker-compose.yml       # PostgreSQL de desenvolvimento
 ├── docker-compose.prod.yml  # exemplo de produção (Traefik + app + PostgreSQL)
 ├── plans/                   # planos de implementação
-└── .github/workflows/       # ci.yml (CI) e docker.yml (publicação da imagem)
+└── .github/workflows/       # ci.yml (CI e publicação da imagem)
 ```
 
 ## Rodando localmente
@@ -573,12 +573,21 @@ O workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) roda em todo pus
 - **api**: instala dependências → `prisma generate` → lint → build → testes unitários → `prisma migrate deploy` no banco `budget_test` de um serviço PostgreSQL 17 do job → testes e2e (com `JWT_ACCESS_SECRET` de teste definido no workflow)
 - **web**: instala dependências → gera a árvore de rotas → lint → testes → build
 - **docker**: build da imagem (`linux/amd64`, sem push), para o `Dockerfile` não quebrar sem ninguém ver
+- **publish**: só depois de `api`, `web` e `docker` passarem, e só em push na `main` (merge de PR) ou de uma tag `v*`. Pull requests e branches de feature nunca publicam. Faz o build multi-arch (`linux/amd64` e `linux/arm64`) e envia para o Docker Hub:
 
-O workflow [.github/workflows/docker.yml](.github/workflows/docker.yml) publica a imagem no Docker Hub ao criar uma tag `v*` (ou manualmente, em **Actions → Docker → Run workflow**): build multi-arch (`linux/amd64` e `linux/arm64`) com as tags `1.2.3`, `1.2`, `latest` e `sha-<commit>`. Ele precisa dos secrets do repositório **`DOCKERHUB_USERNAME`** (`zeegfreet`) e **`DOCKERHUB_TOKEN`** (token criado em Docker Hub → Account settings → Personal access tokens, com permissão de escrita).
+| Evento | Tags publicadas |
+| --- | --- |
+| merge na `main` | `latest` e `sha-<commit>` |
+| tag `v1.2.3` | `1.2.3`, `1.2` e `sha-<commit>` (o `latest` não muda: ele sempre acompanha a `main`) |
+
+O job usa os secrets do repositório (Settings → Secrets and variables → Actions → **Repository secrets**; secrets de Codespaces ou de conta não valem para o Actions) **`DOCKERHUB_USERNAME`** (`zeegfreet`) e **`DOCKERHUB_TOKEN`** (token criado em Docker Hub → Account settings → Personal access tokens, com Read & Write).
+
+Para uma versão fixa (deploy e rollback), crie a tag **num commit da `main`** já mesclado:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0   # dispara a publicação de zeegfreet/budget:1.0.0, :1.0 e :latest
+git checkout main && git pull
+git tag v1.1.0
+git push origin v1.1.0   # publica zeegfreet/budget:1.1.0 e :1.1
 ```
 
 ## Deploy
@@ -606,10 +615,10 @@ A imagem é baseada em `node:24-bookworm-slim`, roda como o usuário `node` e j�
 ./scripts/docker-build.sh dev            # build local com a tag zeegfreet/budget:dev
 
 docker login                             # uma vez, com o usuário zeegfreet
-./scripts/docker-build.sh 1.0.0 --push   # amd64 + arm64, publica :1.0.0 e :latest
+./scripts/docker-build.sh 1.0.0 --push   # amd64 + arm64, publica só :1.0.0
 ```
 
-Sem `--push`, a imagem é carregada no Docker local (só a plataforma da máquina, pois imagens multi-plataforma não podem ser carregadas). Com `--push`, o script cria (uma vez) o builder `budget-builder` do buildx e publica as duas arquiteturas. `IMAGE` e `PLATFORMS` sobrescrevem os padrões. Na prática, prefira publicar pela tag `v*` (workflow acima).
+Sem `--push`, a imagem é carregada no Docker local (só a plataforma da máquina, pois imagens multi-plataforma não podem ser carregadas). Com `--push`, o script cria (uma vez) o builder `budget-builder` do buildx e publica as duas arquiteturas. `IMAGE` e `PLATFORMS` sobrescrevem os padrões. O script nunca publica o `latest` (ele vem sempre do CI na `main`); use o `--push` só para builds manuais ou emergências e, no dia a dia, publique pelo merge na `main` ou por uma tag `v*`.
 
 Para testar a imagem localmente contra o Postgres do `docker compose` e o Mailpit:
 
@@ -647,5 +656,5 @@ Também é possível rodar sem a imagem: `prisma generate`, `pnpm build` nos doi
 - [ ] `JWT_ACCESS_SECRET` forte e fora do repositório (`.env.prod` nunca vai para o Git); `TRUST_PROXY` definido
 - [ ] `WEB_URL` com o domínio real e os callbacks `https://<domínio>/api/auth/oauth/{github,google}/callback` cadastrados no GitHub e no Google; segredos OAuth fora do repositório
 - [ ] SMTP configurado (`SMTP_HOST`, credenciais, `MAIL_FROM` de um domínio com SPF/DKIM), pois os links dos e-mails usam `WEB_URL`
-- [ ] Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` cadastrados no GitHub para a publicação por tag
+- [ ] Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` cadastrados como **Repository secrets** do GitHub Actions para a publicação no merge da `main` e nas tags `v*`
 - [ ] Avaliar se o Swagger (`/api/docs`) deve ficar exposto em produção

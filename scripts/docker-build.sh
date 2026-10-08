@@ -5,8 +5,9 @@
 #
 # Without --push: builds for this machine's platform and loads it into the
 # local Docker (multi-platform images can't be loaded), tagged <version>.
-# With --push: builds linux/amd64 + linux/arm64 and pushes <version> and
-# latest to Docker Hub (run `docker login` first).
+# With --push: builds linux/amd64 + linux/arm64 and pushes only <version> to
+# Docker Hub (run `docker login` first). latest is published by the CI on
+# every merge to main; this is for manual/emergency builds.
 #
 # IMAGE (default zeegfreet/budget) and PLATFORMS override the defaults.
 set -euo pipefail
@@ -21,7 +22,7 @@ for arg in "$@"; do
   case "$arg" in
     --push) push=true ;;
     -h | --help)
-      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*)
@@ -45,11 +46,11 @@ if [ "$push" = true ]; then
   # The default docker driver can't build several platforms at once
   docker buildx inspect "$BUILDER" >/dev/null 2>&1 ||
     docker buildx create --name "$BUILDER" --driver docker-container >/dev/null
-  echo "Building and pushing $IMAGE:$version and $IMAGE:latest ($PLATFORMS)"
+  echo "Building and pushing $IMAGE:$version ($PLATFORMS)"
   docker buildx build --builder "$BUILDER" \
     --platform "$PLATFORMS" \
     "${labels[@]}" \
-    -t "$IMAGE:$version" -t "$IMAGE:latest" \
+    -t "$IMAGE:$version" \
     --push .
 else
   echo "Building $IMAGE:$version for the local platform"
