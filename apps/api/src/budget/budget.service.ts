@@ -75,8 +75,9 @@ export class BudgetService {
   }
 
   /**
-   * Planned amount and number of transactions of each non-empty cell in the
-   * range, plus the user's shares of the groups linked to the category.
+   * Effective amount (realized, or planned while pending) and number of
+   * transactions of each non-empty cell in the range, plus the user's shares
+   * of the groups linked to the category.
    */
   async entries(
     userId: number,
@@ -84,7 +85,7 @@ export class BudgetService {
     to: string,
   ): Promise<MonthlyEntryDto[]> {
     const range = monthRange(from, to);
-    const [cells, shares] = await Promise.all([
+    const [cells, realized, shares] = await Promise.all([
       this.prisma.transaction.groupBy({
         by: ['month', 'categoryId'],
         where: { userId, month: range },
@@ -92,17 +93,31 @@ export class BudgetService {
         _sum: { plannedCents: true },
         _count: { _all: true },
       }),
+      // The realized ones swap their planned amount for the realized one
+      this.prisma.transaction.groupBy({
+        by: ['month', 'categoryId'],
+        where: { userId, month: range, realizedCents: { not: null } },
+        orderBy: [{ month: 'asc' }, { categoryId: 'asc' }],
+        _sum: { plannedCents: true, realizedCents: true },
+      }),
       linkedShareCells(this.prisma, userId, range),
     ]);
     const key = (c: { categoryId: number; month: string }) =>
       `${c.categoryId}:${c.month}`;
+    const realizedDelta = new Map(
+      realized.map((r) => [
+        key(r),
+        (r._sum.realizedCents ?? 0) - (r._sum.plannedCents ?? 0),
+      ]),
+    );
     const entries = new Map<string, MonthlyEntryDto>(
       cells.map((c) => [
         key(c),
         {
           categoryId: c.categoryId,
           month: c.month,
-          amountCents: c._sum.plannedCents ?? 0,
+          amountCents:
+            (c._sum.plannedCents ?? 0) + (realizedDelta.get(key(c)) ?? 0),
           count: c._count._all,
           groupCents: 0,
         },

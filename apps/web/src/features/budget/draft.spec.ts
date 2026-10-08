@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeLine } from '@/test/budget'
-import { cellKey, changedCells, draftReducer, isChanged, savedValues, valueOf, type Edits } from './draft'
+import { cellKey, changedCells, draftReducer, isChanged, realizedKeys, savedValues, valueOf, type Edits } from './draft'
 
 const saved = savedValues([
   makeLine(1, 10, [['2026-10', 1000]]),
@@ -14,6 +14,20 @@ describe('budget draft', () => {
       ['1:2026-10', 1000],
       ['2:2026-10', 500],
     ])
+  })
+
+  it('reads the realized amount of realized months', () => {
+    const lines = [
+      makeLine(1, 10, [
+        ['2026-10', 1000, 1250],
+        ['2026-11', 1000],
+      ]),
+    ]
+    expect([...savedValues(lines)]).toEqual([
+      ['1:2026-10', 1250],
+      ['1:2026-11', 1000],
+    ])
+    expect([...realizedKeys(lines)]).toEqual(['1:2026-10'])
   })
 
   it('reads edits over saved values, defaulting to zero', () => {

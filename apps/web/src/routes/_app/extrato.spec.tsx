@@ -11,6 +11,7 @@ import {
   fetchSummary,
   updateCategory,
   updateGroup,
+  updateInitialBalance,
 } from '@/features/budget/api'
 import {
   createTransaction,
@@ -22,7 +23,7 @@ import {
   updateTransaction,
 } from '@/features/transactions/api'
 import { ApiError } from '@/lib/api/client'
-import { budgetGroups, stubBudgetApi } from '@/test/budget'
+import { budgetGroups, budgetSummary, stubBudgetApi } from '@/test/budget'
 import { renderRoute } from '@/test/render'
 import { categories, makeTransaction, octoberTransactions, stubTransactionsApi } from '@/test/transactions'
 
@@ -564,6 +565,40 @@ describe('Statement route (/extrato)', () => {
       expect(dialog).toHaveTextContent('outubro de 2026')
       expect(dialog).toHaveTextContent('1 lançamento no total')
       expect(earlier).toBeDisabled()
+    })
+  })
+
+  describe('initial balance', () => {
+    it('adjusts the initial balance and refreshes the opening balance', async () => {
+      const toastSuccess = vi.spyOn(toast, 'success')
+      await openStatement()
+      expect(summaryItem('Saldo de abertura')).toHaveTextContent('2.500,00')
+      vi.mocked(fetchSummary).mockResolvedValue({ ...budgetSummary, initialBalanceCents: 300000, openingBalanceCents: 450000 })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Saldo inicial' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Saldo inicial' })
+      const input = within(dialog).getByRole('textbox', { name: 'Valor (R$)' })
+      expect(input).toHaveValue('1.000,00')
+      await userEvent.clear(input)
+      await userEvent.type(input, '3.000')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(vi.mocked(updateInitialBalance)).toHaveBeenCalledWith(300000)
+      await waitFor(() => expect(summaryItem('Saldo de abertura')).toHaveTextContent('4.500,00'))
+      expect(toastSuccess).toHaveBeenCalledWith('Saldo inicial salvo')
+    })
+
+    it('keeps the dialog open with the API error', async () => {
+      vi.mocked(updateInitialBalance).mockRejectedValue(new ApiError(400, ['amountCents must be an integer number']))
+      await openStatement()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Saldo inicial' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Saldo inicial' })
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('amountCents must be an integer number')
+      expect(screen.getByRole('dialog', { name: 'Saldo inicial' })).toBeInTheDocument()
     })
   })
 

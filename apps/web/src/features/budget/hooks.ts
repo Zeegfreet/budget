@@ -9,8 +9,9 @@ import {
   deleteGroup,
   updateCategory,
   updateGroup,
+  updateInitialBalance,
 } from './api'
-import { cellKey, changedCells, draftReducer, isChanged, savedValues, valueOf, type Edits } from './draft'
+import { cellKey, changedCells, draftReducer, isChanged, realizedKeys, savedValues, valueOf, type Edits } from './draft'
 import { categoryErrorMessage } from './errors'
 import { budgetQueries } from './queries'
 import type {
@@ -29,6 +30,7 @@ import type {
  */
 export function useBudgetDraft(lines: BudgetLine[], entries: MonthlyEntry[]) {
   const saved = useMemo(() => savedValues(lines), [lines])
+  const realized = useMemo(() => realizedKeys(lines), [lines])
   const shares = useMemo(
     () => new Map(entries.filter((e) => e.groupCents > 0).map((e) => [cellKey(e.categoryId, e.month), e.groupCents])),
     [entries],
@@ -43,6 +45,8 @@ export function useBudgetDraft(lines: BudgetLine[], entries: MonthlyEntry[]) {
       (anchorId: number, month: Month) => valueOf(saved, edits, cellKey(anchorId, month)),
       [saved, edits],
     ),
+    /** The row's transaction in the month is realized (shown, not editable) */
+    isRealized: useCallback((anchorId: number, month: Month) => realized.has(cellKey(anchorId, month)), [realized]),
     /** The saved value, ignoring edits */
     savedValue: useCallback((anchorId: number, month: Month) => saved.get(cellKey(anchorId, month)) ?? 0, [saved]),
     isChanged: useCallback(
@@ -54,6 +58,19 @@ export function useBudgetDraft(lines: BudgetLine[], entries: MonthlyEntry[]) {
       (categoryId: number, month: Month) => shares.get(cellKey(categoryId, month)) ?? 0,
       [shares],
     ),
+  }
+}
+
+/**
+ * Saves the initial balance; it opens every month, so every summary is
+ * refreshed. Rejects with the API error for the form to show it.
+ */
+export function useInitialBalance() {
+  const queryClient = useQueryClient()
+  return async (cents: number) => {
+    await updateInitialBalance(cents)
+    await queryClient.invalidateQueries({ queryKey: [...budgetQueries.all(), 'summary'] })
+    toast.success('Saldo inicial salvo')
   }
 }
 

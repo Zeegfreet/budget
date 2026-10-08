@@ -322,12 +322,12 @@ describe('Transactions (e2e)', () => {
         incomeCents: 500000,
         expenseCents: 12500,
       });
-      // The grid keeps the planned amount
+      // The grid follows the realized amount too
       const grid = await ana.get('/budget/entries?from=2026-10&to=2026-10');
       expect(grid.body).toContainEqual({
         categoryId: ids.housing,
         month: '2026-10',
-        amountCents: 10000,
+        amountCents: 12500,
         count: 1,
         groupCents: 0,
       });

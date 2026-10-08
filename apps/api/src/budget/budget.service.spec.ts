@@ -103,14 +103,20 @@ describe('BudgetService', () => {
 
   describe('entries', () => {
     it('sums the planned amounts per cell of the user’s range', async () => {
-      prisma.transaction.groupBy.mockResolvedValue([
-        {
-          categoryId: 1,
-          month: '2026-10',
-          _sum: { plannedCents: 300 },
-          _count: { _all: 2 },
-        },
-      ]);
+      prisma.transaction.groupBy.mockImplementation(({ where }) =>
+        Promise.resolve(
+          where.realizedCents
+            ? []
+            : [
+                {
+                  categoryId: 1,
+                  month: '2026-10',
+                  _sum: { plannedCents: 300 },
+                  _count: { _all: 2 },
+                },
+              ],
+        ),
+      );
 
       await expect(service.entries(7, '2026-10', '2027-09')).resolves.toEqual([
         {
@@ -128,15 +134,76 @@ describe('BudgetService', () => {
       );
     });
 
-    it('adds the linked group shares to the cells', async () => {
-      prisma.transaction.groupBy.mockResolvedValue([
+    it('uses the realized amount of the realized transactions', async () => {
+      prisma.transaction.groupBy.mockImplementation(({ where }) =>
+        Promise.resolve(
+          where.realizedCents
+            ? [
+                {
+                  categoryId: 1,
+                  month: '2026-10',
+                  _sum: { plannedCents: 200, realizedCents: 250 },
+                },
+              ]
+            : [
+                {
+                  categoryId: 1,
+                  month: '2026-10',
+                  _sum: { plannedCents: 300 },
+                  _count: { _all: 2 },
+                },
+                {
+                  categoryId: 2,
+                  month: '2026-10',
+                  _sum: { plannedCents: 500 },
+                  _count: { _all: 1 },
+                },
+              ],
+        ),
+      );
+
+      await expect(service.entries(7, '2026-10', '2027-09')).resolves.toEqual([
         {
           categoryId: 1,
-          month: '2026-11',
-          _sum: { plannedCents: 300 },
-          _count: { _all: 1 },
+          month: '2026-10',
+          amountCents: 350,
+          count: 2,
+          groupCents: 0,
+        },
+        {
+          categoryId: 2,
+          month: '2026-10',
+          amountCents: 500,
+          count: 1,
+          groupCents: 0,
         },
       ]);
+      expect(prisma.transaction.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: 7,
+            month: { gte: '2026-10', lte: '2027-09' },
+            realizedCents: { not: null },
+          },
+        }),
+      );
+    });
+
+    it('adds the linked group shares to the cells', async () => {
+      prisma.transaction.groupBy.mockImplementation(({ where }) =>
+        Promise.resolve(
+          where.realizedCents
+            ? []
+            : [
+                {
+                  categoryId: 1,
+                  month: '2026-11',
+                  _sum: { plannedCents: 300 },
+                  _count: { _all: 1 },
+                },
+              ],
+        ),
+      );
       const link = { expenseCategoryId: 1, incomeCategoryId: null };
       prisma.groupTransactionShare.findMany.mockResolvedValue([
         {

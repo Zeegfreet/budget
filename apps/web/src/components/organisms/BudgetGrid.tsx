@@ -1,4 +1,5 @@
 import {
+  CheckIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
   EyeIcon,
@@ -44,6 +45,8 @@ interface BudgetGridProps {
   showInactive: boolean
   /** A launch row's month differs from the saved value */
   isChanged: (anchorId: number, month: Month) => boolean
+  /** A launch row's month is realized: it shows the realized amount, read-only (edited in the statement) */
+  isRealized: (anchorId: number, month: Month) => boolean
   onChange: (anchorId: number, month: Month, cents: number) => void
   onFill: (anchorId: number, month: Month, scope: FillScope) => void
   onAction: (action: GridAction) => void
@@ -144,7 +147,16 @@ function AddRow({ text, ariaLabel, indent, months, onClick }: AddRowProps) {
  * recurring series or plain launch); categories show their sums, group shares
  * included. Every level has a menu (hover "⋯" or right click).
  */
-export function BudgetGrid({ table, months, showInactive, isChanged, onChange, onFill, onAction }: BudgetGridProps) {
+export function BudgetGrid({
+  table,
+  months,
+  showInactive,
+  isChanged,
+  isRealized,
+  onChange,
+  onFill,
+  onAction,
+}: BudgetGridProps) {
   // Sections and types start open, categories closed
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -231,28 +243,43 @@ export function BudgetGrid({ table, months, showInactive, isChanged, onChange, o
             </div>
           </RowActions>
         </TableHead>
-        {months.map((month, col) => (
-          <TableCell
-            key={month}
-            className={cn(category.editable ? 'p-0' : 'px-3 text-right', col === 0 && 'bg-primary/5')}
-          >
-            {category.editable ? (
-              <BudgetCell
-                label={`${line.label} em ${formatMonthLong(month)}`}
-                cents={line.values[col]}
-                changed={isChanged(anchorId, month)}
-                row={rowIndex}
-                col={col}
-                canFillWindow={month < lastMonth}
-                canFillYear={month < endOfYear(month)}
-                onChange={(cents) => onChange(anchorId, month, cents)}
-                onFill={(scope) => onFill(anchorId, month, scope)}
-              />
-            ) : (
-              <MoneyText cents={line.values[col]} />
-            )}
-          </TableCell>
-        ))}
+        {months.map((month, col) => {
+          const realized = isRealized(anchorId, month)
+          const editable = category.editable && !realized
+          return (
+            <TableCell
+              key={month}
+              className={cn(editable ? 'p-0' : 'px-3 text-right', col === 0 && 'bg-primary/5')}
+            >
+              {realized ? (
+                <Link
+                  to="/extrato"
+                  search={{ month }}
+                  aria-label={`${line.label} em ${formatMonthLong(month)}, realizado, ver no extrato`}
+                  title="Realizado — altere no Extrato"
+                  className="inline-flex items-center justify-end gap-1 underline decoration-dotted underline-offset-4 hover:text-primary"
+                >
+                  <CheckIcon aria-hidden className="size-3.5 text-success" />
+                  <MoneyText cents={line.values[col]} />
+                </Link>
+              ) : editable ? (
+                <BudgetCell
+                  label={`${line.label} em ${formatMonthLong(month)}`}
+                  cents={line.values[col]}
+                  changed={isChanged(anchorId, month)}
+                  row={rowIndex}
+                  col={col}
+                  canFillWindow={month < lastMonth}
+                  canFillYear={month < endOfYear(month)}
+                  onChange={(cents) => onChange(anchorId, month, cents)}
+                  onFill={(scope) => onFill(anchorId, month, scope)}
+                />
+              ) : (
+                <MoneyText cents={line.values[col]} />
+              )}
+            </TableCell>
+          )
+        })}
         <TableCell className={TOTAL}>
           <MoneyText cents={line.total} />
         </TableCell>

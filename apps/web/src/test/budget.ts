@@ -41,13 +41,14 @@ export const budgetGroups: CategoryGroup[] = [
 ]
 
 /**
- * A launch row of the grid: `cells` maps months to planned amounts; each
- * month's transaction id is `anchorId` plus its position.
+ * A launch row of the grid: `cells` maps months to planned amounts (and the
+ * realized one, when realized); each month's transaction id is `anchorId`
+ * plus its position.
  */
 export const makeLine = (
   anchorId: number,
   categoryId: number,
-  cells: [Month, number][],
+  cells: [Month, number, number?][],
   extra: Partial<Omit<BudgetLine, 'anchorId' | 'categoryId' | 'cells'>> = {},
 ): BudgetLine => ({
   anchorId,
@@ -55,11 +56,11 @@ export const makeLine = (
   description: null,
   dueDay: null,
   paymentMethod: null,
-  cells: cells.map(([month, plannedCents], i) => ({
+  cells: cells.map(([month, plannedCents, realizedCents = null], i) => ({
     month,
     transactionId: anchorId + i,
     plannedCents,
-    realizedCents: null,
+    realizedCents,
   })),
   ...extra,
 })
@@ -98,7 +99,8 @@ export function entriesOf(lines: BudgetLine[], shares: ShareCell[] = []): Monthl
   for (const line of lines) {
     for (const cell of line.cells) {
       const e = entry(line.categoryId, cell.month)
-      e.amountCents += cell.plannedCents
+      // The effective amount, like the API
+      e.amountCents += cell.realizedCents ?? cell.plannedCents
       e.count += 1
     }
   }

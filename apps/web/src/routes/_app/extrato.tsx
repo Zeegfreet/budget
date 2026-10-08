@@ -1,9 +1,9 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { PlusIcon, TagsIcon } from 'lucide-react'
+import { PlusIcon, TagsIcon, WalletIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { EmptyState, GroupLinkDialog, MonthSwitcher } from '@/components/molecules'
+import { EmptyState, GroupLinkDialog, InitialBalanceDialog, MonthSwitcher } from '@/components/molecules'
 import {
   BudgetDialogs,
   CategoryManager,
@@ -17,7 +17,7 @@ import {
   type TransactionDialog,
 } from '@/components/organisms'
 import { Button } from '@/components/ui/button'
-import { useCategoryActions, useCategoryToggle } from '@/features/budget/hooks'
+import { useCategoryActions, useCategoryToggle, useInitialBalance } from '@/features/budget/hooks'
 import { currentMonth, formatMonthLong } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
 import type { GroupStatement, Month } from '@/features/budget/types'
@@ -77,6 +77,8 @@ function StatementPage() {
   const linkMethods = usePaymentMethodOptions(month, linking !== null)
   const formMethods = usePaymentMethodOptions(month, dialog?.type === 'create' || dialog?.type === 'edit')
   const [managing, setManaging] = useState(false)
+  const [editingBalance, setEditingBalance] = useState(false)
+  const saveInitialBalance = useInitialBalance()
   const [categoryDialog, setCategoryDialog] = useState<BudgetDialog>(null)
   // No unsaved values on this page, so nothing to forget
   const categoryActions = useCategoryActions(() => {})
@@ -138,10 +140,16 @@ function StatementPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <MonthSwitcher month={month} onChange={(m) => navigate({ search: { month: m } })} />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="ghost" onClick={() => setManaging(true)}>
-              <TagsIcon />
-              Categorias
-            </Button>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <Button variant="ghost" onClick={() => setEditingBalance(true)}>
+                <WalletIcon />
+                Saldo inicial
+              </Button>
+              <Button variant="ghost" onClick={() => setManaging(true)}>
+                <TagsIcon />
+                Categorias
+              </Button>
+            </div>
             {newButtons}
           </div>
         </div>
@@ -162,6 +170,13 @@ function StatementPage() {
       {groupStatements.length > 0 && (
         <GroupStatementsCard statements={groupStatements} month={month} detailed onLink={setLinking} />
       )}
+
+      <InitialBalanceDialog
+        open={editingBalance}
+        onOpenChange={setEditingBalance}
+        initialBalanceCents={summary.initialBalanceCents}
+        onSubmit={saveInitialBalance}
+      />
 
       <CategoryManager open={managing} onOpenChange={setManaging} groups={groups} onAction={handleCategoryAction} />
       <BudgetDialogs dialog={categoryDialog} onClose={() => setCategoryDialog(null)} actions={categoryActions} />

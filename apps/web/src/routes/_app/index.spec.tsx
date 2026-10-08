@@ -11,6 +11,7 @@ import {
   updateInitialBalance,
 } from '@/features/budget/api'
 import { UNSAVED_CHANGES_MESSAGE } from '@/features/budget/hooks'
+import { fetchProfile } from '@/features/profile/api'
 import { createTransaction, deleteTransaction, updateTransaction } from '@/features/transactions/api'
 import { ApiError } from '@/lib/api/client'
 import { budgetLines, budgetSummary, entriesOf, makeLine, stubBudgetApi } from '@/test/budget'
@@ -22,6 +23,8 @@ vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout
 vi.mock('@/features/budget/api')
 vi.mock('@/features/transactions/api')
 vi.mock('@/features/payment-methods/api')
+// The account menu leads to the profile page
+vi.mock('@/features/profile/api')
 
 const fetchMeMock = vi.mocked(fetchMe)
 const logoutMock = vi.mocked(logout)
@@ -90,6 +93,15 @@ describe('Dashboard route (/)', () => {
     stubBudgetApi()
     stubTransactionsApi()
     stubPaymentMethodsApi()
+    vi.mocked(fetchProfile).mockResolvedValue({
+      id: 1,
+      email: 'ana@example.com',
+      name: 'Ana Souza',
+      birthDate: '1990-05-20',
+      cep: '01001000',
+      city: 'São Paulo',
+      state: 'SP',
+    })
   })
 
   afterEach(() => {
@@ -512,6 +524,59 @@ describe('Dashboard route (/)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }))
 
       await waitFor(() => expect(deleteTransaction).toHaveBeenCalledWith(101, 'FOLLOWING'))
+    })
+
+    it('shows the realized amount of a realized month, read-only, linking to the statement', async () => {
+      const [, ...others] = budgetLines
+      const rent = makeLine(
+        101,
+        1,
+        [
+          ['2026-10', 180000, 175000],
+          ['2026-11', 180000],
+        ],
+        { description: 'Aluguel', dueDay: 10 },
+      )
+      stubBudgetApi({ lines: [rent, ...others] })
+      const { router } = await openDashboard('Moradia')
+
+      // The realized 1.750,00 replaces the planned 1.800,00 in every total
+      expect(rowCells('Moradia').slice(0, 2)).toEqual(['R$ 1.750,00', 'R$ 1.800,00'])
+      expect(rowCells('Despesas')[0]).toBe('R$ 2.450,00')
+      expect(rowCells('Saldo do mês')[0]).toBe('R$ 2.550,00')
+      expect(rowCells('Aluguel').at(-1)).toBe('R$ 3.550,00')
+      expect(screen.queryByRole('textbox', { name: ALUGUEL_OUT })).not.toBeInTheDocument()
+      expect(cell('Aluguel em novembro de 2026')).toHaveValue('1.800,00')
+
+      await userEvent.click(screen.getByRole('link', { name: `${ALUGUEL_OUT}, realizado, ver no extrato` }))
+      await waitFor(() => expect(router.state.location.href).toBe('/extrato?month=2026-10'))
+    })
+
+    it('replicates over the following months but keeps the realized ones', async () => {
+      const [, ...others] = budgetLines
+      const rent = makeLine(
+        101,
+        1,
+        [
+          ['2026-10', 180000],
+          ['2026-11', 180000, 175000],
+        ],
+        { description: 'Aluguel', dueDay: 10 },
+      )
+      stubBudgetApi({ lines: [rent, ...others] })
+      await openDashboard('Moradia')
+      await typeInCell(ALUGUEL_OUT, '2000')
+
+      await cellAction(ALUGUEL_OUT, 'Replicar para os meses seguintes')
+
+      expect(screen.getByRole('link', { name: 'Aluguel em novembro de 2026, realizado, ver no extrato' })).toHaveTextContent(
+        '1.750,00',
+      )
+      expect(cell('Aluguel em dezembro de 2026')).toHaveValue('2.000,00')
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+      await waitFor(() => expect(saveLinesMock).toHaveBeenCalled())
+      expect(saveLinesMock.mock.calls[0][0]).not.toContainEqual(expect.objectContaining({ month: '2026-11' }))
+      expect(saveLinesMock.mock.calls[0][0]).toHaveLength(11)
     })
 
     it('opens a launch in the statement', async () => {

@@ -138,6 +138,42 @@ describe('Budget (e2e)', () => {
       ]);
     });
 
+    it('uses the realized amount once a transaction is realized', async () => {
+      const ids = await categoryIds(ana);
+      const [rent, extra] = await addTransactions(ana, [
+        { categoryId: ids.housing, month: '2026-10', amountCents: 180000 },
+        { categoryId: ids.housing, month: '2026-10', amountCents: 10000 },
+      ]);
+      await ana
+        .put(`/budget/transactions/${rent}/realization`)
+        .send({ amountCents: 175000 })
+        .expect(200);
+
+      const query = 'from=2026-10&to=2026-10';
+      let res = await ana.get(`/budget/entries?${query}`).expect(200);
+      // Realized 1750,00 + pending 100,00
+      expect(res.body).toEqual([
+        {
+          categoryId: ids.housing,
+          month: '2026-10',
+          amountCents: 185000,
+          count: 2,
+          groupCents: 0,
+        },
+      ]);
+
+      await ana
+        .put(`/budget/transactions/${extra}/realization`)
+        .send({ amountCents: 0 })
+        .expect(200);
+      await ana.delete(`/budget/transactions/${rent}/realization`).expect(200);
+      res = await ana.get(`/budget/entries?${query}`).expect(200);
+      // Back to planned 1800,00 + realized 0
+      expect((res.body as { amountCents: number }[])[0].amountCents).toBe(
+        180000,
+      );
+    });
+
     it.each([
       ['an invalid month', 'from=2026-13&to=2027-09'],
       ['a missing bound', 'from=2026-10'],

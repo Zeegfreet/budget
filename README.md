@@ -38,14 +38,14 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Pipeline de CI (lint, build, testes unitários e e2e) | ✅ | ✅ | |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
 | Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
-| Editar perfil | ⏳ | 🚧 | Rota `/settings/profile` criada como página "Em breve" |
+| Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
 | Alterar senha | ⏳ | 🚧 | Rota `/settings/password` criada como página "Em breve" |
 | Login com GitHub e Google (OAuth) | ⏳ | 🚧 | Web já tem os botões; a API ainda não implementa `/auth/github` e `/auth/google` |
 | Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`), com coluna de total do período. Veja [Dashboard](#dashboard) |
 | Categorias de receitas e despesas | ✅ | ✅ | Tipos e categorias padrão criados no primeiro acesso; criar, editar, inativar/reativar e excluir pela própria tabela do Dashboard ou pelo menu **Categorias** do Extrato |
 | Metas por tipo de despesa | ✅ | ✅ | Meta em % das receitas por tipo de despesa, com termômetro do mês atual e do período acima dos cards |
-| Receitas e despesas pessoais (lançamentos) | ✅ | ✅ | Lançamentos por categoria e mês, com descrição, dia de vencimento, valor previsto e realizado. No Dashboard, cada categoria se expande nos seus lançamentos (uma linha por série recorrente ou lançamento avulso), editados direto na tabela e refletidos no Extrato |
-| Extrato mensal (realização e recorrência) | ✅ | ✅ | Tela `/extrato`: lista do mês com navegação entre meses, marcar como realizado (com outro valor, se for o caso), lançar receitas e despesas com repetição por N meses, alterar/excluir "só este" ou "também os próximos" e estender ou encurtar a recorrência pelo selo **3/12**. Veja [Extrato](#extrato) |
+| Receitas e despesas pessoais (lançamentos) | ✅ | ✅ | Lançamentos por categoria e mês, com descrição, dia de vencimento, valor previsto e realizado. No Dashboard, cada categoria se expande nos seus lançamentos (uma linha por série recorrente ou lançamento avulso), editados direto na tabela e refletidos no Extrato; meses já realizados mostram o valor realizado |
+| Extrato mensal (realização e recorrência) | ✅ | ✅ | Tela `/extrato`: lista do mês com navegação entre meses, marcar como realizado (com outro valor, se for o caso), lançar receitas e despesas com repetição por N meses, alterar/excluir "só este" ou "também os próximos" e estender ou encurtar a recorrência pelo selo **3/12**; ajustar o saldo inicial. Veja [Extrato](#extrato) |
 | Grupos de finanças | ✅ | ✅ | Telas `/grupos` e `/grupos/:id` (abas Lançamentos, Balanço, Membros e Rateio): criar, renomear, excluir e sair; lançamentos do grupo com dia de vencimento, recorrência (estender ou encurtar pelo selo **3/12**), "pago por" e balanço mensal por membro com o acerto (quem paga quem) e os **recebimentos**: quem pagou marca a parte de cada um como recebida (botão ✓ verde) e ela sai do saldo. Veja [Grupos](#grupos) |
 | Convites para grupos | ✅ | ✅ | Convite por e-mail; quem tem conta aceita ou recusa em `/grupos`. E-mail sem conta vira **pré-cadastro** com apelido, que já entra no grupo e é assumido no cadastro com o mesmo e-mail. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
@@ -204,6 +204,15 @@ Cadastro (`/signup`):
 - A ViaCEP usa um cliente HTTP próprio, sem o cookie de sessão da aplicação.
 - Formato enviado: `birthDate` em `YYYY-MM-DD`, `cep` só com os 8 dígitos e `state` com a sigla da UF (ex.: `SP`).
 
+### Perfil
+
+| Método | Rota | Corpo | Resposta |
+| --- | --- | --- | --- |
+| `GET` | `/users/me` | — | `200` com `{ id, email, name, birthDate, cep, city, state }` do usuário da sessão (`birthDate` em `YYYY-MM-DD`) |
+| `PATCH` | `/users/me` | `{ name?, birthDate?, cep?, city?, state? }` | `200` com o perfil atualizado. Mesmas regras do cadastro; o endereço vai em bloco (mandou um de `cep`/`city`/`state`, os três são obrigatórios). `400` em dados inválidos, `null` ou campos fora da lista (o **e-mail e a senha não mudam por aqui**) |
+
+Não existe rota para ler ou alterar outro usuário: o perfil é sempre o do token. No web, a tela **Editar perfil** (`/settings/profile`) mostra o e-mail desabilitado, envia só o que mudou e atualiza na hora o nome no menu lateral (e nos grupos). O CEP salvo não é consultado de novo; ao trocar o CEP, cidade e UF vêm da ViaCEP como no cadastro.
+
 ### Proxy reverso e cookies
 
 A API define o cookie de refresh com `Path=/auth`. Atrás de um proxy que publica a API sob `/api`, o navegador enxerga `/api/auth/refresh`, então o proxy precisa reescrever o path do cookie (o Vite já faz isso em dev; no Nginx, `proxy_cookie_path /auth /api/auth;`). Se o web for servido de outra origem (`VITE_API_URL` absoluto), será preciso habilitar CORS com `credentials: true` e origem explícita, nunca `*`.
@@ -222,7 +231,7 @@ Página inicial do app (`/`), com o balanço das finanças pessoais.
 | Saldo do mês | Receitas − despesas do mês atual |
 | Saldo acumulado | Saldo de abertura + saldo do mês |
 
-O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, podendo ser negativo) é ajustado pelo lápis no card de abertura. Receitas, despesas e saldos do mês são recalculados na hora, enquanto o usuário edita a tabela, mesmo antes de salvar. Os saldos usam o valor **realizado** dos lançamentos já marcados no [Extrato](#extrato) e o previsto dos demais.
+O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, podendo ser negativo) é ajustado pelo lápis no card de abertura (ou pelo botão **Saldo inicial** do [Extrato](#extrato)). Receitas, despesas e saldos do mês são recalculados na hora, enquanto o usuário edita a tabela, mesmo antes de salvar. Os saldos usam o valor **realizado** dos lançamentos já marcados no [Extrato](#extrato) e o previsto dos demais.
 
 **Metas por tipo de despesa (acima dos cards)**
 
@@ -233,12 +242,12 @@ O **saldo inicial** (quanto o usuário tinha antes do primeiro mês lançado, po
 **Planejamento mensal (tabela dinâmica)**
 
 - Colunas: o mês atual, os 11 seguintes e **Total** (fixa à direita), que soma o período em cada linha; no saldo acumulado, mostra o saldo projetado ao fim do período. Linhas: **Despesas** e depois **Receitas** (fixas, não editáveis), que se expandem em **tipos** (Despesas Básicas e Custos de Vida; Salário, Provento e Renda Extra), depois em **categorias** (Moradia, Alimentação, etc.) e, por fim, nos **lançamentos** de cada categoria. Categorias começam recolhidas e mostram a soma dos seus lançamentos (com o número deles); tipos e seções mostram as somas. No rodapé ficam o saldo de cada mês e o saldo acumulado projetado.
-- Cada **linha de lançamento** é uma série recorrente (ex.: Netflix, 12 meses) ou um lançamento avulso, com a descrição (ou "Sem descrição") e o dia de vencimento. As células mostram o valor **previsto** de cada mês: editar uma célula altera aquele mês, deixar vazia apaga o lançamento do mês e preencher um mês vazio cria um novo lançamento da mesma série (copiando descrição, vencimento e meio de pagamento). Tudo aparece no Extrato.
+- Cada **linha de lançamento** é uma série recorrente (ex.: Netflix, 12 meses) ou um lançamento avulso, com a descrição (ou "Sem descrição") e o dia de vencimento. As células mostram o valor **previsto** de cada mês ou, quando o lançamento já foi realizado no Extrato, o valor **realizado** (marcado com ✓, somente leitura e com link para o Extrato do mês, onde ele é alterado); totais, metas e saldos da tabela seguem o mesmo valor. Editar uma célula pendente altera aquele mês, deixar vazia apaga o lançamento do mês e preencher um mês vazio cria um novo lançamento da mesma série (copiando descrição, vencimento e meio de pagamento). Tudo aparece no Extrato.
 - **+ Novo lançamento**, ao fim de cada categoria expandida (ou no menu da categoria), abre o mesmo formulário do Extrato, já com a categoria escolhida: descrição, valor, dia de vencimento, meio de pagamento e repetição. É gravado na hora.
 - Menu da linha de lançamento: **Editar** (descrição, valor, vencimento, meio de pagamento e categoria, do primeiro mês pendente da janela em diante; meses já realizados não mudam), **Ver no extrato** e **Excluir** (do primeiro mês pendente em diante, com confirmação).
 - A **sua parte em um grupo** vinculado à categoria entra na soma da categoria e aparece numa linha somente leitura **Rateios de grupos**, com link para o Extrato do mês.
 - Edição direto na célula: clique e digite (`1800`, `1.800,50`, `R$ 10`). Tab vai para a direita, Enter desce (Shift+Enter sobe), Esc desfaz a edição da célula e texto inválido é ignorado. Deixar a célula vazia zera o valor.
-- Menu da célula (botão ⋮ ao passar o mouse, ou botão direito): **Replicar para os meses seguintes**, **Replicar até dezembro** e **Limpar valor**.
+- Menu da célula (botão ⋮ ao passar o mouse, ou botão direito): **Replicar para os meses seguintes**, **Replicar até dezembro** e **Limpar valor**. Replicar não altera os meses já realizados.
 - As alterações ficam destacadas e só são gravadas ao clicar em **Salvar**, na barra que aparece no rodapé (ou descartadas em **Descartar**). Sair da página com alterações pendentes pede confirmação.
 - Tipos e categorias padrão são criados uma única vez, no primeiro acesso (excluir todos não os recria).
 - Menu de tipos e categorias (botão ⋯ ao passar o mouse sobre o nome, ou botão direito): **Editar** (nome; meta nos tipos de despesa), **Nova categoria** (tipos), **Novo lançamento** (categorias), **Inativar**/**Reativar** e **Excluir**.
@@ -273,6 +282,7 @@ Tela `/extrato` (menu lateral **Extrato**), com os lançamentos de um mês: abre
 - **Resumo do mês**: um card compacto com o saldo final em destaque e, ao lado, receitas e despesas do mês (com o quanto já foi realizado e o quanto falta realizar), saldo de abertura e saldo do mês.
 - **Lista**: Receitas em cima e Despesas embaixo, cada seção com o total e o quanto falta realizar, separada pelos **tipos** (na mesma ordem da tabela do painel), cada um com seu subtotal. Dentro do tipo, os lançamentos seguem o dia de vencimento. Cada linha mostra o vencimento (o do meio de pagamento, quando houver, ou o do próprio lançamento), a descrição (ou o nome da categoria, que aparece embaixo quando há descrição), o selo **3/12** quando o lançamento é recorrente, o selo do meio de pagamento (link para a fatura) e o valor.
 - **Período da recorrência**: clicar no selo **3/12** abre o período da série (do primeiro ao último mês). Com **‹ ›** escolha o novo último mês: estender cria lançamentos pendentes, cópias do último; encurtar apaga os pendentes depois do novo fim. Lançamentos já realizados nunca são apagados (o pedido é recusado). Uma série vai até 60 meses.
+- **Saldo inicial**: o botão **Saldo inicial** ajusta quanto o usuário tinha antes do primeiro mês lançado (o mesmo do Dashboard); o saldo de abertura de todos os meses é recalculado.
 - **Categorias**: o botão **Categorias** abre um painel com os tipos e as categorias (inativos inclusive), para criar, editar, inativar/reativar e excluir sem sair do Extrato.
 - **Celular**: a tela é de uma coluna só, com caixa de "realizado" fácil de tocar e o menu **⋯** de cada linha sempre visível em telas de toque.
 - **Realizado**: marcar a caixa da linha registra o lançamento como realizado com o valor previsto; desmarcar volta para pendente. Para informar **outro valor**, use **Informar valor realizado** no menu da linha (⋯ ou botão direito) ou clique no valor realizado. Quando o realizado difere do previsto, a linha mostra os dois.

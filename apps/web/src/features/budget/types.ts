@@ -43,7 +43,7 @@ export type CategoryPatch = Partial<Pick<Category, 'name' | 'active'>>
 export interface MonthlyEntry {
   categoryId: number
   month: Month
-  /** Integer cents, never negative; the sign comes from the kind. Sum of the cell's transactions. */
+  /** Integer cents, never negative; the sign comes from the kind. Sum of the cell's transactions (realized amount, or planned while pending). */
   amountCents: number
   /** Transactions behind the cell */
   count: number

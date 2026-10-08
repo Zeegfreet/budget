@@ -50,7 +50,11 @@ export class MonthlyEntryDto {
   @ApiProperty({ example: '2026-10' })
   month: string;
 
-  @ApiProperty({ example: 180000, description: 'Sum of the planned amounts' })
+  @ApiProperty({
+    example: 180000,
+    description:
+      'Sum of the effective amounts (realized, or planned while pending)',
+  })
   amountCents: number;
 
   @ApiProperty({

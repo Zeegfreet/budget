@@ -18,9 +18,15 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { authQueries } from '@/features/auth/queries'
-import { saveLines, updateInitialBalance } from '@/features/budget/api'
+import { saveLines } from '@/features/budget/api'
 import { buildGoalsOverview } from '@/features/budget/goals'
-import { useBudgetDraft, useCategoryActions, useCategoryToggle, useUnsavedChangesGuard } from '@/features/budget/hooks'
+import {
+  useBudgetDraft,
+  useCategoryActions,
+  useCategoryToggle,
+  useInitialBalance,
+  useUnsavedChangesGuard,
+} from '@/features/budget/hooks'
 import { currentMonth, endOfYear, formatMonthLabel, formatMonthLong, monthWindow } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
 import { buildBudgetTable, lineTarget } from '@/features/budget/rows'
@@ -129,10 +135,7 @@ function DashboardPage() {
     },
   })
 
-  async function saveInitialBalance(cents: number) {
-    await updateInitialBalance(cents)
-    await queryClient.invalidateQueries({ queryKey: budgetQueries.summary(month).queryKey })
-  }
+  const saveInitialBalance = useInitialBalance()
 
   const firstName = user?.name.split(' ')[0]
 
@@ -169,7 +172,8 @@ function DashboardPage() {
           <CardTitle>Planejamento mensal</CardTitle>
           <CardDescription>
             Expanda uma categoria para ver os lançamentos dela e clique em um valor previsto para
-            editar; cada linha é um lançamento (recorrente ou avulso) e aparece também no Extrato. Use o
+            editar; cada linha é um lançamento (recorrente ou avulso) e aparece também no Extrato. Valores
+            já realizados (marcados com ✓) substituem o previsto e são alterados no Extrato. Use o
             menu da célula (ou o botão direito) para replicar para os meses seguintes, e o menu de cada
             linha para criar, editar, inativar ou excluir. As alterações nos valores só valem depois de
             salvar.
@@ -189,13 +193,15 @@ function DashboardPage() {
             showInactive={showInactive}
             onAction={handleGridAction}
             isChanged={draft.isChanged}
+            isRealized={draft.isRealized}
             onChange={(anchorId, m, amountCents) => draft.dispatch({ type: 'set', anchorId, month: m, amountCents })}
             onFill={(anchorId, start, scope) => {
               const until = scope === 'year' ? endOfYear(start) : to
               draft.dispatch({
                 type: 'fill',
                 anchorId,
-                months: months.filter((m) => m > start && m <= until),
+                // Realized months keep their amount
+                months: months.filter((m) => m > start && m <= until && !draft.isRealized(anchorId, m)),
                 amountCents: draft.value(anchorId, start),
               })
             }}

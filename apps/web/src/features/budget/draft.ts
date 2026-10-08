@@ -36,9 +36,18 @@ export function draftReducer(edits: Edits, action: DraftAction): Edits {
   }
 }
 
-/** Planned amount of each row and month that has a transaction */
+/** Effective amount (realized, or planned while pending) of each row and month that has a transaction */
 export function savedValues(lines: BudgetLine[]): SavedValues {
-  return new Map(lines.flatMap((l) => l.cells.map((c) => [cellKey(l.anchorId, c.month), c.plannedCents] as const)))
+  return new Map(
+    lines.flatMap((l) => l.cells.map((c) => [cellKey(l.anchorId, c.month), c.realizedCents ?? c.plannedCents] as const)),
+  )
+}
+
+/** Cells whose transaction is realized: read-only in the grid (the realized amount is edited in the statement) */
+export function realizedKeys(lines: BudgetLine[]): ReadonlySet<string> {
+  return new Set(
+    lines.flatMap((l) => l.cells.filter((c) => c.realizedCents !== null).map((c) => cellKey(l.anchorId, c.month))),
+  )
 }
 
 export function valueOf(saved: SavedValues, edits: Edits, key: string): number {
