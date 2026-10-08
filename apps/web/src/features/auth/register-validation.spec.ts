@@ -3,6 +3,7 @@ import {
   ageOn,
   latestBirthDate,
   parseIsoDate,
+  validatePersonalData,
   validateRegister,
   type RegisterValues,
 } from './register-validation'
@@ -69,5 +70,31 @@ describe('date helpers', () => {
 
   it('gives the latest allowed birth date', () => {
     expect(latestBirthDate(today)).toBe('2008-10-06')
+  })
+})
+
+describe('validatePersonalData', () => {
+  const personal = {
+    name: 'Ana Souza',
+    birthDate: '1990-05-20',
+    cep: '01001000',
+    city: 'São Paulo',
+    state: 'SP',
+  }
+
+  it('accepts valid data without e-mail or password', () => {
+    expect(validatePersonalData(personal, today)).toEqual({})
+  })
+
+  it('checks name, birth date and address like the sign-up', () => {
+    expect(
+      validatePersonalData({ name: '', birthDate: '2010-01-01', cep: '0100', city: '', state: 'XX' }, today),
+    ).toEqual({
+      name: 'Informe seu nome.',
+      birthDate: 'Você precisa ter pelo menos 18 anos.',
+      cep: 'O CEP deve ter 8 dígitos.',
+      city: 'Informe sua cidade.',
+      state: 'UF inválida.',
+    })
   })
 })

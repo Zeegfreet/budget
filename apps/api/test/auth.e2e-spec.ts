@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import request, { type Response } from 'supertest';
 import { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { mailOf, tokenFrom } from './mail.js';
 import { createTestApp, resetDatabase } from './utils.js';
 
 const validBody = {
@@ -43,9 +44,18 @@ describe('Auth (e2e)', () => {
   const http = () => request(app.getHttpServer());
   const agent = () => request.agent(app.getHttpServer());
 
-  async function register(body: Record<string, unknown> = validBody) {
+  /**
+   * Signs up and activates through the e-mailed link; `res` is the
+   * activation's answer (the session cookies and the user).
+   */
+  async function register(body: typeof validBody = validBody) {
     const client = agent();
-    const res = await client.post('/auth/register').send(body).expect(201);
+    await client.post('/auth/register').send(body).expect(201);
+    const token = tokenFrom(mailOf(app).lastTo(body.email));
+    const res = await client
+      .post('/auth/activation')
+      .send({ token })
+      .expect(200);
     return { client, res };
   }
 
@@ -60,15 +70,45 @@ describe('Auth (e2e)', () => {
   });
 
   describe('POST /auth/register', () => {
-    it('creates the user, opens a session and never returns private fields', async () => {
-      const { res } = await register();
+    it('creates the user not activated, e-mails the link and opens no session', async () => {
+      const res = await http()
+        .post('/auth/register')
+        .send(validBody)
+        .expect(201);
+
+      expect(res.body).toEqual({ email: 'ana@example.com' });
+      expect(setCookies(res)).toEqual([]);
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: 'ana@example.com' },
+      });
+      expect(user.passwordHash).toMatch(/^\$argon2id\$/);
+      expect(user.passwordHash).not.toContain(validBody.password);
+      expect(user.birthDate?.toISOString()).toBe('1990-05-20T00:00:00.000Z');
+      expect(user).toMatchObject({
+        name: 'Ana Souza',
+        cep: '01001000',
+        city: 'São Paulo',
+        state: 'SP',
+        pending: false,
+        emailVerifiedAt: null,
+      });
+      expect(await prisma.session.count()).toBe(0);
+      expect(mailOf(app).lastTo('ana@example.com').subject).toBe(
+        'Ative sua conta no Budget',
+      );
+    });
+
+    it('signs in after the activation, never returning private fields', async () => {
+      const { client, res } = await register();
 
       expect(res.body).toEqual({
         id: expect.any(Number),
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
-
       const access = cookie(res, 'access_token');
       const refresh = cookie(res, 'refresh_token');
       expect(access).toMatch(/HttpOnly/);
@@ -78,25 +118,6 @@ describe('Auth (e2e)', () => {
       expect(refresh).toMatch(/SameSite=Lax/);
       expect(refresh).toMatch(/Path=\/auth/);
 
-      const user = await prisma.user.findUniqueOrThrow({
-        where: { id: res.body.id },
-      });
-      expect(user.passwordHash).toMatch(/^\$argon2id\$/);
-      expect(user.passwordHash).not.toContain(validBody.password);
-      expect(user.birthDate.toISOString()).toBe('1990-05-20T00:00:00.000Z');
-      expect(user).toMatchObject({
-        cep: '01001000',
-        city: 'São Paulo',
-        state: 'SP',
-      });
-      expect(await prisma.session.count({ where: { userId: user.id } })).toBe(
-        1,
-      );
-    });
-
-    it('signs the user in right away', async () => {
-      const { client } = await register();
-
       const me = await client.get('/auth/me').expect(200);
       expect(me.body).toMatchObject({
         email: 'ana@example.com',
@@ -105,22 +126,26 @@ describe('Auth (e2e)', () => {
     });
 
     it('normalizes e-mail, name, city and state', async () => {
-      const { res } = await register({
-        ...validBody,
-        email: '  Ana@Example.COM ',
-        name: '  Ana Souza ',
-        city: ' São Paulo ',
-        state: 'sp',
-      });
+      const res = await http()
+        .post('/auth/register')
+        .send({
+          ...validBody,
+          email: '  Ana@Example.COM ',
+          name: '  Ana Souza ',
+          city: ' São Paulo ',
+          state: 'sp',
+        })
+        .expect(201);
 
-      expect(res.body).toMatchObject({
-        email: 'ana@example.com',
-        name: 'Ana Souza',
-      });
+      expect(res.body).toEqual({ email: 'ana@example.com' });
       const user = await prisma.user.findUniqueOrThrow({
-        where: { id: res.body.id },
+        where: { email: 'ana@example.com' },
       });
-      expect(user).toMatchObject({ city: 'São Paulo', state: 'SP' });
+      expect(user).toMatchObject({
+        name: 'Ana Souza',
+        city: 'São Paulo',
+        state: 'SP',
+      });
     });
 
     it('returns 409 for an e-mail already registered (case-insensitive)', async () => {
@@ -205,6 +230,8 @@ describe('Auth (e2e)', () => {
         id: expect.any(Number),
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
       expect(cookie(res, 'access_token')).toMatch(/HttpOnly/);
       expect(cookie(res, 'refresh_token')).toMatch(/HttpOnly/);
@@ -401,6 +428,121 @@ describe('Auth (e2e)', () => {
         where: { userId: res.body.id },
       });
       expect(session.revokedAt).not.toBeNull();
+    });
+  });
+
+  describe('POST /auth/password', () => {
+    const change = {
+      currentPassword: validBody.password,
+      newPassword: 'novaSenha456',
+    };
+    const login = (password: string, email = validBody.email) =>
+      http().post('/auth/login').send({ email, password });
+
+    it('changes the password and renews this session', async () => {
+      const { client, res } = await register();
+      const oldRefresh = cookieValue(res, 'refresh_token');
+
+      const changed = await client
+        .post('/auth/password')
+        .send(change)
+        .expect(200);
+
+      expect(changed.body).toEqual({
+        id: res.body.id,
+        email: 'ana@example.com',
+        name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
+      });
+      expect(changed.body).not.toHaveProperty('passwordHash');
+      expect(JSON.stringify(changed.body)).not.toContain(change.newPassword);
+      expect(cookie(changed, 'refresh_token')).toMatch(/Path=\/auth/);
+      expect(cookieValue(changed, 'refresh_token')).not.toBe(oldRefresh);
+      // This client stays signed in with the new cookies
+      await client.get('/auth/me').expect(200);
+      await client.post('/auth/refresh').expect(200);
+
+      await login(validBody.password).expect(401);
+      await login(change.newPassword).expect(200);
+    });
+
+    it('signs out the other sessions of the user', async () => {
+      const { client } = await register();
+      const other = await login(validBody.password).expect(200);
+      const otherRefresh = cookieValue(other, 'refresh_token');
+
+      await client.post('/auth/password').send(change).expect(200);
+
+      await http()
+        .post('/auth/refresh')
+        .set('Cookie', `refresh_token=${otherRefresh}`)
+        .expect(401);
+    });
+
+    it('returns 403 for a wrong current password and keeps everything', async () => {
+      const { client, res } = await register();
+      const refresh = cookieValue(res, 'refresh_token');
+
+      const wrong = await client
+        .post('/auth/password')
+        .send({ ...change, currentPassword: 'errada123' })
+        .expect(403);
+
+      expect(wrong.body.message).toBe('Current password is incorrect');
+      await login(validBody.password).expect(200);
+      await http()
+        .post('/auth/refresh')
+        .set('Cookie', `refresh_token=${refresh}`)
+        .expect(200);
+    });
+
+    it('returns 400 when the new password equals the current one', async () => {
+      const { client } = await register();
+
+      const res = await client
+        .post('/auth/password')
+        .send({ ...change, newPassword: validBody.password })
+        .expect(400);
+
+      expect(res.body.message).toBe(
+        'New password must differ from the current one',
+      );
+    });
+
+    it.each([
+      ['no body', {}],
+      ['a short new password', { ...change, newPassword: 'curta' }],
+      ['an empty current password', { ...change, currentPassword: '' }],
+      ['a too long new password', { ...change, newPassword: 'a'.repeat(129) }],
+      ['a non-string field', { ...change, newPassword: 12345678 }],
+      ['an unknown field', { ...change, userId: 2 }],
+    ])('returns 400 for %s', async (_, body) => {
+      const { client } = await register();
+
+      await client.post('/auth/password').send(body).expect(400);
+      await login(validBody.password).expect(200);
+    });
+
+    it('requires a session', async () => {
+      await http().post('/auth/password').send(change).expect(401);
+    });
+
+    it("never changes another user's password", async () => {
+      const a = await register(validBody);
+      const b = await register(otherBody);
+
+      // The owner always comes from the session, never from the body
+      await a.client
+        .post('/auth/password')
+        .send({ ...change, userId: b.res.body.id })
+        .expect(400);
+      await a.client.post('/auth/password').send(change).expect(200);
+
+      await login(otherBody.password, otherBody.email).expect(200);
+      await login(change.newPassword, otherBody.email).expect(401);
+      await b.client.get('/auth/me').expect(200);
+      await b.client.post('/auth/refresh').expect(200);
     });
   });
 

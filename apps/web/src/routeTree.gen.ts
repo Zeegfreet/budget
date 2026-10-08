@@ -10,12 +10,39 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as AtivarContaRouteImport } from './routes/ativar-conta'
+import { Route as CompletarCadastroRouteImport } from './routes/completar-cadastro'
+import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as VerificarEmailRouteImport } from './routes/verificar-email'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppExtratoRouteImport } from './routes/_app/extrato'
+import { Route as AppGruposIndexRouteImport } from './routes/_app/grupos/index'
+import { Route as AppGruposGroupIdRouteImport } from './routes/_app/grupos/$groupId'
+import { Route as AppMeiosDePagamentoIndexRouteImport } from './routes/_app/meios-de-pagamento/index'
+import { Route as AppMeiosDePagamentoMethodIdRouteImport } from './routes/_app/meios-de-pagamento/$methodId'
+import { Route as AppSettingsPasswordRouteImport } from './routes/_app/settings/password'
+import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/profile'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AtivarContaRoute = AtivarContaRouteImport.update({
+  id: '/ativar-conta',
+  path: '/ativar-conta',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompletarCadastroRoute = CompletarCadastroRouteImport.update({
+  id: '/completar-cadastro',
+  path: '/completar-cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
+  id: '/esqueci-senha',
+  path: '/esqueci-senha',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -23,9 +50,19 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
+  id: '/redefinir-senha',
+  path: '/redefinir-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerificarEmailRoute = VerificarEmailRouteImport.update({
+  id: '/verificar-email',
+  path: '/verificar-email',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -33,36 +70,161 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppExtratoRoute = AppExtratoRouteImport.update({
+  id: '/extrato',
+  path: '/extrato',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGruposIndexRoute = AppGruposIndexRouteImport.update({
+  id: '/grupos/',
+  path: '/grupos/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGruposGroupIdRoute = AppGruposGroupIdRouteImport.update({
+  id: '/grupos/$groupId',
+  path: '/grupos/$groupId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMeiosDePagamentoIndexRoute =
+  AppMeiosDePagamentoIndexRouteImport.update({
+    id: '/meios-de-pagamento/',
+    path: '/meios-de-pagamento/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppMeiosDePagamentoMethodIdRoute =
+  AppMeiosDePagamentoMethodIdRouteImport.update({
+    id: '/meios-de-pagamento/$methodId',
+    path: '/meios-de-pagamento/$methodId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppSettingsPasswordRoute = AppSettingsPasswordRouteImport.update({
+  id: '/settings/password',
+  path: '/settings/password',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsProfileRoute = AppSettingsProfileRouteImport.update({
+  id: '/settings/profile',
+  path: '/settings/profile',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/ativar-conta': typeof AtivarContaRoute
+  '/completar-cadastro': typeof CompletarCadastroRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/signup': typeof SignupRoute
+  '/verificar-email': typeof VerificarEmailRoute
+  '/extrato': typeof AppExtratoRoute
+  '/grupos/$groupId': typeof AppGruposGroupIdRoute
+  '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
+  '/settings/password': typeof AppSettingsPasswordRoute
+  '/settings/profile': typeof AppSettingsProfileRoute
+  '/grupos/': typeof AppGruposIndexRoute
+  '/meios-de-pagamento/': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRoutesByTo {
+  '/ativar-conta': typeof AtivarContaRoute
+  '/completar-cadastro': typeof CompletarCadastroRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/signup': typeof SignupRoute
+  '/verificar-email': typeof VerificarEmailRoute
+  '/extrato': typeof AppExtratoRoute
   '/': typeof AppIndexRoute
+  '/grupos/$groupId': typeof AppGruposGroupIdRoute
+  '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
+  '/settings/password': typeof AppSettingsPasswordRoute
+  '/settings/profile': typeof AppSettingsProfileRoute
+  '/grupos': typeof AppGruposIndexRoute
+  '/meios-de-pagamento': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/ativar-conta': typeof AtivarContaRoute
+  '/completar-cadastro': typeof CompletarCadastroRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/signup': typeof SignupRoute
+  '/verificar-email': typeof VerificarEmailRoute
+  '/_app/extrato': typeof AppExtratoRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/grupos/$groupId': typeof AppGruposGroupIdRoute
+  '/_app/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
+  '/_app/settings/password': typeof AppSettingsPasswordRoute
+  '/_app/settings/profile': typeof AppSettingsProfileRoute
+  '/_app/grupos/': typeof AppGruposIndexRoute
+  '/_app/meios-de-pagamento/': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup'
+  fullPaths:
+    | '/'
+    | '/ativar-conta'
+    | '/completar-cadastro'
+    | '/esqueci-senha'
+    | '/login'
+    | '/redefinir-senha'
+    | '/signup'
+    | '/verificar-email'
+    | '/extrato'
+    | '/grupos/$groupId'
+    | '/meios-de-pagamento/$methodId'
+    | '/settings/password'
+    | '/settings/profile'
+    | '/grupos/'
+    | '/meios-de-pagamento/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/signup' | '/'
-  id: '__root__' | '/_app' | '/login' | '/signup' | '/_app/'
+  to:
+    | '/ativar-conta'
+    | '/completar-cadastro'
+    | '/esqueci-senha'
+    | '/login'
+    | '/redefinir-senha'
+    | '/signup'
+    | '/verificar-email'
+    | '/extrato'
+    | '/'
+    | '/grupos/$groupId'
+    | '/meios-de-pagamento/$methodId'
+    | '/settings/password'
+    | '/settings/profile'
+    | '/grupos'
+    | '/meios-de-pagamento'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/ativar-conta'
+    | '/completar-cadastro'
+    | '/esqueci-senha'
+    | '/login'
+    | '/redefinir-senha'
+    | '/signup'
+    | '/verificar-email'
+    | '/_app/extrato'
+    | '/_app/'
+    | '/_app/grupos/$groupId'
+    | '/_app/meios-de-pagamento/$methodId'
+    | '/_app/settings/password'
+    | '/_app/settings/profile'
+    | '/_app/grupos/'
+    | '/_app/meios-de-pagamento/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  AtivarContaRoute: typeof AtivarContaRoute
+  CompletarCadastroRoute: typeof CompletarCadastroRoute
+  EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   LoginRoute: typeof LoginRoute
+  RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   SignupRoute: typeof SignupRoute
+  VerificarEmailRoute: typeof VerificarEmailRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -74,11 +236,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ativar-conta': {
+      id: '/ativar-conta'
+      path: '/ativar-conta'
+      fullPath: '/ativar-conta'
+      preLoaderRoute: typeof AtivarContaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/completar-cadastro': {
+      id: '/completar-cadastro'
+      path: '/completar-cadastro'
+      fullPath: '/completar-cadastro'
+      preLoaderRoute: typeof CompletarCadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/esqueci-senha': {
+      id: '/esqueci-senha'
+      path: '/esqueci-senha'
+      fullPath: '/esqueci-senha'
+      preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/redefinir-senha': {
+      id: '/redefinir-senha'
+      path: '/redefinir-senha'
+      fullPath: '/redefinir-senha'
+      preLoaderRoute: typeof RedefinirSenhaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -88,6 +278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/verificar-email': {
+      id: '/verificar-email'
+      path: '/verificar-email'
+      fullPath: '/verificar-email'
+      preLoaderRoute: typeof VerificarEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/': {
       id: '/_app/'
       path: '/'
@@ -95,23 +292,91 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/extrato': {
+      id: '/_app/extrato'
+      path: '/extrato'
+      fullPath: '/extrato'
+      preLoaderRoute: typeof AppExtratoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/grupos/': {
+      id: '/_app/grupos/'
+      path: '/grupos'
+      fullPath: '/grupos/'
+      preLoaderRoute: typeof AppGruposIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/grupos/$groupId': {
+      id: '/_app/grupos/$groupId'
+      path: '/grupos/$groupId'
+      fullPath: '/grupos/$groupId'
+      preLoaderRoute: typeof AppGruposGroupIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/meios-de-pagamento/': {
+      id: '/_app/meios-de-pagamento/'
+      path: '/meios-de-pagamento'
+      fullPath: '/meios-de-pagamento/'
+      preLoaderRoute: typeof AppMeiosDePagamentoIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/meios-de-pagamento/$methodId': {
+      id: '/_app/meios-de-pagamento/$methodId'
+      path: '/meios-de-pagamento/$methodId'
+      fullPath: '/meios-de-pagamento/$methodId'
+      preLoaderRoute: typeof AppMeiosDePagamentoMethodIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/password': {
+      id: '/_app/settings/password'
+      path: '/settings/password'
+      fullPath: '/settings/password'
+      preLoaderRoute: typeof AppSettingsPasswordRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/profile': {
+      id: '/_app/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AppSettingsProfileRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppExtratoRoute: typeof AppExtratoRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppGruposGroupIdRoute: typeof AppGruposGroupIdRoute
+  AppMeiosDePagamentoMethodIdRoute: typeof AppMeiosDePagamentoMethodIdRoute
+  AppSettingsPasswordRoute: typeof AppSettingsPasswordRoute
+  AppSettingsProfileRoute: typeof AppSettingsProfileRoute
+  AppGruposIndexRoute: typeof AppGruposIndexRoute
+  AppMeiosDePagamentoIndexRoute: typeof AppMeiosDePagamentoIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppExtratoRoute: AppExtratoRoute,
   AppIndexRoute: AppIndexRoute,
+  AppGruposGroupIdRoute: AppGruposGroupIdRoute,
+  AppMeiosDePagamentoMethodIdRoute: AppMeiosDePagamentoMethodIdRoute,
+  AppSettingsPasswordRoute: AppSettingsPasswordRoute,
+  AppSettingsProfileRoute: AppSettingsProfileRoute,
+  AppGruposIndexRoute: AppGruposIndexRoute,
+  AppMeiosDePagamentoIndexRoute: AppMeiosDePagamentoIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  AtivarContaRoute: AtivarContaRoute,
+  CompletarCadastroRoute: CompletarCadastroRoute,
+  EsqueciSenhaRoute: EsqueciSenhaRoute,
   LoginRoute: LoginRoute,
+  RedefinirSenhaRoute: RedefinirSenhaRoute,
   SignupRoute: SignupRoute,
+  VerificarEmailRoute: VerificarEmailRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

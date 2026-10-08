@@ -1,28 +1,57 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { Prisma } from '../prisma/generated/client.js';
-import { type AuthUser, UserService } from '../user/user.service.js';
+import { AccountMailer } from '../activation/account-mailer.js';
+import {
+  ActivationService,
+  invalidActivationLink,
+} from '../activation/activation.service.js';
+import {
+  invalidPasswordResetLink,
+  PasswordResetService,
+} from '../activation/password-reset.service.js';
+import { isUniqueViolation } from '../prisma/errors.js';
+import {
+  type AuthUser,
+  type SessionUser,
+  UserService,
+} from '../user/user.service.js';
 import type { AuthTokens } from './auth.cookies.js';
+import type { ChangePasswordDto } from './dto/change-password.dto.js';
+import type {
+  ActivationInfoDto,
+  CompleteSignupDto,
+} from './dto/activation.dto.js';
+import type {
+  PasswordResetInfoDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import { MAX_PASSWORD_LENGTH } from './dto/register.dto.js';
 import type { AccessTokenPayload } from './strategies/jwt.strategy.js';
 import { type SessionMeta, SessionService } from './session.service.js';
 
 export interface AuthResult {
-  user: AuthUser;
+  user: SessionUser;
   tokens: AuthTokens;
+}
+
+export interface RegisterResult {
+  /** Where the activation link was sent */
+  email: string;
 }
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
-const isUniqueViolation = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  error.code === 'P2002';
+/** `YYYY-MM-DD` → midnight UTC, how birth dates are stored. */
+const toBirthDate = (date: string) => new Date(`${date}T00:00:00.000Z`);
 
 @Injectable()
 export class AuthService {
@@ -33,35 +62,111 @@ export class AuthService {
     private readonly users: UserService,
     private readonly sessions: SessionService,
     private readonly jwt: JwtService,
+    private readonly activation: ActivationService,
+    private readonly mailer: AccountMailer,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
-  async register(
-    dto: RegisterDto,
-    meta: SessionMeta = {},
-  ): Promise<AuthResult> {
-    const passwordHash = await argon2.hash(dto.password, {
-      type: argon2.argon2id,
-    });
-    let user: AuthUser;
+  /**
+   * Creates the account not activated (no session) and e-mails the
+   * activation link. An e-mail whose account was never activated (a
+   * pre-registration or an earlier sign-up) is taken over: same id, new data,
+   * new link. 409 only for an active account.
+   */
+  async register(dto: RegisterDto): Promise<RegisterResult> {
+    const email = normalizeEmail(dto.email);
+    const profile = {
+      name: dto.name,
+      passwordHash: await this.hashPassword(dto.password),
+      birthDate: toBirthDate(dto.birthDate),
+      cep: dto.cep,
+      city: dto.city,
+      state: dto.state,
+    };
+    let user: AuthUser | null;
     try {
-      user = await this.users.create({
-        name: dto.name,
-        email: normalizeEmail(dto.email),
-        passwordHash,
-        birthDate: new Date(`${dto.birthDate}T00:00:00.000Z`),
-        cep: dto.cep,
-        city: dto.city,
-        state: dto.state,
-      });
+      user = await this.users.create({ email, ...profile });
     } catch (error) {
-      if (isUniqueViolation(error))
-        throw new ConflictException('E-mail already registered');
-      throw error;
+      if (!isUniqueViolation(error)) throw error;
+      user = await this.users.claimUnverified(email, profile);
+      if (!user) throw new ConflictException('E-mail already registered');
     }
+    await this.mailer.sendActivation(user);
+    return { email };
+  }
+
+  /** What a link is for, so the web shows the right form; 404 if invalid. */
+  async activationInfo(token: string): Promise<ActivationInfoDto> {
+    const target = await this.activation.inspect(token);
+    if (!target) throw invalidActivationLink();
+    return {
+      email: target.email,
+      name: target.name,
+      kind: target.pending ? 'COMPLETE_SIGNUP' : 'ACTIVATE',
+    };
+  }
+
+  /** Activates a signed-up account through its e-mail link and signs it in. */
+  async activate(token: string, meta: SessionMeta = {}): Promise<AuthResult> {
+    const user = await this.activation.activate(token);
     return this.signIn(user, meta);
   }
 
-  /** Returns the user for valid credentials, `null` otherwise (whatever the reason). */
+  /**
+   * Finishes a pre-registration through its e-mail link (the link proves the
+   * e-mail, so the account starts active) and signs it in.
+   */
+  async completeSignup(
+    { token, password, birthDate, ...profile }: CompleteSignupDto,
+    meta: SessionMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.activation.completeSignup(token, {
+      ...profile,
+      passwordHash: await this.hashPassword(password),
+      birthDate: toBirthDate(birthDate),
+    });
+    return this.signIn(user, meta);
+  }
+
+  /** E-mails the link again; silent for unknown or active e-mails. */
+  resendActivation(email: string): Promise<void> {
+    return this.mailer.resend(normalizeEmail(email));
+  }
+
+  /** "Esqueci minha senha": e-mails a reset link; silent for unknown e-mails. */
+  forgotPassword(email: string): Promise<void> {
+    return this.mailer.sendPasswordReset(normalizeEmail(email));
+  }
+
+  /** Whose password a reset link sets, so the web shows it; 404 if invalid. */
+  async passwordResetInfo(token: string): Promise<PasswordResetInfoDto> {
+    const target = await this.passwordReset.inspect(token);
+    if (!target) throw invalidPasswordResetLink();
+    return { email: target.email, name: target.name };
+  }
+
+  /**
+   * Sets a new password through the e-mailed link (activating the account if
+   * it wasn't), ends every session of the user, warns them by e-mail and
+   * signs this client in.
+   */
+  async resetPassword(
+    { token, password }: ResetPasswordDto,
+    meta: SessionMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.passwordReset.reset(
+      token,
+      await this.hashPassword(password),
+    );
+    await this.sessions.revokeAllForUser(user.id);
+    await this.mailer.sendPasswordChanged(user);
+    return this.signIn(user, meta);
+  }
+
+  /**
+   * Returns the user for valid credentials, `null` otherwise (whatever the
+   * reason); 403 when they are right but the account is not activated yet.
+   */
   async validateCredentials(
     email: unknown,
     password: unknown,
@@ -70,22 +175,67 @@ export class AuthService {
     if (password.length > MAX_PASSWORD_LENGTH) return null;
 
     const user = await this.users.findByEmail(normalizeEmail(email));
-    const hash = user?.passwordHash ?? (await this.getDummyHash());
+    // A pre-registration has no password and can't sign in
+    const usable = user && !user.pending ? user.passwordHash : null;
+    const hash = usable ?? (await this.getDummyHash());
     const valid = await argon2.verify(hash, password).catch(() => false);
-    if (!user || !valid) return null;
+    if (!user || !usable || !valid) return null;
+    // Only with the right password, so it doesn't reveal the e-mail exists;
+    // 403 (not 401) so the web doesn't take it for an expired session
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException('Account not activated');
+    }
     return { id: user.id, email: user.email, name: user.name };
+  }
+
+  /**
+   * Checks the current password, stores the new one and ends every session
+   * of the user (other devices must sign in again), then opens a new one for
+   * this client. 403 (not 401, which the web treats as an expired session)
+   * on a wrong current password.
+   */
+  async changePassword(
+    userId: number,
+    { currentPassword, newPassword }: ChangePasswordDto,
+    meta: SessionMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.users.findCredentialsById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    const valid = await argon2
+      .verify(user.passwordHash, currentPassword)
+      .catch(() => false);
+    if (!valid) throw new ForbiddenException('Current password is incorrect');
+    if (newPassword === currentPassword) {
+      throw new BadRequestException(
+        'New password must differ from the current one',
+      );
+    }
+
+    const passwordHash = await this.hashPassword(newPassword);
+    if (!(await this.users.updatePasswordHash(userId, passwordHash))) {
+      throw new NotFoundException('User not found');
+    }
+    await this.sessions.revokeAllForUser(userId);
+    // A reset link asked for before the change must not undo it
+    await this.passwordReset.revokeFor(userId);
+    return this.signIn(
+      { id: user.id, email: user.email, name: user.name },
+      meta,
+    );
   }
 
   /** Issues a new access token and opens a refresh session. */
   async signIn(user: AuthUser, meta: SessionMeta = {}): Promise<AuthResult> {
+    const sessionUser = await this.users.findSessionUser(user.id);
+    if (!sessionUser) throw new UnauthorizedException();
     const accessToken = await this.signAccessToken(user.id);
     const refreshToken = await this.sessions.create(user.id, meta);
-    return { user, tokens: { accessToken, refreshToken } };
+    return { user: sessionUser, tokens: { accessToken, refreshToken } };
   }
 
   async refresh(refreshToken: unknown): Promise<AuthResult> {
     const session = await this.sessions.rotate(refreshToken);
-    const user = await this.users.findById(session.userId);
+    const user = await this.users.findSessionUser(session.userId);
     if (!user) throw new UnauthorizedException('Invalid refresh token');
     const accessToken = await this.signAccessToken(user.id);
     return {
@@ -94,14 +244,18 @@ export class AuthService {
     };
   }
 
-  async me(userId: number): Promise<AuthUser> {
-    const user = await this.users.findById(userId);
+  async me(userId: number): Promise<SessionUser> {
+    const user = await this.users.findSessionUser(userId);
     if (!user) throw new UnauthorizedException();
     return user;
   }
 
   logout(refreshToken: unknown) {
     return this.sessions.revoke(refreshToken);
+  }
+
+  private hashPassword(password: string) {
+    return argon2.hash(password, { type: argon2.argon2id });
   }
 
   private signAccessToken(userId: number) {

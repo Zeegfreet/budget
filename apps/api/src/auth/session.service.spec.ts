@@ -13,6 +13,7 @@ const config: AuthConfig = {
   accessTtlSeconds: 900,
   refreshTtlDays: 7,
   cookieSecure: false,
+  refreshCookiePath: '/auth',
 };
 
 const SESSION_ID = '0b6b7c1e-6a0e-4f37-9a39-3e2b1c9d8a10';
@@ -191,6 +192,16 @@ describe('SessionService', () => {
       await service.revoke('garbage', now);
 
       expect(prisma.session.updateMany).not.toHaveBeenCalled();
+    });
+  });
+  describe('revokeAllForUser', () => {
+    it('revokes every open session of the user', async () => {
+      await service.revokeAllForUser(1, now);
+
+      expect(prisma.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 1, revokedAt: null },
+        data: { revokedAt: now },
+      });
     });
   });
 });

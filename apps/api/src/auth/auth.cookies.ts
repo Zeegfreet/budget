@@ -2,9 +2,8 @@ import type { CookieOptions, Response } from 'express';
 import type { AuthConfig } from './auth.config.js';
 
 export const ACCESS_COOKIE = 'access_token';
+/** Only sent to /auth/refresh and /auth/logout (`AuthConfig.refreshCookiePath`). */
 export const REFRESH_COOKIE = 'refresh_token';
-/** The refresh cookie is only sent to /auth/refresh and /auth/logout. */
-export const REFRESH_COOKIE_PATH = '/auth';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -29,7 +28,7 @@ export function setAuthCookies(
   });
   res.cookie(REFRESH_COOKIE, tokens.refreshToken, {
     ...baseOptions(config),
-    path: REFRESH_COOKIE_PATH,
+    path: config.refreshCookiePath,
     maxAge: config.refreshTtlDays * DAY_MS,
   });
 }
@@ -38,6 +37,6 @@ export function clearAuthCookies(res: Response, config: AuthConfig) {
   res.clearCookie(ACCESS_COOKIE, { ...baseOptions(config), path: '/' });
   res.clearCookie(REFRESH_COOKIE, {
     ...baseOptions(config),
-    path: REFRESH_COOKIE_PATH,
+    path: config.refreshCookiePath,
   });
 }

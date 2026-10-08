@@ -8,25 +8,51 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
+  id                  Int               @id @default(autoincrement())
   /// Always stored trimmed and lowercased
-  email        String    @unique
-  name         String
-  passwordHash String
-  /// Calendar date, stored as midnight UTC
-  birthDate    DateTime
-  /// 8 digits, no mask
-  cep          String
-  city         String
-  /// UF, e.g. `SP`
-  state        String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  sessions     Session[]
+  email               String            @unique
+  /// For a pre-registration, the nickname given by whoever invited them
+  name                String
+  /// Pre-registration created by a group invitation: can't sign in and has no
+  /// password or profile until the person signs up with this e-mail
+  pending             Boolean           @default(false)
+  /// `null` while `pending`, and for an account created by GitHub/Google
+  /// sign-in (until a password is set)
+  passwordHash        String?
+  /// Calendar date, stored as midnight UTC; `null` while `pending`, and for an
+  /// account created by GitHub/Google sign-in until the profile is completed
+  birthDate           DateTime?
+  /// 8 digits, no mask; `null` like `birthDate`
+  cep                 String?
+  city                String?
+  /// UF, e.g. `SP`; `null` like `birthDate`
+  state               String?
+  /// When the person proved they own the e-mail (activation link or a
+  /// GitHub/Google sign-in); `null` = not activated, can't sign in with a
+  /// password
+  emailVerifiedAt     DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  /// Balance the user had before the first month in the budget (may be negative)
+  initialBalanceCents Int               @default(0)
+  /// Set once the default categories were created, so deleting them all
+  /// doesn't bring the defaults back
+  budgetSeeded        Boolean           @default(false)
+  sessions            Session[]
+  categoryGroups      CategoryGroup[]
+  categories          Category[]
+  transactions        Transaction[]
+  groupMemberships    GroupMember[]
+  invitationsSent     GroupInvitation[] @relation("InvitationInviter")
+  invitationsReceived GroupInvitation[] @relation("InvitationInvitee")
+  paymentMethods      PaymentMethod[]
+  oauthAccounts       OAuthAccount[]
+  activationTokens    ActivationToken[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -49,4 +75,318 @@ model Session {
   ip                String?
 
   @@index([userId])
+}
+
+/// One-time link sent by e-mail to activate the account (or finish a
+/// pre-registration). Only the newest one of a user is valid.
+model ActivationToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the secret sent in the link
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// One-time link that sets a new password ("Esqueci minha senha")
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the secret sent in the link
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum OAuthProvider {
+  GITHUB
+  GOOGLE
+}
+
+/// A GitHub/Google identity linked to a user (sign-in finds the user by it)
+model OAuthAccount {
+  id                Int           @id @default(autoincrement())
+  provider          OAuthProvider
+  /// The provider's stable user id (GitHub numeric id, Google `sub`)
+  providerAccountId String
+  userId            Int
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Verified e-mail the provider reported when the account was linked
+  email             String
+  createdAt         DateTime      @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// PostgreSQL sorts enums by declaration order: expenses come first in the
+/// category tree (`orderBy: { kind: 'asc' }`)
+enum EntryKind {
+  EXPENSE
+  INCOME
+}
+
+/// A category "type" (e.g. Despesas Básicas, Salário) grouping categories of one kind.
+model CategoryGroup {
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        EntryKind
+  name        String
+  position    Int        @default(0)
+  /// Inactive types are hidden from the grid and not editable; their values still count
+  active      Boolean    @default(true)
+  /// Target share of the month's income, in whole percent (1–100). Expense types only.
+  goalPercent Int?
+  createdAt   DateTime   @default(now())
+  categories  Category[]
+
+  @@unique([userId, kind, name])
+}
+
+/// Leaf category that holds the monthly values (e.g. Moradia under Despesas Básicas).
+model Category {
+  id                Int           @id @default(autoincrement())
+  /// Denormalized owner so every query can be scoped by user
+  userId            Int
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId           Int
+  group             CategoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name              String
+  position          Int           @default(0)
+  /// Inactive categories are hidden from the grid and not editable; their values still count
+  active            Boolean       @default(true)
+  transactions      Transaction[]
+  /// Group memberships whose expense shares land here
+  groupExpenseLinks GroupMember[] @relation("MemberExpenseCategory")
+  /// Group memberships whose income shares land here
+  groupIncomeLinks  GroupMember[] @relation("MemberIncomeCategory")
+
+  @@unique([groupId, name])
+  @@index([userId])
+}
+
+/// One planned income or expense of a category in a month (a "lançamento").
+/// A category may have several in the same month; the grid shows their sum.
+model Transaction {
+  id              Int            @id @default(autoincrement())
+  /// Denormalized owner so every query can be scoped by user
+  userId          Int
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId      Int
+  category        Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  /// `YYYY-MM`, so string order is chronological order
+  month           String
+  description     String?
+  /// Always >= 0; the sign comes from the category's kind
+  plannedCents    Int
+  /// `null` while pending; once realized, the amount actually paid or received
+  realizedCents   Int?
+  /// Shared by the occurrences created by one recurring launch
+  seriesId        String?
+  /// Day of the month the launch is due (1–31)
+  dueDay          Int?
+  /// Link to the bill (boleto) or the portal where it is paid (http/https)
+  paymentUrl      String?
+  /// Card or account the expense is paid with; its due day overrides the
+  /// launch's. Expenses only.
+  paymentMethodId Int?
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([userId, month])
+  @@index([categoryId, month])
+  @@index([seriesId])
+  @@index([paymentMethodId, month])
+}
+
+enum PaymentMethodType {
+  CREDIT_CARD
+  ACCOUNT
+  OTHER
+}
+
+/// Where the user pays expenses (e.g. "Cartão Americanas", due every 12th).
+/// Its transactions of a month make up that month's invoice.
+model PaymentMethod {
+  id           Int               @id @default(autoincrement())
+  userId       Int
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  type         PaymentMethodType
+  /// Day of the month the invoice is due (1–31); overrides the category's
+  dueDay       Int?
+  /// Inactive methods can't be picked for new launches; their history stays
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  transactions Transaction[]
+  /// Group memberships whose expense shares are paid with it
+  groupMembers GroupMember[]
+
+  @@unique([userId, name])
+}
+
+enum GroupRole {
+  OWNER
+  MEMBER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELED
+}
+
+/// How a split method divides an amount among members.
+enum SplitType {
+  /// Same share for each participant (no participants = every active member)
+  EQUAL
+  /// `value` in basis points (100% = 10000); they add up to 10000
+  PERCENT
+  /// `value` is a weight >= 1; shares are proportional to it
+  WEIGHT
+  /// `value` in cents; the amount must equal their sum
+  FIXED
+}
+
+/// Shared finances (e.g. a "república") with their own incomes and expenses.
+/// Visible only to its active members.
+model FinanceGroup {
+  id           Int                @id @default(autoincrement())
+  name         String
+  description  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  members      GroupMember[]
+  invitations  GroupInvitation[]
+  splitMethods SplitMethod[]
+  transactions GroupTransaction[]
+}
+
+/// A user's membership. Leaving sets `leftAt` (history keeps pointing to it);
+/// accepting a new invitation reactivates the same row.
+model GroupMember {
+  id                Int                     @id @default(autoincrement())
+  groupId           Int
+  group             FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId            Int
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              GroupRole               @default(MEMBER)
+  joinedAt          DateTime                @default(now())
+  /// `null` while active; only active members can access the group
+  leftAt            DateTime?
+  /// The member's own category that receives their share of the group's
+  /// expenses in the personal budget; `null` keeps them out of it
+  expenseCategoryId Int?
+  expenseCategory   Category?               @relation("MemberExpenseCategory", fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  /// Same for the incomes
+  incomeCategoryId  Int?
+  incomeCategory    Category?               @relation("MemberIncomeCategory", fields: [incomeCategoryId], references: [id], onDelete: SetNull)
+  /// The member's own payment method for their expense shares (its invoice
+  /// shows them); `null` keeps them out of every invoice
+  paymentMethodId   Int?
+  paymentMethod     PaymentMethod?          @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  splitShares       SplitMethodShare[]
+  paid              GroupTransaction[]
+  shares            GroupTransactionShare[]
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model GroupInvitation {
+  id          Int              @id @default(autoincrement())
+  groupId     Int
+  group       FinanceGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviterId   Int
+  inviter     User             @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviteeId   Int
+  invitee     User             @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  status      InvitationStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  respondedAt DateTime?
+
+  @@index([inviteeId, status])
+  @@index([groupId, status])
+}
+
+/// A rule for dividing the group's incomes and expenses among members.
+model SplitMethod {
+  id           Int                @id @default(autoincrement())
+  groupId      Int
+  group        FinanceGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name         String
+  type         SplitType
+  /// Turned off when a member it names leaves; inactive rules can't be used
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  shares       SplitMethodShare[]
+  transactions GroupTransaction[]
+
+  @@unique([groupId, name])
+}
+
+model SplitMethodShare {
+  splitMethodId Int
+  splitMethod   SplitMethod @relation(fields: [splitMethodId], references: [id], onDelete: Cascade)
+  memberId      Int
+  member        GroupMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  /// Meaning depends on the method's type (see `SplitType`)
+  value         Int
+
+  @@id([splitMethodId, memberId])
+}
+
+/// An income or expense of a group in a month, divided among members.
+model GroupTransaction {
+  id             Int                     @id @default(autoincrement())
+  groupId        Int
+  group          FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  kind           EntryKind
+  description    String
+  /// `YYYY-MM`
+  month          String
+  /// Always > 0; the sign comes from `kind`
+  amountCents    Int
+  splitMethodId  Int?
+  splitMethod    SplitMethod?            @relation(fields: [splitMethodId], references: [id], onDelete: SetNull)
+  /// Who paid the expense or received the income; `null` while pending
+  paidByMemberId Int?
+  paidBy         GroupMember?            @relation(fields: [paidByMemberId], references: [id], onDelete: SetNull)
+  createdById    Int
+  /// Shared by the occurrences created by one recurring launch
+  seriesId       String?
+  /// Day of the month the launch is due (1–31)
+  dueDay         Int?
+  /// Link to the bill (boleto) or the portal where it is paid (http/https)
+  paymentUrl     String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  /// Snapshot of each member's share; always adds up to `amountCents`
+  shares         GroupTransactionShare[]
+
+  @@index([groupId, month])
+  @@index([seriesId])
+}
+
+model GroupTransactionShare {
+  transactionId Int
+  transaction   GroupTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  memberId      Int
+  member        GroupMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amountCents   Int
+  /// When whoever receives the money (the payer of an expense, the share's
+  /// member for an income) confirmed this share was settled; `null` while open
+  settledAt     DateTime?
+
+  @@id([transactionId, memberId])
+  @@index([memberId])
 }

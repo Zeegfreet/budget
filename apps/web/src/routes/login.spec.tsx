@@ -1,22 +1,34 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchMe, login } from '@/features/auth/api'
+import { fetchMe, login, resendActivation } from '@/features/auth/api'
 import {
+  activationSentMessage,
   defaultLoginErrorMessage,
   invalidCredentialsMessage,
+  notActivatedMessage,
   serverUnavailableMessage,
   tooManyAttemptsMessage,
 } from '@/features/auth/errors'
 import { ApiError } from '@/lib/api/client'
+import { stubBudgetApi } from '@/test/budget'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
-vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
+// Signing in lands on the dashboard, which loads the budget
+vi.mock('@/features/budget/api')
+vi.mock('@/features/auth/api', () => ({
+  fetchMe: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+  resendActivation: vi.fn(),
+  requestPasswordReset: vi.fn(),
+}))
 
 const fetchMeMock = vi.mocked(fetchMe)
 const loginMock = vi.mocked(login)
 
-const ana = { id: 1, name: 'Ana', email: 'ana@example.com' }
+const ana = makeAuthUser({ name: 'Ana' })
 
 async function fillAndSubmit(email: string, password: string) {
   if (email) await userEvent.type(screen.getByLabelText('E-mail'), email)
@@ -27,6 +39,7 @@ async function fillAndSubmit(email: string, password: string) {
 describe('Login route (/login)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    stubBudgetApi()
     fetchMeMock.mockRejectedValue(new ApiError(401, ['Unauthorized']))
   })
 
@@ -37,7 +50,7 @@ describe('Login route (/login)', () => {
       expect(screen.getByRole('heading', { name: 'Entrar no Budget' })).toBeInTheDocument()
       expect(screen.getByLabelText('E-mail')).toHaveAttribute('type', 'email')
       expect(screen.getByLabelText('Senha')).toHaveAttribute('type', 'password')
-      expect(screen.queryByRole('banner')).not.toBeInTheDocument()
+      expect(screen.queryByRole('navigation', { name: 'Navegação principal' })).not.toBeInTheDocument()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
@@ -46,14 +59,23 @@ describe('Login route (/login)', () => {
 
       expect(screen.getByRole('link', { name: 'Continuar com GitHub' })).toHaveAttribute(
         'href',
-        '/api/auth/github',
+        '/api/auth/oauth/github',
       )
       expect(screen.getByRole('link', { name: 'Continuar com Google (Gmail)' })).toHaveAttribute(
         'href',
-        '/api/auth/google',
+        '/api/auth/oauth/google',
       )
-      expect(screen.getAllByRole('link')).toHaveLength(3)
+      expect(screen.getAllByRole('link')).toHaveLength(4)
       expect(screen.queryByText(/Microsoft/)).not.toBeInTheDocument()
+    })
+
+    it('sends the OAuth sign-in back to where the user was going', async () => {
+      await renderRoute('/login?redirect=%2Fextrato%3Fmonth%3D2026-10')
+
+      expect(screen.getByRole('link', { name: 'Continuar com GitHub' })).toHaveAttribute(
+        'href',
+        '/api/auth/oauth/github?redirect=%2Fextrato%3Fmonth%3D2026-10',
+      )
     })
 
     it('links to the sign-up page, keeping ?redirect', async () => {
@@ -63,6 +85,21 @@ describe('Login route (/login)', () => {
         'href',
         '/signup?redirect=%2Fgroups',
       )
+    })
+
+    it('links to the password recovery, carrying the typed e-mail', async () => {
+      const { router } = await renderRoute('/login')
+      const forgot = () => screen.getByRole('link', { name: 'Esqueci minha senha' })
+
+      expect(forgot()).toHaveAttribute('href', '/esqueci-senha')
+      await userEvent.type(screen.getByLabelText('E-mail'), ' ana@example.com ')
+      expect(forgot()).toHaveAttribute('href', '/esqueci-senha?email=ana%40example.com')
+
+      await userEvent.click(forgot())
+
+      expect(await screen.findByRole('heading', { name: 'Esqueci minha senha' })).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/esqueci-senha')
+      expect(screen.getByLabelText('E-mail')).toHaveValue('ana@example.com')
     })
 
     it('toggles password visibility', async () => {
@@ -107,9 +144,9 @@ describe('Login route (/login)', () => {
         { email: 'ana@example.com', password: 'segredo123' },
         expect.anything(),
       )
-      expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
       expect(router.state.location.pathname).toBe('/')
-      expect(screen.getByRole('banner')).toHaveTextContent('ana@example.com')
+      expect(screen.getByRole('button', { name: /menu da conta/i })).toHaveTextContent('ana@example.com')
     })
 
     it('returns to the internal page in ?redirect', async () => {
@@ -127,7 +164,7 @@ describe('Login route (/login)', () => {
 
       await fillAndSubmit('ana@example.com', 'segredo123')
 
-      expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
       expect(router.state.location.href).toBe('/')
     })
 
@@ -155,6 +192,29 @@ describe('Login route (/login)', () => {
       expect(screen.getByLabelText('E-mail')).toHaveValue('ana@example.com')
     })
 
+    it('explains an account not activated yet and resends the link to the typed e-mail', async () => {
+      loginMock.mockRejectedValue(new ApiError(403, ['Account not activated']))
+      vi.mocked(resendActivation).mockResolvedValue()
+      await renderRoute('/login')
+
+      await fillAndSubmit(' ana@example.com ', 'segredo123')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(notActivatedMessage)
+      await userEvent.click(screen.getByRole('button', { name: 'Reenviar e-mail de ativação' }))
+      expect(await screen.findByRole('status')).toHaveTextContent(activationSentMessage)
+      expect(resendActivation).toHaveBeenCalledWith('ana@example.com', expect.anything())
+    })
+
+    it('offers no resend for other failures', async () => {
+      loginMock.mockRejectedValue(new ApiError(401, ['Invalid credentials']))
+      await renderRoute('/login')
+
+      await fillAndSubmit('ana@example.com', 'errada')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(invalidCredentialsMessage)
+      expect(screen.queryByRole('button', { name: 'Reenviar e-mail de ativação' })).not.toBeInTheDocument()
+    })
+
     it('explains rate limiting', async () => {
       loginMock.mockRejectedValue(new ApiError(429, ['Too Many Requests']))
       await renderRoute('/login')
@@ -179,7 +239,7 @@ describe('Login route (/login)', () => {
       fetchMeMock.mockResolvedValue(ana)
       const { router } = await renderRoute('/login')
 
-      expect(await screen.findByRole('heading', { name: 'Olá, Ana!' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
       expect(router.state.location.pathname).toBe('/')
     })
 
@@ -187,6 +247,17 @@ describe('Login route (/login)', () => {
       await renderRoute('/login?error=access_denied')
 
       expect(screen.getByRole('alert')).toHaveTextContent('Você cancelou o login')
+    })
+
+    it.each([
+      ['oauth_state', 'Sua tentativa de login expirou'],
+      ['oauth_email', 'não tem um e-mail verificado'],
+      ['oauth_unavailable', 'ainda não está disponível'],
+      ['oauth_failed', 'Não foi possível entrar com o provedor'],
+    ])('explains the OAuth error %s', async (code, message) => {
+      await renderRoute(`/login?error=${code}`)
+
+      expect(screen.getByRole('alert')).toHaveTextContent(message)
     })
 
     it('shows a generic message for unknown OAuth errors', async () => {

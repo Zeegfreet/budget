@@ -12,6 +12,10 @@ export interface AuthUser {
   id: number
   email: string
   name: string
+  /** Signed up with GitHub/Google and must still fill in birth date and address */
+  needsProfile: boolean
+  /** `false` when the account only signs in with GitHub/Google */
+  hasPassword: boolean
 }
 
 export interface LoginInput {
@@ -31,4 +35,44 @@ export interface RegisterInput {
   city: string
   /** UF, e.g. `SP` */
   state: string
+}
+
+/** Answer of `POST /auth/register`: no session until the e-mailed link is used. */
+export interface RegisterResult {
+  /** Where the activation link was sent */
+  email: string
+}
+
+/**
+ * What an activation link is for (`GET /auth/activation`): `ACTIVATE` a
+ * sign-up, or `COMPLETE_SIGNUP` of someone added to a group by e-mail.
+ */
+export type ActivationKind = 'ACTIVATE' | 'COMPLETE_SIGNUP'
+
+export interface ActivationInfo {
+  email: string
+  /** For a pre-registration, the nickname given by whoever added them */
+  name: string
+  kind: ActivationKind
+}
+
+/** Body of `POST /auth/activation/signup`: the sign-up data minus the e-mail (it comes from the link). */
+export type CompleteSignupInput = Omit<RegisterInput, 'email'> & { token: string }
+
+/** Body of `POST /auth/password`. */
+export interface ChangePasswordInput {
+  currentPassword: string
+  newPassword: string
+}
+
+/** Whose password a reset link sets (`GET /auth/password/reset`). */
+export interface PasswordResetInfo {
+  email: string
+  name: string
+}
+
+/** Body of `POST /auth/password/reset`. */
+export interface ResetPasswordInput {
+  token: string
+  password: string
 }

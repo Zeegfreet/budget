@@ -9,6 +9,9 @@ async function bootstrap() {
     instrument: ObserveInstrument,
   });
 
+  // Before the document, so its paths carry the API_PREFIX
+  configureApp(app)
+
   const config = new DocumentBuilder()
     .setTitle('API')
     .setDescription("Api documentation v1")
@@ -17,9 +20,8 @@ async function bootstrap() {
     .build()
 
   const document = SwaggerModule.createDocument(app, config)
-  SwaggerModule.setup('docs', app, document)
+  SwaggerModule.setup('docs', app, document, { useGlobalPrefix: true })
 
-  configureApp(app)
   await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();

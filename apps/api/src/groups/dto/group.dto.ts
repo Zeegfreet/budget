@@ -1,0 +1,169 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import {
+  IsDefined,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import {
+  IsPresent,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_NAME_LENGTH,
+  trimToNull,
+} from '../../budget/dto/category.dto.js';
+import { MONTH_PATTERN } from '../../budget/month.js';
+import { GroupRole } from '../../prisma/generated/enums.js';
+
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
+/** Body of `POST /groups`. */
+export class CreateFinanceGroupDto {
+  @ApiProperty({ example: 'República', maxLength: MAX_NAME_LENGTH })
+  @Transform(trim)
+  @IsString()
+  @Length(1, MAX_NAME_LENGTH)
+  name: string;
+
+  @ApiPropertyOptional({
+    example: 'Apartamento da Rua A',
+    maxLength: MAX_DESCRIPTION_LENGTH,
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @IsString()
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
+  description?: string | null;
+}
+
+/** Body of `PATCH /groups/:id`. `null` clears the description. */
+export class UpdateFinanceGroupDto {
+  @ApiPropertyOptional({ example: 'República' })
+  @IsPresent()
+  @Transform(trim)
+  @IsString()
+  @Length(1, MAX_NAME_LENGTH)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Apartamento da Rua A', nullable: true })
+  @IsOptional()
+  @Transform(trimToNull)
+  @IsString()
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
+  description?: string | null;
+}
+
+/** Query of the month-scoped group routes. */
+export class GroupMonthQueryDto {
+  @ApiProperty({ example: '2026-10' })
+  @Matches(MONTH_PATTERN, { message: 'month must be a month as YYYY-MM' })
+  month: string;
+}
+
+export class FinanceGroupSummaryDto {
+  @ApiProperty({ example: 1 })
+  id: number;
+
+  @ApiProperty({ example: 'República' })
+  name: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  description: string | null;
+
+  @ApiProperty({ enum: GroupRole, description: 'The current user’s role' })
+  role: GroupRole;
+
+  @ApiProperty({ example: 3, description: 'Active members' })
+  memberCount: number;
+}
+
+export class GroupMemberDto {
+  @ApiProperty({ example: 1, description: 'Membership id' })
+  id: number;
+
+  @ApiProperty({ example: 7 })
+  userId: number;
+
+  @ApiProperty({ example: 'Ana Souza' })
+  name: string;
+
+  @ApiProperty({ example: 'ana@example.com' })
+  email: string;
+
+  @ApiProperty({
+    description: 'Pre-registered (no account yet); `name` is the nickname',
+  })
+  pending: boolean;
+
+  @ApiProperty({ enum: GroupRole })
+  role: GroupRole;
+
+  @ApiProperty()
+  joinedAt: Date;
+}
+
+/**
+ * Body of `PUT /groups/:id/link` and the current member's link in the group:
+ * the personal categories that receive their shares (`null` = not counted)
+ * and the payment method their expense shares are paid with.
+ */
+export class GroupLinkDto {
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 4,
+    description: 'Own active EXPENSE category for the expense shares',
+  })
+  @IsDefined()
+  @ValidateIf((_object, value: unknown) => value !== null)
+  @IsInt()
+  @Min(1)
+  expenseCategoryId: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description: 'Own active INCOME category for the income shares',
+  })
+  @IsDefined()
+  @ValidateIf((_object, value: unknown) => value !== null)
+  @IsInt()
+  @Min(1)
+  incomeCategoryId: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 2,
+    description:
+      'Own payment method for the expense shares (`null` = none). Omitted in the body keeps the current one; always present in responses.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  paymentMethodId?: number | null;
+}
+
+export class FinanceGroupDto extends FinanceGroupSummaryDto {
+  @ApiProperty({ example: 1, description: 'The current user’s membership id' })
+  memberId: number;
+
+  @ApiProperty({
+    type: GroupLinkDto,
+    description: 'Where the current user’s shares land in their budget',
+  })
+  link: GroupLinkDto;
+
+  @ApiProperty({
+    type: [GroupMemberDto],
+    description: 'Active members, oldest first',
+  })
+  members: GroupMemberDto[];
+}
