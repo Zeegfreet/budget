@@ -15,9 +15,23 @@ jobs:
     defaults:
       run:
         working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: budget
+          POSTGRES_PASSWORD: budget
+          POSTGRES_DB: budget_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budget -d budget_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      # Isolated SQLite file for tests; never dev.db
-      DATABASE_URL: file:./test.db
+      # Isolated test database (the e2e reset refuses anything not *_test)
+      DATABASE_URL: postgresql://budget:budget@localhost:5432/budget_test
       # Required by the API's env validation; test-only value
       JWT_ACCESS_SECRET: ci-test-secret
     steps:

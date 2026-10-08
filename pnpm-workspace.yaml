@@ -5,5 +5,6 @@ allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': true
   argon2: true
-  better-sqlite3: true
+  # Pulled in by the prisma CLI; the API uses PostgreSQL, so skip its native build
+  better-sqlite3: false
   prisma: true

@@ -39,6 +39,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Fundação da API (NestJS, Prisma, Swagger, validação) | ✅ | — | |
 | Fundação do frontend (Tailwind, shadcn/ui, Router, Query, Atomic Design) | — | ✅ | |
 | Pipeline de CI (lint, build, testes unitários e e2e) | ✅ | ✅ | |
+| Banco PostgreSQL | ✅ | — | Prisma 7 com `@prisma/adapter-pg`; Postgres local via `docker compose` (bancos `budget` e `budget_test`) e serviço Postgres no CI. Veja [Configurar e subir a API](#2-configurar-e-subir-a-api) |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
 | Ativação de conta por e-mail (SMTP) | ✅ | ✅ | O cadastro não abre sessão: envia um link de ativação (`/ativar-conta`, 72 h, uso único) e o login fica bloqueado (`403`) até a ativação, com **Reenviar e-mail**. E-mail sem conta adicionado a um grupo recebe o link para concluir o cadastro; quem já tem conta recebe o aviso do convite. Veja [Ativação de conta e e-mails](#ativação-de-conta-e-e-mails) |
 | Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
@@ -56,7 +57,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
-| Docker / deploy em containers | ⏳ | ⏳ | Próximo passo, veja [Deploy](#deploy) |
+| Docker / deploy em containers | ⏳ | ⏳ | O `docker-compose.yml` sobe só o PostgreSQL de desenvolvimento; Dockerfiles da API e do web são o próximo passo, veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 
@@ -65,7 +66,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ### API ([apps/api](apps/api))
 
 - **[NestJS 12](https://nestjs.com/)** (TypeScript, ESM)
-- **[Prisma 7](https://www.prisma.io/)** com **SQLite** via driver adapter `better-sqlite3`
+- **[Prisma 7](https://www.prisma.io/)** com **PostgreSQL** via driver adapter `@prisma/adapter-pg`
 - **class-validator / class-transformer**: `ValidationPipe` global com `whitelist` e `forbidNonWhitelisted`
 - **Swagger** (`@nestjs/swagger`), servido em `/docs`
 - **Passport** (`@nestjs/passport`): estratégia `local` no login e `jwt` (token lido do cookie) no guard global
@@ -117,6 +118,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 
 - Node.js 24+
 - pnpm 12 (`corepack enable` ou `npm i -g pnpm`)
+- Docker (para o PostgreSQL local) ou um PostgreSQL 17 próprio
 
 ### 1. Instalar dependências
 
@@ -127,11 +129,13 @@ pnpm install
 ### 2. Configurar e subir a API
 
 ```bash
+docker compose up -d    # na raiz: PostgreSQL em localhost:5432 (bancos budget e budget_test)
+
 cd apps/api
 cp .env.example .env    # depois troque JWT_ACCESS_SECRET por um valor aleatório
 
 pnpm prisma generate --config prisma7.config.ts                 # gera o client em src/prisma/generated
-pnpm prisma migrate dev --config prisma7.config.ts              # cria/atualiza o dev.db
+pnpm prisma migrate dev --config prisma7.config.ts              # cria/atualiza o banco budget
 pnpm start:dev                                                  # http://localhost:3000
 ```
 
@@ -139,7 +143,7 @@ A documentação da API (Swagger) fica em http://localhost:3000/docs.
 
 > O arquivo de configuração do Prisma se chama `prisma7.config.ts`, então passe `--config prisma7.config.ts` em todo comando do Prisma.
 
-> **Atualizando um `dev.db` antigo:** a migration `auth_users` remove a tabela `Post` do scaffold e torna obrigatórios os novos campos de `User` (senha, data de nascimento, CEP...). Ela só é aplicada se a tabela `User` estiver vazia. Se você tiver usuários de teste antigos, recrie o banco com `pnpm prisma migrate reset --config prisma7.config.ts` (isso **apaga** os dados do `dev.db`).
+> **Vindo do SQLite:** o banco passou a ser PostgreSQL e o histórico de migrations recomeçou numa migration inicial única. Os dados de um `dev.db` antigo não são migrados: troque a `DATABASE_URL` do seu `.env` pela do `.env.example`, suba o compose e rode `prisma migrate dev`. Os arquivos `dev.db`/`test.db` podem ser apagados. A API se recusa a subir com uma `DATABASE_URL` que não seja `postgresql://`.
 
 ### 3. Subir o frontend
 
@@ -169,7 +173,7 @@ e abra http://localhost:8025.
 
 | App | Variável | Padrão | Descrição |
 | --- | --- | --- | --- |
-| api | `DATABASE_URL` | — (obrigatória) | Conexão do SQLite, ex.: `file:./dev.db` |
+| api | `DATABASE_URL` | — (obrigatória) | Conexão do PostgreSQL, ex.: `postgresql://budget:budget@localhost:5432/budget` (precisa começar com `postgresql://` ou `postgres://`) |
 | api | `JWT_ACCESS_SECRET` | — (obrigatória) | Segredo que assina o token de acesso. Use um valor longo e aleatório |
 | api | `JWT_ACCESS_TTL_SECONDS` | `900` | Validade do token de acesso (15 min) |
 | api | `REFRESH_TOKEN_TTL_DAYS` | `7` | Validade da sessão de refresh, renovada a cada uso |
@@ -539,8 +543,11 @@ Todo recurso só é considerado pronto com testes e2e e unitários (veja [CLAUDE
 # API
 cd apps/api
 pnpm test                                                      # unitários
-DATABASE_URL=file:./test.db pnpm prisma migrate deploy --config prisma7.config.ts
-DATABASE_URL=file:./test.db pnpm test:e2e                      # e2e em banco isolado (nunca o dev.db)
+DATABASE_URL=postgresql://budget:budget@localhost:5432/budget_test \
+  pnpm prisma migrate deploy --config prisma7.config.ts        # prepara o banco budget_test do compose
+pnpm test:e2e                                                  # e2e no budget_test (padrão de vitest.config.e2e.ts)
+# Cada teste esvazia as tabelas (TRUNCATE ... RESTART IDENTITY); o reset se recusa a rodar
+# em um banco cujo nome não termine em _test, então nunca apaga o banco de desenvolvimento.
 # Os e2e usam JWT_ACCESS_SECRET=e2e-test-secret se a variável não estiver definida
 # e credenciais OAuth falsas (vitest.config.e2e.ts); GitHub e Google são simulados com um mock de fetch.
 # Os e-mails vão para uma caixa em memória (test/mail.ts): o helper signUp cadastra e ativa a conta pelo link
@@ -554,7 +561,7 @@ pnpm test
 
 O workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) roda em todo push e pull request:
 
-- **api**: instala dependências → `prisma generate` → lint → build → testes unitários → `prisma migrate deploy` em `test.db` → testes e2e (com `JWT_ACCESS_SECRET` de teste definido no workflow)
+- **api**: instala dependências → `prisma generate` → lint → build → testes unitários → `prisma migrate deploy` no banco `budget_test` de um serviço PostgreSQL 17 do job → testes e2e (com `JWT_ACCESS_SECRET` de teste definido no workflow)
 - **web**: instala dependências → gera a árvore de rotas → lint → testes → build
 
 Ainda não há etapa de deploy automático. Ela entra junto com os arquivos Docker.
@@ -569,7 +576,7 @@ Ainda não há etapa de deploy automático. Ela entra junto com os arquivos Dock
 navegador ──► proxy reverso (ex.: Nginx)
                ├── /        → arquivos estáticos do web (apps/web/dist)
                └── /api/*   → API NestJS :3000 (removendo o prefixo /api)
-                               └── SQLite (arquivo em volume persistente)
+                               └── PostgreSQL
 ```
 
 A API ainda **não tem CORS habilitado nem prefixo global**. Por isso, em produção o frontend e a API devem ficar sob o mesmo domínio, com um proxy reverso que remove o `/api`, igual ao proxy do Vite em desenvolvimento.
@@ -582,7 +589,7 @@ cd apps/api
 pnpm prisma generate --config prisma7.config.ts
 pnpm build
 
-export DATABASE_URL="file:/var/lib/budget/prod.db"   # caminho em disco persistente
+export DATABASE_URL="postgresql://budget:<senha>@db.exemplo.com:5432/budget"   # ?sslmode=require se o servidor exigir TLS
 export JWT_ACCESS_SECRET="<valor longo e aleatório>" # trocar invalida todas as sessões de acesso
 export NODE_ENV=production                           # cookies com Secure
 export TRUST_PROXY=1                                 # atrás do Nginx: rate limit por IP real
@@ -629,7 +636,7 @@ server {
 
 ### Checklist de produção
 
-- [ ] `DATABASE_URL` apontando para um arquivo em volume persistente, com backup
+- [ ] `DATABASE_URL` apontando para um PostgreSQL de produção (gerenciado ou com volume persistente), com backup (`pg_dump` agendado ou o backup do serviço) e usuário com senha forte
 - [ ] `prisma migrate deploy` executado a cada deploy, antes de iniciar a API
 - [ ] Credenciais reais do `@nestjs/observe` em `app.module.ts` (hoje estão com placeholders), de preferência lidas de variáveis de ambiente
 - [ ] HTTPS no proxy reverso (obrigatório para o cookie de sessão `Secure`)

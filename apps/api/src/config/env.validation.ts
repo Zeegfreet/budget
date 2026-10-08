@@ -31,6 +31,15 @@ export function validateEnv(env: Record<string, unknown>) {
     if (typeof env[key] !== 'string' || !env[key])
       errors.push(`${key} is required`);
   }
+  // Catches a leftover SQLite `file:./dev.db` from before the PostgreSQL move
+  const databaseUrl = env.DATABASE_URL;
+  if (
+    typeof databaseUrl === 'string' &&
+    databaseUrl &&
+    !/^postgres(ql)?:\/\//.test(databaseUrl)
+  ) {
+    errors.push('DATABASE_URL must be a postgresql:// URL');
+  }
   // Without SMTP the activation links only reach the log
   if (env.NODE_ENV === 'production' && !env.SMTP_HOST) {
     errors.push('SMTP_HOST is required in production');

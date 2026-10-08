@@ -185,7 +185,7 @@ export class UserService {
       ...changes,
       ...(birthDate && { birthDate: new Date(`${birthDate}T00:00:00.000Z`) }),
     };
-    // An empty update matches no row in SQLite: just read the profile
+    // Nothing to write (an empty update may match no row): just read the profile
     if (Object.values(data).every((value) => value === undefined)) {
       return this.findProfile(id);
     }

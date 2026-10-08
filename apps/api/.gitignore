@@ -3,6 +3,3 @@ node_modules
 .env
 
 /src/prisma/generated
-
-# Isolated database used by e2e tests
-test.db*

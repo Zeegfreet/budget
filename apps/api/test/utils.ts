@@ -25,25 +25,26 @@ export async function createTestApp(): Promise<INestApplication<App>> {
   return app;
 }
 
+/**
+ * Empties every table (ids start over) and the outbox. Refuses to run unless
+ * the database name ends in `_test`, so it never wipes the dev database.
+ */
 export async function resetDatabase(app: INestApplication) {
   mailOf(app).clear();
   const prisma = app.get(PrismaService);
-  await prisma.groupTransactionShare.deleteMany();
-  await prisma.groupTransaction.deleteMany();
-  await prisma.splitMethodShare.deleteMany();
-  await prisma.splitMethod.deleteMany();
-  await prisma.groupInvitation.deleteMany();
-  await prisma.groupMember.deleteMany();
-  await prisma.financeGroup.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.paymentMethod.deleteMany();
-  await prisma.category.deleteMany();
-  await prisma.categoryGroup.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.activationToken.deleteMany();
-  await prisma.passwordResetToken.deleteMany();
-  await prisma.oAuthAccount.deleteMany();
-  await prisma.user.deleteMany();
+  const [{ db }] = await prisma.$queryRaw<
+    { db: string }[]
+  >`SELECT current_database() AS db`;
+  if (!db.endsWith('_test')) {
+    throw new Error(`Refusing to reset "${db}": not a *_test database`);
+  }
+  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = current_schema() AND tablename <> '_prisma_migrations'`;
+  const list = tables.map(({ tablename }) => `"${tablename}"`).join(', ');
+  await prisma.$executeRawUnsafe(
+    `TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`,
+  );
 }
 
 export const userBody = (name: string, email: string) => ({

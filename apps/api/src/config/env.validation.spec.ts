@@ -1,6 +1,9 @@
 import { validateEnv } from './env.validation.js';
 
-const valid = { DATABASE_URL: 'file:./test.db', JWT_ACCESS_SECRET: 'secret' };
+const valid = {
+  DATABASE_URL: 'postgresql://budget:budget@localhost:5432/budget_test',
+  JWT_ACCESS_SECRET: 'secret',
+};
 
 describe('validateEnv', () => {
   it('accepts the required variables', () => {
@@ -32,6 +35,20 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ JWT_ACCESS_SECRET: '' })).toThrow(
       /DATABASE_URL is required; JWT_ACCESS_SECRET is required/,
     );
+  });
+
+  it.each(['file:./dev.db', 'mysql://localhost/budget'])(
+    'rejects a non-PostgreSQL DATABASE_URL (%s)',
+    (url) => {
+      expect(() => validateEnv({ ...valid, DATABASE_URL: url })).toThrow(
+        /DATABASE_URL must be a postgresql:\/\/ URL/,
+      );
+    },
+  );
+
+  it('accepts the postgres:// scheme too', () => {
+    const env = { ...valid, DATABASE_URL: 'postgres://u:p@db:5432/budget' };
+    expect(validateEnv(env)).toEqual(env);
   });
 
   it.each([
