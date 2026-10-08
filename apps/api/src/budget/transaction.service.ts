@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '../prisma/generated/client.js';
 import { assertUsablePaymentMethod } from '../payment-methods/payment-method-access.js';
+import { type Db, runWrites } from '../prisma/db.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { assertWritableCategories } from './category-access.js';
 import type {
@@ -71,7 +72,8 @@ function byStatementOrder(a: TransactionRow, b: TransactionRow): number {
  * Transactions ("lançamentos") behind the statement and the grid: planned
  * amounts per category and month, optionally realized with another amount and
  * grouped in recurring series. Everything is scoped by the owner; another
- * user's transaction is a 404.
+ * user's transaction is a 404. `create`, `update` and `remove` take an optional
+ * `tx` to run inside a larger transaction (the dashboard's plan).
  */
 @Injectable()
 export class TransactionService {
@@ -111,16 +113,18 @@ export class TransactionService {
       paymentUrl = null,
       paymentMethodId = null,
     }: CreateTransactionDto,
+    tx?: Db,
   ): Promise<TransactionDto[]> {
-    await assertWritableCategories(this.prisma, userId, [categoryId]);
+    const db = tx ?? this.prisma;
+    await assertWritableCategories(db, userId, [categoryId]);
     if (paymentMethodId !== null) {
-      await this.assertExpense(userId, categoryId);
-      await assertUsablePaymentMethod(this.prisma, userId, paymentMethodId);
+      await this.assertExpense(db, userId, categoryId);
+      await assertUsablePaymentMethod(db, userId, paymentMethodId);
     }
     const seriesId = repeatMonths > 1 ? randomUUID() : null;
-    const rows = await this.prisma.$transaction(
+    const rows = (await runWrites(this.prisma, tx, (w) =>
       Array.from({ length: repeatMonths }, (_, i) =>
-        this.prisma.transaction.create({
+        w.transaction.create({
           data: {
             userId,
             categoryId,
@@ -135,8 +139,8 @@ export class TransactionService {
           select: transactionSelect,
         }),
       ),
-    );
-    return this.present(userId, rows);
+    )) as TransactionRow[];
+    return this.present(userId, rows, db);
   }
 
   /**
@@ -155,27 +159,29 @@ export class TransactionService {
       paymentUrl,
       paymentMethodId,
     }: UpdateTransactionDto,
+    tx?: Db,
   ): Promise<TransactionDto> {
-    const current = await this.find(userId, id);
+    const db = tx ?? this.prisma;
+    const current = await this.find(userId, id, db);
     if (!current.category.active || !current.category.group.active) {
       throw new BadRequestException('Category is inactive');
     }
     const categoryChanges =
       categoryId !== undefined && categoryId !== current.category.id;
     if (categoryChanges) {
-      await assertWritableCategories(this.prisma, userId, [categoryId]);
+      await assertWritableCategories(db, userId, [categoryId]);
     }
     const currentMethodId = current.paymentMethod?.id ?? null;
     const methodId =
       paymentMethodId === undefined ? currentMethodId : paymentMethodId;
     if (methodId !== null) {
-      if (categoryChanges) await this.assertExpense(userId, categoryId);
+      if (categoryChanges) await this.assertExpense(db, userId, categoryId);
       else if (current.category.group.kind !== 'EXPENSE') {
         throw new BadRequestException('Only expenses have a payment method');
       }
       // Keeping a method that was inactivated afterwards is fine
       if (methodId !== currentMethodId) {
-        await assertUsablePaymentMethod(this.prisma, userId, methodId);
+        await assertUsablePaymentMethod(db, userId, methodId);
       }
     }
     // `undefined` leaves a field as is, `null` clears an optional one
@@ -187,17 +193,17 @@ export class TransactionService {
       paymentUrl,
       paymentMethodId,
     };
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.transaction.update({
+    const [updated] = (await runWrites(this.prisma, tx, (w) => [
+      w.transaction.update({
         where: { id },
         data,
         select: transactionSelect,
       }),
       ...this.following(userId, current, scope).map((where) =>
-        this.prisma.transaction.updateMany({ where, data }),
+        w.transaction.updateMany({ where, data }),
       ),
-    ]);
-    return (await this.present(userId, [updated]))[0];
+    ])) as [TransactionRow];
+    return (await this.present(userId, [updated], db))[0];
   }
 
   /** Deletes the transaction and, with `FOLLOWING`, the later pending ones of its series. */
@@ -205,12 +211,13 @@ export class TransactionService {
     userId: number,
     id: number,
     scope: RecurrenceScope = 'ONE',
+    tx?: Db,
   ): Promise<void> {
-    const current = await this.find(userId, id);
-    await this.prisma.$transaction([
-      this.prisma.transaction.delete({ where: { id } }),
+    const current = await this.find(userId, id, tx);
+    await runWrites(this.prisma, tx, (w) => [
+      w.transaction.delete({ where: { id } }),
       ...this.following(userId, current, scope).map((where) =>
-        this.prisma.transaction.deleteMany({ where }),
+        w.transaction.deleteMany({ where }),
       ),
     ]);
   }
@@ -309,8 +316,8 @@ export class TransactionService {
   }
 
   /** Payment methods are for expenses only (400 for an income category). */
-  private async assertExpense(userId: number, categoryId: number) {
-    const category = await this.prisma.category.findFirst({
+  private async assertExpense(db: Db, userId: number, categoryId: number) {
+    const category = await db.category.findFirst({
       where: { id: categoryId, userId },
       select: { group: { select: { kind: true } } },
     });
@@ -319,8 +326,12 @@ export class TransactionService {
     }
   }
 
-  private async find(userId: number, id: number): Promise<TransactionRow> {
-    const row = await this.prisma.transaction.findFirst({
+  private async find(
+    userId: number,
+    id: number,
+    db: Db = this.prisma,
+  ): Promise<TransactionRow> {
+    const row = await db.transaction.findFirst({
       where: { id, userId },
       select: transactionSelect,
     });
@@ -350,6 +361,7 @@ export class TransactionService {
   private async present(
     userId: number,
     rows: TransactionRow[],
+    db: Db = this.prisma,
   ): Promise<TransactionDto[]> {
     const seriesIds = [
       ...new Set(rows.flatMap((r) => (r.seriesId ? [r.seriesId] : []))),
@@ -357,7 +369,7 @@ export class TransactionService {
     const positions = seriesPositions(
       seriesIds.length === 0
         ? []
-        : await this.prisma.transaction.findMany({
+        : await db.transaction.findMany({
             where: { userId, seriesId: { in: seriesIds } },
             select: { id: true, seriesId: true, month: true },
           }),

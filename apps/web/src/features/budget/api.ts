@@ -12,6 +12,7 @@ import type {
   LineCellChange,
   MonthlyEntry,
   Month,
+  PlanRequest,
 } from './types'
 
 export async function fetchCategories(): Promise<CategoryGroup[]> {
@@ -33,6 +34,11 @@ export async function fetchLines(from: Month, to: Month): Promise<BudgetLine[]> 
 /** Saves changed row cells; `amountCents: 0` deletes that month's transaction. */
 export async function saveLines(cells: LineCellChange[]): Promise<void> {
   await api.put('/budget/lines', { cells })
+}
+
+/** Saves every change of the planning table at once (all or nothing). */
+export async function savePlan(plan: PlanRequest): Promise<void> {
+  await api.put('/budget/plan', plan)
 }
 
 export async function fetchSummary(month: Month): Promise<BudgetSummary> {

@@ -1,12 +1,12 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { PrismaService } from '../prisma/prisma.service.js';
+import type { Db } from '../prisma/db.js';
 
 /**
  * Ensures every category is the user's (404 otherwise, no existence leak) and
  * takes values: the category and its type are active (400 otherwise).
  */
 export async function assertWritableCategories(
-  prisma: PrismaService,
+  prisma: Db,
   userId: number,
   categoryIds: number[],
 ): Promise<void> {

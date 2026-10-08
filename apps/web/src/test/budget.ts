@@ -198,6 +198,7 @@ export function stubBudgetApi({
   vi.mocked(budgetApi.fetchLines).mockResolvedValue(lines)
   vi.mocked(budgetApi.fetchSummary).mockResolvedValue(summary)
   vi.mocked(budgetApi.saveLines).mockResolvedValue()
+  vi.mocked(budgetApi.savePlan).mockResolvedValue()
   vi.mocked(budgetApi.updateInitialBalance).mockResolvedValue()
   // Tree changes resolve with whatever; the page refetches the tree afterwards
   vi.mocked(budgetApi.createGroup).mockResolvedValue(groups[0])

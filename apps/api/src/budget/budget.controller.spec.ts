@@ -1,5 +1,6 @@
 import { BudgetController } from './budget.controller.js';
 import type { BudgetService } from './budget.service.js';
+import type { PlanService } from './plan.service.js';
 
 describe('BudgetController', () => {
   const service = {
@@ -10,7 +11,11 @@ describe('BudgetController', () => {
     summary: vi.fn(),
     setInitialBalance: vi.fn(),
   };
-  const controller = new BudgetController(service as unknown as BudgetService);
+  const plans = { save: vi.fn() };
+  const controller = new BudgetController(
+    service as unknown as BudgetService,
+    plans as unknown as PlanService,
+  );
   const user = { id: 7 };
 
   beforeEach(() => vi.clearAllMocks());
@@ -38,5 +43,11 @@ describe('BudgetController', () => {
     expect(service.saveLines).toHaveBeenCalledWith(7, cells);
     expect(service.summary).toHaveBeenCalledWith(7, '2026-10');
     expect(service.setInitialBalance).toHaveBeenCalledWith(7, 10);
+  });
+
+  it('saves the plan as the authenticated user', async () => {
+    const plan = { deleteCategories: [3] };
+    await controller.savePlan(user, plan);
+    expect(plans.save).toHaveBeenCalledWith(7, plan);
   });
 });

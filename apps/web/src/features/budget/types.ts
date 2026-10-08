@@ -169,3 +169,37 @@ export interface GroupStatement {
   transfers: GroupStatementTransfer[]
   items: GroupStatementItem[]
 }
+
+/** A launch created by a plan; `categoryId` may be a ref (negative) of a category created by it */
+export interface PlanLineInput {
+  ref: number
+  categoryId: number
+  month: Month
+  description?: string | null
+  plannedCents: number
+  repeatMonths?: number
+  dueDay?: number | null
+  paymentUrl?: string | null
+  paymentMethodId?: number | null
+}
+
+/**
+ * Body of `PUT /budget/plan`: every change of the dashboard's planning table,
+ * saved all or nothing. Items created here carry a negative `ref`, used by
+ * later items in place of an id.
+ */
+export interface PlanRequest {
+  createGroups?: { ref: number; kind: EntryKind; name: string; goalPercent?: number }[]
+  updateGroups?: ({ id: number } & GroupPatch)[]
+  deleteGroups?: number[]
+  createCategories?: { ref: number; groupId: number; name: string }[]
+  updateCategories?: ({ id: number } & CategoryPatch)[]
+  deleteCategories?: number[]
+  createLines?: PlanLineInput[]
+  /** From this occurrence on (`FOLLOWING`); `categoryId` may be a ref */
+  updateLines?: ({ transactionId: number } & Partial<Omit<PlanLineInput, 'ref' | 'month' | 'repeatMonths'>>)[]
+  /** Each with the later pending occurrences of its series */
+  deleteLines?: number[]
+  /** `anchorId` may be the ref of a launch created by the plan */
+  cells?: LineCellChange[]
+}

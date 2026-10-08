@@ -2,8 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchMe } from '@/features/auth/api'
-import { updateGroup } from '@/features/budget/api'
-import { ApiError } from '@/lib/api/client'
+import { savePlan, updateGroup } from '@/features/budget/api'
 import { budgetGroups, makeLine, stubBudgetApi } from '@/test/budget'
 import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
@@ -65,8 +64,12 @@ describe('Dashboard: goals per expense type', () => {
     expect(month).toHaveAttribute('aria-valuenow', '50')
     expect(month).toHaveAttribute('aria-valuetext', '50% das receitas, meta 50%')
     expect(month).toHaveAttribute('data-status', 'warning')
+    // The goal as an amount: 50% of 5.000 in October
+    expect(month.parentElement).toHaveTextContent('R$ 2.500,00meta R$ 2.500,00')
     const period = within(basics).getByRole('meter', { name: 'Período' })
     expect(period).toHaveAttribute('aria-valuenow', '86')
+    // 4.300 against 50% of the period's 5.000
+    expect(period.parentElement).toHaveTextContent('R$ 4.300,00meta R$ 2.500,00')
     expect(period).toHaveAttribute('data-status', 'over')
 
     // Custos de Vida: nothing in October, 300 in the period (6%)
@@ -89,7 +92,8 @@ describe('Dashboard: goals per expense type', () => {
     expect(month).toHaveAttribute('aria-valuenow', '50')
     expect(month).toHaveAttribute('aria-valuetext', '50% das receitas, meta mínima 20%')
     expect(month).toHaveAttribute('data-status', 'ok')
-    expect(leftover).toHaveTextContent('R$ 2.500,00')
+    // 2.500 kept against a minimum of 20% of 5.000
+    expect(month.parentElement).toHaveTextContent('R$ 2.500,00mín. R$ 1.000,00')
     // The period: 5.000 − 4.600 = 400 (8%), below the minimum
     const period = within(leftover).getByRole('meter', { name: 'Período' })
     expect(period).toHaveAttribute('aria-valuenow', '8')
@@ -146,6 +150,8 @@ describe('Dashboard: goals per expense type', () => {
     expect(meter).not.toHaveAttribute('aria-valuenow')
     expect(meter).toHaveAttribute('aria-valuetext', 'sem receitas, meta 50%')
     expect(meter).toHaveAttribute('data-status', 'over')
+    // No income, no goal amount
+    expect(meter.parentElement).not.toHaveTextContent('meta R$')
   })
 
   it('sets the goals of every expense type at once, warning above 100%', async () => {
@@ -163,13 +169,23 @@ describe('Dashboard: goals per expense type', () => {
     await userEvent.type(living, '30')
     expect(within(dialog).getByRole('status')).toHaveTextContent('Soma das metas: 80%')
 
-    stubBudgetApi({ groups: withGoals })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar metas' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Aplicar metas' }))
 
-    expect(updateGroupMock).toHaveBeenCalledWith(10, { goalPercent: 50 })
-    expect(updateGroupMock).toHaveBeenCalledWith(20, { goalPercent: 30 })
+    // The panel follows the plan right away; nothing is sent until "Salvar"
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(await within(panel()).findByRole('listitem', { name: 'Despesas Básicas' })).toBeInTheDocument()
+    expect(within(panel()).getByRole('listitem', { name: 'Despesas Básicas' })).toHaveTextContent('Meta 50%')
+    expect(within(panel()).getByRole('listitem', { name: 'Custos de Vida' })).toHaveTextContent('Meta 30%')
+    expect(updateGroupMock).not.toHaveBeenCalled()
+    const bar = screen.getByRole('region', { name: 'Alterações não salvas' })
+    expect(bar).toHaveTextContent('2 alterações não salvas')
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Salvar' }))
+    expect(savePlan).toHaveBeenCalledWith({
+      updateGroups: [
+        { id: 10, goalPercent: 50 },
+        { id: 20, goalPercent: 30 },
+      ],
+    })
   })
 
   it('removes a goal left blank and sends only the changes', async () => {
@@ -178,29 +194,45 @@ describe('Dashboard: goals per expense type', () => {
     const dialog = await openGoalsDialog()
 
     await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Despesas Básicas' }))
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar metas' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Aplicar metas' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(updateGroupMock).toHaveBeenCalledTimes(1)
-    expect(updateGroupMock).toHaveBeenCalledWith(10, { goalPercent: null })
+    expect(within(panel()).queryByRole('listitem', { name: 'Despesas Básicas' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(savePlan).toHaveBeenCalledWith({ updateGroups: [{ id: 10, goalPercent: null }] })
   })
 
-  it('rejects invalid percentages and shows API errors', async () => {
+  it('drops a goal changed back to the saved one', async () => {
+    stubBudgetApi({ groups: withGoals })
+    await openDashboard()
+
+    let dialog = await openGoalsDialog()
+    const basics = () => within(dialog).getByRole('textbox', { name: 'Despesas Básicas' })
+    await userEvent.clear(basics())
+    await userEvent.type(basics(), '40')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Aplicar metas' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toBeInTheDocument()
+
+    dialog = await openGoalsDialog()
+    expect(basics()).toHaveValue('40')
+    await userEvent.clear(basics())
+    await userEvent.type(basics(), '50')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Aplicar metas' }))
+
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument())
+  })
+
+  it('rejects invalid percentages', async () => {
     await openDashboard()
     const dialog = await openGoalsDialog()
     const basics = within(dialog).getByRole('textbox', { name: 'Despesas Básicas' })
 
     await userEvent.type(basics, '12,5')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar metas' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Aplicar metas' }))
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Use percentuais inteiros entre 1 e 100')
     expect(basics).toHaveAttribute('aria-invalid', 'true')
-    expect(updateGroupMock).not.toHaveBeenCalled()
-
-    updateGroupMock.mockRejectedValue(new ApiError(400, ['goalPercent must not be greater than 100']))
-    await userEvent.clear(basics)
-    await userEvent.type(basics, '40')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar metas' }))
-    expect(await within(dialog).findByText('goalPercent must not be greater than 100')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument()
   })
 
   it('leaves inactive types out of the goals', async () => {

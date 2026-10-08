@@ -27,9 +27,10 @@ const TEXT = {
 /**
  * Thermometer of one goal: the bar is the share of the income spent (or, in
  * `min` mode, kept), the marker is the goal. The scale is 0–100% of the income.
+ * Below it, the amount spent (or kept) next to the goal's amount.
  */
 export function GoalMeter({ label, usage, goalPercent, mode = 'max', className }: GoalMeterProps) {
-  const { permille, status, spentCents } = usage
+  const { permille, status, spentCents, incomeCents, targetCents } = usage
   const shown = permille === null ? 'sem receitas' : formatPermille(permille)
   const width =
     permille === null ? (mode === 'max' && spentCents > 0 ? 100 : 0) : Math.min(Math.max(permille / 10, 0), 100)
@@ -59,7 +60,15 @@ export function GoalMeter({ label, usage, goalPercent, mode = 'max', className }
           style={{ left: `calc(${Math.min(goalPercent, 100)}% - 1px)` }}
         />
       </div>
-      <MoneyText cents={spentCents} className="text-xs text-muted-foreground" />
+      <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+        <MoneyText cents={spentCents} />
+        {/* The goal as an amount only makes sense with income to take it from */}
+        {incomeCents > 0 && (
+          <span className="shrink-0">
+            {mode === 'min' ? 'mín.' : 'meta'} <MoneyText cents={targetCents} />
+          </span>
+        )}
+      </div>
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { CategoryController } from './category.controller.js';
 import { CategoryService } from './category.service.js';
 import { GroupStatementController } from './group-statement.controller.js';
 import { GroupStatementService } from './group-statement.service.js';
+import { PlanService } from './plan.service.js';
 import { TransactionController } from './transaction.controller.js';
 import { TransactionService } from './transaction.service.js';
 
@@ -22,6 +23,7 @@ import { TransactionService } from './transaction.service.js';
     CategoryService,
     TransactionService,
     GroupStatementService,
+    PlanService,
   ],
   exports: [TransactionService],
 })

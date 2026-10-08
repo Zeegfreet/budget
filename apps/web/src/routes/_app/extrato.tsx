@@ -96,7 +96,7 @@ function StatementPage() {
   const saveInitialBalance = useInitialBalance()
   const [categoryDialog, setCategoryDialog] = useState<BudgetDialog>(null)
   // No unsaved values on this page, so nothing to forget
-  const categoryActions = useCategoryActions(() => {})
+  const categoryActions = useCategoryActions()
   const { toggleGroup, toggleCategory } = useCategoryToggle(categoryActions)
 
   function handleCategoryAction(action: CategoryAction) {

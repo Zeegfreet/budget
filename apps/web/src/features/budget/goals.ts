@@ -9,6 +9,8 @@ export type GoalStatus = 'ok' | 'warning' | 'over'
 export interface GoalUsage {
   spentCents: number
   incomeCents: number
+  /** The goal as an amount: the goal's share of the income (0 without income) */
+  targetCents: number
   /** Spent ÷ income in tenths of a percent (485 = 48,5%); null without income */
   permille: number | null
   status: GoalStatus
@@ -43,6 +45,11 @@ export interface GoalsOverview {
 /** At or above this share of the goal (in percent), the meter warns */
 export const WARNING_RATIO = 90
 
+/** `percent` of the income in cents, rounded to the nearest cent (none without income) */
+export function shareOfIncome(incomeCents: number, percent: number): number {
+  return incomeCents > 0 ? Math.round((incomeCents * percent) / 100) : 0
+}
+
 export function goalUsage(spentCents: number, incomeCents: number, goalPercent: number): GoalUsage {
   // Integer math: cents are exact and tenths of a percent are enough to show
   const permille = incomeCents > 0 ? Math.round((spentCents * 1000) / incomeCents) : null
@@ -55,7 +62,7 @@ export function goalUsage(spentCents: number, incomeCents: number, goalPercent: 
   } else if (spentCents * 100 * 100 >= incomeCents * goalPercent * WARNING_RATIO) {
     status = 'warning'
   }
-  return { spentCents, incomeCents, permille, status }
+  return { spentCents, incomeCents, targetCents: shareOfIncome(incomeCents, goalPercent), permille, status }
 }
 
 /**
@@ -68,7 +75,13 @@ export function leftoverUsage(savedCents: number, incomeCents: number, targetPer
   if (savedCents < 0) status = 'over'
   // Exact cents again: saved/income vs target/100
   else if (incomeCents > 0 && savedCents * 100 < incomeCents * targetPercent) status = 'warning'
-  return { spentCents: savedCents, incomeCents, permille, status }
+  return {
+    spentCents: savedCents,
+    incomeCents,
+    targetCents: shareOfIncome(incomeCents, targetPercent),
+    permille,
+    status,
+  }
 }
 
 /**

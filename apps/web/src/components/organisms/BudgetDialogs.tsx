@@ -1,6 +1,6 @@
 import { CategoryFormDialog, ConfirmDialog, GoalsDialog, type GoalTarget } from '@/components/molecules'
 import { categoryErrorMessage } from '@/features/budget/errors'
-import type { useCategoryActions } from '@/features/budget/hooks'
+import type { CategoryActions } from '@/features/budget/hooks'
 import type { CategoryRow, GroupRow } from '@/features/budget/rows'
 import type { EntryKind } from '@/features/budget/types'
 
@@ -20,7 +20,8 @@ export type BudgetDialog =
 interface BudgetDialogsProps {
   dialog: BudgetDialog
   onClose: () => void
-  actions: ReturnType<typeof useCategoryActions>
+  /** Saved right away (statement) or kept in the plan (dashboard) */
+  actions: CategoryActions
   /** Active expense types, for the goals dialog */
   goalTargets?: GoalTarget[]
 }
@@ -106,10 +107,7 @@ export function BudgetDialogs({ dialog, onClose, actions, goalTargets = [] }: Bu
         errorMessage={(e) => categoryErrorMessage(e, 'Não foi possível excluir.')}
         onConfirm={() =>
           dialog?.type === 'delete-group'
-            ? actions.deleteGroup(
-                dialog.group.id,
-                dialog.group.categories.map((c) => c.id),
-              )
+            ? actions.deleteGroup(dialog.group.id)
             : dialog?.type === 'delete-category'
               ? actions.deleteCategory(dialog.category.id)
               : Promise.resolve()
