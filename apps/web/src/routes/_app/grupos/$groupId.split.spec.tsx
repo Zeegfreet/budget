@@ -158,6 +158,18 @@ describe('Group split rules (/grupos/$groupId?tab=rateio)', () => {
     )
   })
 
+  it('refreshes the personal budget after a rule change, since pending shares are divided again', async () => {
+    const { queryClient } = await openRules()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await userEvent.click(rules().getByRole('button', { name: 'Opções de Aluguel 30/70' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Editar' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Editar regra de rateio' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['budget'] }))
+  })
+
   it('explains an inactive rule when editing it', async () => {
     await openRules()
 

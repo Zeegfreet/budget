@@ -1,9 +1,8 @@
 import { useId, useState } from 'react'
-import { FormAlert, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -38,7 +37,7 @@ interface GroupLinkDialogProps {
 export function GroupLinkDialog({ open, onOpenChange, ...props }: GroupLinkDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>{open && <GroupLinkForm onDone={() => onOpenChange(false)} {...props} />}</DialogContent>
+      <FormDialogContent size="md">{open && <GroupLinkForm onDone={() => onOpenChange(false)} {...props} />}</FormDialogContent>
     </Dialog>
   )
 }

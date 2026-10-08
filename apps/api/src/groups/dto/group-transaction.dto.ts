@@ -1,6 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
   IsEnum,
   IsIn,
   IsInt,
@@ -10,6 +15,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import {
   IsPresent,
@@ -74,6 +80,16 @@ export class CreateGroupTransactionDto {
   @Min(1)
   @Max(MAX_REPEAT_MONTHS)
   repeatMonths?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'Due day of the month (1–31), repeated in every occurrence',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  dueDay?: number | null;
 }
 
 /**
@@ -107,6 +123,17 @@ export class UpdateGroupTransactionDto {
   splitMethodId?: number;
 
   @ApiPropertyOptional({
+    example: 10,
+    nullable: true,
+    description: 'Due day of the month (1–31); `null` removes it',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  dueDay?: number | null;
+
+  @ApiPropertyOptional({
     enum: RECURRENCE_SCOPES,
     default: 'ONE',
     description: '`FOLLOWING` also changes the later pending occurrences',
@@ -124,6 +151,40 @@ export class PaymentDto {
   memberId: number;
 }
 
+/** A member's share of a group transaction. */
+export class SettlementTargetDto {
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  @Min(1)
+  transactionId: number;
+
+  @ApiProperty({ example: 2, description: 'The member whose share it is' })
+  @IsInt()
+  @Min(1)
+  memberId: number;
+}
+
+/** Most shares one `POST /groups/:id/settlements` may change. */
+export const MAX_SETTLEMENT_ITEMS = 100;
+
+/** Body of `POST /groups/:id/settlements`. */
+export class SetSettlementDto {
+  @ApiProperty({ type: [SettlementTargetDto], maxItems: MAX_SETTLEMENT_ITEMS })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_SETTLEMENT_ITEMS)
+  @ValidateNested({ each: true })
+  @Type(() => SettlementTargetDto)
+  items: SettlementTargetDto[];
+
+  @ApiProperty({
+    example: true,
+    description: '`true` confirms the shares were paid back; `false` undoes it',
+  })
+  @IsBoolean()
+  settled: boolean;
+}
+
 export class TransactionMemberShareDto {
   @ApiProperty({ example: 1 })
   memberId: number;
@@ -133,6 +194,12 @@ export class TransactionMemberShareDto {
 
   @ApiProperty({ example: 100000 })
   amountCents: number;
+
+  @ApiProperty({
+    description:
+      'Whoever receives the money confirmed this share was paid back',
+  })
+  settled: boolean;
 }
 
 export class TransactionPayerDto {
@@ -169,6 +236,13 @@ export class GroupTransactionDto {
 
   @ApiProperty({ example: 200000 })
   amountCents: number;
+
+  @ApiProperty({
+    example: 10,
+    nullable: true,
+    description: 'Day of the month it is due (1–31)',
+  })
+  dueDay: number | null;
 
   @ApiProperty({
     type: TransactionSplitMethodDto,
@@ -234,6 +308,39 @@ export class TransferDto {
   amountCents: number;
 }
 
+/** A share of a paid transaction that one member owes another. */
+export class SettlementItemDto {
+  @ApiProperty({ example: 1 })
+  transactionId: number;
+
+  @ApiProperty({ enum: EntryKind })
+  kind: EntryKind;
+
+  @ApiProperty({ example: 'Aluguel' })
+  description: string;
+
+  @ApiProperty({ example: 2, description: 'The member whose share it is' })
+  memberId: number;
+
+  @ApiProperty({
+    example: 1,
+    description: 'Who paid the expense or received the income',
+  })
+  payerMemberId: number;
+
+  @ApiProperty({ example: 100000 })
+  amountCents: number;
+
+  @ApiProperty({ description: 'Confirmed as paid back' })
+  settled: boolean;
+
+  @ApiProperty({
+    description:
+      'The user is the one receiving the money (payer of an expense, share member of an income), so they can confirm it',
+  })
+  canSettle: boolean;
+}
+
 export class GroupBalanceDto {
   @ApiProperty({ example: '2026-10' })
   month: string;
@@ -255,4 +362,11 @@ export class GroupBalanceDto {
     description: 'Transfers that settle the month',
   })
   transfers: TransferDto[];
+
+  @ApiProperty({
+    type: [SettlementItemDto],
+    description:
+      'Shares of the paid items owed to whoever paid or received them',
+  })
+  settlements: SettlementItemDto[];
 }

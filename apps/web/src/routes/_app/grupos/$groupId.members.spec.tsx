@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchMe } from '@/features/auth/api'
 import {
@@ -13,7 +14,7 @@ import {
   updateGroup,
 } from '@/features/groups/api'
 import { ApiError } from '@/lib/api/client'
-import { ana, bruno, makeGroup, pendingInvitation, stubGroupsApi } from '@/test/groups'
+import { ana, bruno, makeGroup, makeMember, pendingInvitation, stubGroupsApi } from '@/test/groups'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -32,10 +33,11 @@ async function groupOption(name: string) {
   await userEvent.click(await screen.findByRole('menuitem', { name }))
 }
 
-async function invite(email: string) {
+async function invite(email: string, nickname?: string) {
   await userEvent.click(within(region('Membros')).getByRole('button', { name: 'Convidar' }))
   const dialog = await screen.findByRole('dialog', { name: 'Convidar membro' })
   await userEvent.type(within(dialog).getByLabelText('E-mail'), email)
+  if (nickname) await userEvent.type(within(dialog).getByLabelText(/^Apelido/), nickname)
   await userEvent.click(within(dialog).getByRole('button', { name: 'Enviar convite' }))
   return dialog
 }
@@ -72,8 +74,49 @@ describe('Group members (/grupos/$groupId?tab=membros)', () => {
     const dialog = await invite('  Diego@Example.com ')
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(inviteMember).toHaveBeenCalledWith(7, 'diego@example.com')
+    expect(inviteMember).toHaveBeenCalledWith(7, { email: 'diego@example.com' })
     expect(dialog).not.toBeInTheDocument()
+  })
+
+  it('pre-registers someone without an account under a nickname', async () => {
+    const success = vi.spyOn(toast, 'success')
+    vi.mocked(inviteMember)
+      .mockRejectedValueOnce(new ApiError(400, ['Nickname required for an unregistered e-mail']))
+      .mockResolvedValueOnce({
+        ...pendingInvitation,
+        id: 31,
+        status: 'ACCEPTED',
+        invitee: { id: 500, name: 'Didi', email: 'diego@example.com', pending: true },
+      })
+    await openMembers()
+
+    const dialog = await invite('diego@example.com')
+    expect(
+      await within(dialog).findByText('Essa pessoa ainda não tem conta. Informe um apelido para pré-cadastrá-la.'),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByText('Não foi possível enviar o convite.')).not.toBeInTheDocument()
+
+    const didi = makeMember(3, 'Didi', { email: 'diego@example.com', pending: true })
+    vi.mocked(fetchGroup).mockResolvedValue(makeGroup({ members: [ana, bruno, didi] }))
+    await userEvent.type(within(dialog).getByLabelText(/^Apelido/), ' Didi ')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enviar convite' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(inviteMember).toHaveBeenLastCalledWith(7, { email: 'diego@example.com', nickname: 'Didi' })
+    expect(success).toHaveBeenCalledWith('Didi entrou no grupo (pré-cadastro)')
+    // The member list was refreshed
+    const member = await within(region('Membros')).findByRole('listitem', { name: 'Didi' })
+    expect(member).toHaveTextContent('Pré-cadastro')
+    expect(within(region('Membros')).getByRole('listitem', { name: 'Bruno' })).not.toHaveTextContent('Pré-cadastro')
+  })
+
+  it('validates the nickname', async () => {
+    await openMembers()
+
+    const dialog = await invite('diego@example.com', 'D')
+
+    expect(within(dialog).getByText('O apelido deve ter ao menos 2 caracteres.')).toBeInTheDocument()
+    expect(inviteMember).not.toHaveBeenCalled()
   })
 
   it('validates the e-mail before sending', async () => {
@@ -86,7 +129,6 @@ describe('Group members (/grupos/$groupId?tab=membros)', () => {
   })
 
   it.each([
-    [404, 'No user with this e-mail', 'Nenhum usuário cadastrado com este e-mail.'],
     [409, 'Already invited', 'Este usuário já tem um convite pendente.'],
     [409, 'Already a member', 'Este usuário já é membro do grupo.'],
   ])('explains a %i "%s" from the API', async (status, apiMessage, shown) => {

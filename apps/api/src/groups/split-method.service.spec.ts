@@ -5,10 +5,14 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../prisma/generated/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import { resplitPending } from './resplit.js';
 import { SplitMethodService } from './split-method.service.js';
+
+vi.mock('./resplit.js', () => ({ resplitPending: vi.fn() }));
 
 describe('SplitMethodService', () => {
   const prisma = {
+    $transaction: vi.fn(),
     groupMember: { findFirst: vi.fn(), findMany: vi.fn() },
     splitMethod: {
       findMany: vi.fn(),
@@ -32,6 +36,9 @@ describe('SplitMethodService', () => {
     vi.clearAllMocks();
     prisma.groupMember.findFirst.mockResolvedValue({ id: 1, role: 'MEMBER' });
     prisma.groupMember.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
+    );
   });
 
   it('creates a valid rule naming active members', async () => {
@@ -105,6 +112,8 @@ describe('SplitMethodService', () => {
     expect(prisma.splitMethod.update).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { id: 3 }, data: { name: 'Novo' } }),
     );
+    // A new name doesn't change any share
+    expect(resplitPending).not.toHaveBeenCalled();
 
     await service.update(7, 5, 3, { type: 'FIXED' });
     expect(prisma.splitMethod.update).toHaveBeenLastCalledWith(
@@ -117,6 +126,10 @@ describe('SplitMethodService', () => {
         },
       }),
     );
+    // Every pending transaction of the rule is divided again
+    expect(resplitPending).toHaveBeenCalledWith(prisma, 5, {
+      splitMethodId: 3,
+    });
   });
 
   it('returns 404 for rules of other groups', async () => {

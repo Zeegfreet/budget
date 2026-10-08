@@ -15,6 +15,7 @@ import type {
   UpdateSplitMethodDto,
 } from './dto/split-method.dto.js';
 import { activeMembers, assertMember } from './group-access.js';
+import { resplitPending } from './resplit.js';
 import { SplitRuleError, validateRule } from './split.js';
 
 export const splitMethodSelect = {
@@ -60,7 +61,10 @@ export class SplitMethodService {
     );
   }
 
-  /** Changing the type or the participants revalidates the rule and turns it on. */
+  /**
+   * Changing the type or the participants revalidates the rule, turns it on
+   * and divides every unpaid transaction that uses it again.
+   */
   async update(
     userId: number,
     groupId: number,
@@ -84,15 +88,19 @@ export class SplitMethodService {
       shares ?? current.shares,
     );
     return this.unique(
-      this.prisma.splitMethod.update({
-        where: { id },
-        data: {
-          name,
-          type,
-          active: true,
-          shares: { deleteMany: {}, create: values },
-        },
-        select: splitMethodSelect,
+      this.prisma.$transaction(async (tx) => {
+        const updated = await tx.splitMethod.update({
+          where: { id },
+          data: {
+            name,
+            type,
+            active: true,
+            shares: { deleteMany: {}, create: values },
+          },
+          select: splitMethodSelect,
+        });
+        await resplitPending(tx, groupId, { splitMethodId: id });
+        return updated;
       }),
     );
   }

@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { CircleCheckIcon, ExternalLinkIcon, UsersIcon } from 'lucide-react'
 import { useId } from 'react'
-import { MoneyText } from '@/components/atoms'
+import { DueDayBadge, MoneyText } from '@/components/atoms'
 import { RowActions, SeriesBadge, TransactionRow, type RowAction, type TransactionRowAction } from '@/components/molecules'
 import { Badge } from '@/components/ui/badge'
 import type { Statement, StatementGroup, StatementShare } from '@/features/transactions/statement'
@@ -78,7 +78,10 @@ function StatementGroupList({
   )
 }
 
-/** The user's share of a group transaction: paid when someone in the group paid it. */
+/**
+ * The user's share of a group transaction: paid once they paid it or the
+ * member who did confirmed being paid back ("a acertar" until then).
+ */
 function ShareRow({ share: { group, item } }: { share: StatementShare }) {
   const navigate = useNavigate()
   const title = item.description
@@ -96,7 +99,9 @@ function ShareRow({ share: { group, item } }: { share: StatementShare }) {
   ]
   const status = item.paid
     ? `${item.kind === 'EXPENSE' ? 'Pago' : 'Recebido'}${item.paidByName ? ` por ${item.paidByName}` : ''}`
-    : 'Pendente no grupo'
+    : item.groupPaid
+      ? `${item.kind === 'EXPENSE' ? 'A acertar com' : 'A receber de'} ${item.paidByName ?? 'quem pagou'}`
+      : 'Pendente no grupo'
 
   return (
     <li
@@ -113,6 +118,7 @@ function ShareRow({ share: { group, item } }: { share: StatementShare }) {
           >
             {item.paid ? <CircleCheckIcon aria-hidden className="size-4 text-primary" /> : <UsersIcon aria-hidden className="size-4" />}
           </span>
+          {item.dueDay !== null && <DueDayBadge day={item.dueDay} />}
           <div className="min-w-0 flex-1 pl-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className={cn('truncate', item.paid && 'text-muted-foreground')}>{title}</span>

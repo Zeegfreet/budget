@@ -114,11 +114,15 @@ export interface GroupStatementItem {
   kind: EntryKind
   description: string
   month: Month
+  /** Effective due day: for expenses, the linked payment method's, or else the transaction's */
+  dueDay: number | null
   shareCents: number
   /** The whole transaction's amount */
   totalCents: number
-  /** Someone paid (or received) it */
+  /** The user's share is done: they paid (or received) it, or the member who did confirmed being paid back */
   paid: boolean
+  /** Someone in the group paid (or received) it */
+  groupPaid: boolean
   paidByName: string | null
   series: SeriesPosition | null
   /** Where it counts in the budget (the group's link for its kind); `null` = not counted */

@@ -96,7 +96,7 @@ function SummaryItem({ title, cents, emphasis = false }: { title: string; cents:
   )
 }
 
-/** The user's share of a group expense: paid when someone in the group paid it. */
+/** The user's share of a group expense: paid once they paid it or the payer confirmed being paid back. */
 function ShareRow({ share, month }: { share: InvoiceShare; month: Month }) {
   const label = `${share.description} (${share.group.name})`
   return (
@@ -124,7 +124,7 @@ function ShareRow({ share, month }: { share: InvoiceShare; month: Month }) {
             </Badge>
           </div>
           <p className="truncate text-xs text-muted-foreground">
-            Sua parte · {share.paid ? 'Pago no grupo' : 'Pendente no grupo'}
+            Sua parte · {share.paid ? 'Pago no grupo' : share.groupPaid ? 'A acertar no grupo' : 'Pendente no grupo'}
           </p>
         </div>
         <MoneyText

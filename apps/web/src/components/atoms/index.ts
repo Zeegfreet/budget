@@ -1,4 +1,7 @@
 export { BrandIcon } from './BrandIcon'
+export { CheckButton } from './CheckButton'
+export { DueDayBadge } from './DueDayBadge'
+export { FormDialogContent } from './FormDialogContent'
 export { FormAlert } from './FormAlert'
 export { Logo } from './Logo'
 export { MoneyInput } from './MoneyInput'

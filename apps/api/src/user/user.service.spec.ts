@@ -8,6 +8,7 @@ describe('UserService', () => {
     user: {
       create: vi.fn(),
       findUnique: vi.fn(),
+      updateMany: vi.fn(),
     },
   };
 
@@ -48,7 +49,12 @@ describe('UserService', () => {
   });
 
   it('finds the public view by a normalized e-mail', async () => {
-    const user = { id: 2, email: 'bia@example.com', name: 'Bia' };
+    const user = {
+      id: 2,
+      email: 'bia@example.com',
+      name: 'Bia',
+      pending: false,
+    };
     prisma.user.findUnique.mockResolvedValue(user);
 
     await expect(
@@ -56,8 +62,37 @@ describe('UserService', () => {
     ).resolves.toEqual(user);
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { email: 'bia@example.com' },
+      select: { ...authUserSelect, pending: true },
+    });
+  });
+
+  it('pre-registers an e-mail with a nickname', async () => {
+    prisma.user.create.mockResolvedValue({ id: 3 });
+
+    await service.createPending(' Caio@Example.com', 'Caio');
+
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: { email: 'caio@example.com', name: 'Caio', pending: true },
       select: authUserSelect,
     });
+  });
+
+  it('claims only a pre-registration', async () => {
+    const data = { name: 'Caio Lima', passwordHash: 'hash' };
+    prisma.user.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      service.claimPending('caio@example.com', data),
+    ).resolves.toBeNull();
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { email: 'caio@example.com', pending: true },
+      data: { ...data, pending: false },
+    });
+
+    prisma.user.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.user.findUnique.mockResolvedValue({ id: 3 });
+    await expect(
+      service.claimPending('caio@example.com', data),
+    ).resolves.toEqual({ id: 3 });
   });
 
   it('finds the full record by e-mail', async () => {

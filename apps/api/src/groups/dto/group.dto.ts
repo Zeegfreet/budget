@@ -96,6 +96,11 @@ export class GroupMemberDto {
   @ApiProperty({ example: 'ana@example.com' })
   email: string;
 
+  @ApiProperty({
+    description: 'Pre-registered (no account yet); `name` is the nickname',
+  })
+  pending: boolean;
+
   @ApiProperty({ enum: GroupRole })
   role: GroupRole;
 

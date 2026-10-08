@@ -61,14 +61,28 @@ export class GroupStatementItemDto {
   @ApiProperty({ example: '2026-10' })
   month: string;
 
+  @ApiProperty({
+    example: 10,
+    nullable: true,
+    description:
+      'Effective due day: for expenses, the linked payment method’s, or else the transaction’s',
+  })
+  dueDay: number | null;
+
   @ApiProperty({ example: 150000, description: 'The user’s share' })
   shareCents: number;
 
   @ApiProperty({ example: 300000, description: 'The transaction’s amount' })
   totalCents: number;
 
-  @ApiProperty({ description: 'Someone paid (or received) it' })
+  @ApiProperty({
+    description:
+      'The user’s share is done: they paid (or received) the item, or whoever received the money confirmed the share',
+  })
   paid: boolean;
+
+  @ApiProperty({ description: 'Someone in the group paid (or received) it' })
+  groupPaid: boolean;
 
   @ApiProperty({ type: String, nullable: true, example: 'Ana Souza' })
   paidByName: string | null;

@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowRightIcon, CircleCheckIcon, Link2Icon, UsersIcon } from 'lucide-react'
-import { MoneyText } from '@/components/atoms'
+import { ArrowRightIcon, CircleCheckIcon, ClockIcon, Link2Icon, UsersIcon } from 'lucide-react'
+import { DueDayBadge, MoneyText } from '@/components/atoms'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -118,9 +118,15 @@ function GroupSummary({
               <span className="flex min-w-0 items-center gap-1.5">
                 {item.paid ? (
                   <CircleCheckIcon aria-label="Pago" className="size-3.5 shrink-0 text-primary" />
+                ) : item.groupPaid ? (
+                  <ClockIcon
+                    aria-label={`A acertar com ${item.paidByName ?? 'quem pagou'}`}
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                  />
                 ) : (
                   <span aria-label="Pendente" className="size-3.5 shrink-0 rounded-full border" />
                 )}
+                {item.dueDay !== null && <DueDayBadge day={item.dueDay} className="px-1 py-0" />}
                 <span className="truncate">{item.description}</span>
                 {item.kind === 'INCOME' && <Badge variant="secondary">Receita</Badge>}
               </span>

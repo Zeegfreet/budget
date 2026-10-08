@@ -56,13 +56,13 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={change}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto [overflow-wrap:anywhere]">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         {error && <FormAlert>{error}</FormAlert>}
-        <AlertDialogFooter>
+        <AlertDialogFooter className="sm:flex-wrap">
           <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
           {/* A plain button: the Action would close before the request ends */}
           <Button variant="destructive" disabled={pending} onClick={confirm}>

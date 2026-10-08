@@ -1,9 +1,8 @@
 import { useId, useState } from 'react'
-import { FormAlert, MoneyInput, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, MoneyInput, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -64,10 +63,10 @@ const KIND_LABEL = { INCOME: 'receita', EXPENSE: 'despesa' } as const
 export function TransactionFormDialog({ open, onOpenChange, ...props }: TransactionFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <FormDialogContent size="md">
         {/* Mounted only while open, so it always starts from `initial` */}
         {open && <TransactionForm onDone={() => onOpenChange(false)} {...props} />}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

@@ -36,7 +36,10 @@ export interface InvoiceShare {
   group: { id: number; name: string }
   description: string
   shareCents: number
+  /** The user's share is paid: they paid the expense, or the payer confirmed being paid back */
   paid: boolean
+  /** Someone in the group paid the expense (the user's share may still be open) */
+  groupPaid: boolean
 }
 
 export interface Invoice extends InvoiceTotals {

@@ -44,6 +44,7 @@ import {
 } from '@/features/groups/hooks'
 import { groupQueries } from '@/features/groups/queries'
 import { hasFollowing } from '@/features/groups/series'
+import type { SettlementInput } from '@/features/groups/types'
 import { ApiError } from '@/lib/api/client'
 import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 
@@ -127,6 +128,14 @@ function GroupPage() {
         return setTransactionDialog({ type: hasFollowing(transaction) ? 'delete-scope' : 'delete', transaction })
       default:
         setTransactionDialog({ type, transaction })
+    }
+  }
+
+  async function handleSettle(input: SettlementInput) {
+    try {
+      await transactionActions.setSettlement(input)
+    } catch (error) {
+      toast.error(groupErrorMessage(error, 'Não foi possível marcar o recebimento.'))
     }
   }
 
@@ -222,7 +231,7 @@ function GroupPage() {
 
         <TabsContent value="balanco" className="flex flex-col gap-6">
           {monthSwitcher}
-          <GroupBalancePanel balance={balance} memberId={group.memberId} />
+          <GroupBalancePanel balance={balance} memberId={group.memberId} onSettle={handleSettle} />
         </TabsContent>
 
         <TabsContent value="membros">

@@ -135,8 +135,14 @@ export class InvoiceShareDto {
   @ApiProperty({ example: 150000 })
   shareCents: number;
 
-  @ApiProperty({ description: 'Someone paid the group expense' })
+  @ApiProperty({
+    description:
+      'The user’s share is paid: they paid the expense, or the payer confirmed receiving it',
+  })
   paid: boolean;
+
+  @ApiProperty({ description: 'Someone paid the group expense' })
+  groupPaid: boolean;
 }
 
 /** `GET /payment-methods/:id/invoice`: the method's launches of a month. */

@@ -3,9 +3,13 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '../prisma/generated/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { UserService } from '../user/user.service.js';
 import { InvitationService } from './invitation.service.js';
+import { includeInRules } from './membership.js';
+
+vi.mock('./membership.js', () => ({ includeInRules: vi.fn() }));
 
 describe('InvitationService', () => {
   const prisma = {
@@ -19,17 +23,27 @@ describe('InvitationService', () => {
       updateMany: vi.fn(),
     },
   };
-  const users = { findPublicByEmail: vi.fn() };
+  const users = { findPublicByEmail: vi.fn(), createPending: vi.fn() };
   const service = new InvitationService(
     prisma as unknown as PrismaService,
     users as unknown as UserService,
   );
   const me = { id: 1, groupId: 5, userId: 7, role: 'OWNER' };
-  const bruno = { id: 8, name: 'Bruno', email: 'bruno@example.com' };
+  const bruno = {
+    id: 8,
+    name: 'Bruno',
+    email: 'bruno@example.com',
+    pending: false,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     users.findPublicByEmail.mockResolvedValue(bruno);
+    // Interactive transactions run against the same mock
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
+    );
+    prisma.groupMember.upsert.mockResolvedValue({ id: 20 });
   });
 
   describe('invite', () => {
@@ -50,7 +64,9 @@ describe('InvitationService', () => {
     it('creates a pending invitation for a registered user', async () => {
       prisma.groupInvitation.create.mockResolvedValue({ id: 3 });
 
-      await expect(service.invite(7, 5, 'bruno@example.com')).resolves.toEqual({
+      await expect(
+        service.invite(7, 5, { email: 'bruno@example.com' }),
+      ).resolves.toEqual({
         id: 3,
       });
       expect(prisma.groupInvitation.create).toHaveBeenCalledWith(
@@ -60,28 +76,105 @@ describe('InvitationService', () => {
       );
     });
 
-    it('rejects unknown e-mails and self', async () => {
+    it('requires a nickname for an e-mail without account', async () => {
       users.findPublicByEmail.mockResolvedValueOnce(null);
-      await expect(service.invite(7, 5, 'x@example.com')).rejects.toThrow(
-        NotFoundException,
+      await expect(
+        service.invite(7, 5, { email: 'x@example.com' }),
+      ).rejects.toThrow(
+        new BadRequestException('Nickname required for an unregistered e-mail'),
       );
+      expect(users.createPending).not.toHaveBeenCalled();
+    });
 
-      users.findPublicByEmail.mockResolvedValueOnce({ ...bruno, id: 7 });
-      await expect(service.invite(7, 5, 'ana@example.com')).rejects.toThrow(
-        BadRequestException,
+    it('pre-registers an unknown e-mail and adds it as a member', async () => {
+      users.findPublicByEmail.mockResolvedValueOnce(null);
+      users.createPending.mockResolvedValue({
+        id: 9,
+        name: 'Carla',
+        email: 'carla@example.com',
+      });
+      prisma.groupInvitation.create.mockResolvedValue({
+        id: 4,
+        status: 'ACCEPTED',
+      });
+
+      await expect(
+        service.invite(7, 5, { email: 'carla@example.com', nickname: 'Carla' }),
+      ).resolves.toEqual({ id: 4, status: 'ACCEPTED' });
+      expect(users.createPending).toHaveBeenCalledWith(
+        'carla@example.com',
+        'Carla',
       );
+      expect(prisma.groupInvitation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            groupId: 5,
+            inviterId: 7,
+            inviteeId: 9,
+            status: 'ACCEPTED',
+            respondedAt: expect.any(Date),
+          },
+        }),
+      );
+      expect(prisma.groupMember.upsert).toHaveBeenCalledWith({
+        where: { groupId_userId: { groupId: 5, userId: 9 } },
+        create: { groupId: 5, userId: 9 },
+        update: { leftAt: null, joinedAt: expect.any(Date), role: 'MEMBER' },
+      });
+      expect(includeInRules).toHaveBeenCalledWith(prisma, 5, 20);
+    });
+
+    it('adds an existing pre-registration right away, keeping its name', async () => {
+      users.findPublicByEmail.mockResolvedValueOnce({
+        ...bruno,
+        pending: true,
+      });
+      prisma.groupInvitation.create.mockResolvedValue({ id: 4 });
+
+      await service.invite(7, 5, {
+        email: 'bruno@example.com',
+        nickname: 'Bru',
+      });
+
+      expect(users.createPending).not.toHaveBeenCalled();
+      expect(prisma.groupMember.upsert).toHaveBeenCalled();
+    });
+
+    it('falls back to the user registered meanwhile', async () => {
+      users.findPublicByEmail
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(bruno);
+      users.createPending.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+      prisma.groupInvitation.create.mockResolvedValue({ id: 3 });
+
+      await expect(
+        service.invite(7, 5, { email: 'bruno@example.com', nickname: 'Bru' }),
+      ).resolves.toEqual({ id: 3 });
+      expect(prisma.groupMember.upsert).not.toHaveBeenCalled();
+    });
+
+    it('rejects self', async () => {
+      users.findPublicByEmail.mockResolvedValueOnce({ ...bruno, id: 7 });
+      await expect(
+        service.invite(7, 5, { email: 'ana@example.com' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects members and already invited users', async () => {
       prisma.groupInvitation.findFirst.mockResolvedValue({ id: 2 });
-      await expect(service.invite(7, 5, 'bruno@example.com')).rejects.toThrow(
-        new ConflictException('Already invited'),
-      );
+      await expect(
+        service.invite(7, 5, { email: 'bruno@example.com' }),
+      ).rejects.toThrow(new ConflictException('Already invited'));
 
       inviteeIsMember = true;
-      await expect(service.invite(7, 5, 'bruno@example.com')).rejects.toThrow(
-        new ConflictException('Already a member'),
-      );
+      await expect(
+        service.invite(7, 5, { email: 'bruno@example.com' }),
+      ).rejects.toThrow(new ConflictException('Already a member'));
       expect(prisma.groupInvitation.create).not.toHaveBeenCalled();
     });
   });
@@ -118,7 +211,12 @@ describe('InvitationService', () => {
       create: { groupId: 5, userId: 8 },
       update: { leftAt: null, joinedAt: expect.any(Date), role: 'MEMBER' },
     });
-    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(prisma.groupInvitation.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: { status: 'ACCEPTED', respondedAt: expect.any(Date) },
+    });
+    // The member enters the rules and the pending transactions
+    expect(includeInRules).toHaveBeenCalledWith(prisma, 5, 20);
   });
 
   it('returns 404 when the invitation is not the user’s pending one', async () => {

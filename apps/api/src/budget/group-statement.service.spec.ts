@@ -66,8 +66,8 @@ describe('GroupStatementService', () => {
           paidByMemberId: 2,
           seriesId: 's1',
           shares: [
-            { memberId: 1, amountCents: 1500 },
-            { memberId: 2, amountCents: 1500 },
+            { memberId: 1, amountCents: 1500, settledAt: null },
+            { memberId: 2, amountCents: 1500, settledAt: null },
           ],
         },
         {
@@ -80,8 +80,8 @@ describe('GroupStatementService', () => {
           paidByMemberId: null,
           seriesId: null,
           shares: [
-            { memberId: 1, amountCents: 200 },
-            { memberId: 2, amountCents: 200 },
+            { memberId: 1, amountCents: 200, settledAt: null },
+            { memberId: 2, amountCents: 200, settledAt: null },
           ],
         },
       ])
@@ -127,7 +127,9 @@ describe('GroupStatementService', () => {
         month: '2026-10',
         shareCents: 1500,
         totalCents: 3000,
-        paid: true,
+        // Bruno paid, but hasn't confirmed the user paid him back yet
+        paid: false,
+        groupPaid: true,
         paidByName: 'Bruno',
         series: {
           index: 1,
@@ -145,10 +147,96 @@ describe('GroupStatementService', () => {
         shareCents: 200,
         totalCents: 400,
         paid: false,
+        groupPaid: false,
         paidByName: null,
         series: null,
         category: null,
       },
+    ]);
+  });
+
+  it('counts a share as paid once the payer confirms it, out of the net', async () => {
+    prisma.groupMember.findMany
+      .mockResolvedValueOnce([me])
+      .mockResolvedValueOnce(members);
+    prisma.groupTransaction.findMany.mockResolvedValueOnce([
+      {
+        id: 10,
+        groupId: 5,
+        kind: 'EXPENSE',
+        description: 'Aluguel',
+        month: '2026-10',
+        amountCents: 3000,
+        paidByMemberId: 2,
+        seriesId: null,
+        dueDay: null,
+        shares: [
+          { memberId: 1, amountCents: 1500, settledAt: new Date() },
+          { memberId: 2, amountCents: 1500, settledAt: null },
+        ],
+      },
+    ]);
+
+    const [statement] = await service.list(7, '2026-10');
+
+    expect(statement).toMatchObject({ netCents: 0, transfers: [] });
+    expect(statement.items[0]).toMatchObject({ paid: true, groupPaid: true });
+  });
+
+  it('uses the linked method’s due day for expenses and orders by day', async () => {
+    const tx = (id: number, kind: string, dueDay: number | null) => ({
+      id,
+      groupId: 5,
+      kind,
+      description: `T${id}`,
+      month: '2026-10',
+      amountCents: 200,
+      paidByMemberId: null,
+      seriesId: null,
+      dueDay,
+      shares: [{ memberId: 1, amountCents: 100, settledAt: null }],
+    });
+    prisma.groupMember.findMany
+      .mockResolvedValueOnce([
+        { ...me, paymentMethod: { id: 3, name: 'Nubank', dueDay: 15 } },
+        {
+          ...me,
+          id: 3,
+          groupId: 6,
+          group: { id: 6, name: 'Viagem' },
+          paymentMethod: null,
+        },
+      ])
+      .mockResolvedValueOnce([
+        ...members,
+        { id: 3, groupId: 6, leftAt: null, user: { name: 'Ana' } },
+      ]);
+    prisma.groupTransaction.findMany.mockResolvedValueOnce([
+      tx(20, 'EXPENSE', 5),
+      tx(21, 'INCOME', 3),
+      tx(22, 'EXPENSE', null),
+      {
+        ...tx(30, 'EXPENSE', 9),
+        groupId: 6,
+        shares: [{ memberId: 3, amountCents: 100 }],
+      },
+      {
+        ...tx(31, 'EXPENSE', null),
+        groupId: 6,
+        shares: [{ memberId: 3, amountCents: 100 }],
+      },
+    ]);
+
+    const [linked, plain] = await service.list(7, '2026-10');
+
+    expect(linked.items.map((i) => [i.transactionId, i.dueDay])).toEqual([
+      [21, 3],
+      [20, 15],
+      [22, 15],
+    ]);
+    expect(plain.items.map((i) => [i.transactionId, i.dueDay])).toEqual([
+      [30, 9],
+      [31, null],
     ]);
   });
 

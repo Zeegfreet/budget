@@ -6,7 +6,8 @@ export interface SettlementTransaction {
   amountCents: number;
   /** Who paid the expense or received the income; `null` while pending */
   paidByMemberId: number | null;
-  shares: MemberShare[];
+  /** `settled`: the one receiving the money confirmed this share was paid back */
+  shares: (MemberShare & { settled?: boolean })[];
 }
 
 export interface MemberBalance {
@@ -17,7 +18,10 @@ export interface MemberBalance {
   paidCents: number;
   /** Incomes this member received (and holds for the group) */
   receivedCents: number;
-  /** > 0: the group owes this member; < 0: this member owes the group. Paid items only. */
+  /**
+   * > 0: the group owes this member; < 0: this member owes the group. Paid
+   * items only, without the shares already settled.
+   */
   netCents: number;
 }
 
@@ -39,7 +43,8 @@ export interface GroupBalance {
 /**
  * Who paid what and who owes whom. A paid expense credits the payer and debits
  * each member's share; a received income works the other way round (the one
- * holding it owes the others their shares). The nets always add up to zero.
+ * holding it owes the others their shares). A settled share was already paid
+ * back, so it leaves both sides. The nets always add up to zero.
  */
 export function computeGroupBalance(
   transactions: SettlementTransaction[],
@@ -79,8 +84,9 @@ export function computeGroupBalance(
     const payer = of(t.paidByMemberId);
     if (t.kind === 'EXPENSE') payer.paidCents += t.amountCents;
     else payer.receivedCents += t.amountCents;
-    payer.netCents += sign * t.amountCents;
     for (const share of t.shares) {
+      if (share.settled && share.memberId !== t.paidByMemberId) continue;
+      payer.netCents += sign * share.amountCents;
       of(share.memberId).netCents -= sign * share.amountCents;
     }
   }
@@ -132,4 +138,16 @@ export function suggestTransfers(
     if (creditors[c].cents === 0) c += 1;
   }
   return transfers;
+}
+
+/**
+ * Whether a member's share is done from their side: the item was paid (or
+ * received) by them, or whoever received the money confirmed the share.
+ */
+export function isShareSettled(
+  paidByMemberId: number | null,
+  share: { memberId: number; settledAt: Date | null },
+): boolean {
+  if (paidByMemberId === null) return false;
+  return paidByMemberId === share.memberId || share.settledAt !== null;
 }

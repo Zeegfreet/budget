@@ -1,4 +1,8 @@
-import { computeGroupBalance, suggestTransfers } from './settlement.js';
+import {
+  computeGroupBalance,
+  isShareSettled,
+  suggestTransfers,
+} from './settlement.js';
 
 describe('computeGroupBalance', () => {
   it('credits the payer of an expense and debits each share', () => {
@@ -123,6 +127,59 @@ describe('computeGroupBalance', () => {
     );
 
     expect(balance.members.reduce((t, m) => t + m.netCents, 0)).toBe(0);
+  });
+});
+
+describe('confirmed shares', () => {
+  it('leave both the debtor and the payer, keeping the nets at zero', () => {
+    const balance = computeGroupBalance(
+      [
+        {
+          kind: 'EXPENSE',
+          amountCents: 900,
+          paidByMemberId: 1,
+          shares: [
+            { memberId: 1, amountCents: 300 },
+            { memberId: 2, amountCents: 300, settled: true },
+            { memberId: 3, amountCents: 300 },
+          ],
+        },
+        {
+          kind: 'INCOME',
+          amountCents: 200,
+          paidByMemberId: 2,
+          shares: [
+            { memberId: 1, amountCents: 100, settled: true },
+            { memberId: 2, amountCents: 100 },
+          ],
+        },
+      ],
+      [1, 2, 3],
+    );
+
+    expect(balance.members.map((m) => [m.memberId, m.netCents])).toEqual([
+      [1, 300],
+      [2, 0],
+      [3, -300],
+    ]);
+    // Paid and received keep the whole amounts
+    expect(balance.members[0].paidCents).toBe(900);
+    expect(balance.members[1].receivedCents).toBe(200);
+    expect(balance.transfers).toEqual([
+      { fromMemberId: 3, toMemberId: 1, amountCents: 300 },
+    ]);
+  });
+});
+
+describe('isShareSettled', () => {
+  it('is done for the payer, or once the share was confirmed', () => {
+    const open = { memberId: 2, settledAt: null };
+    expect(isShareSettled(null, open)).toBe(false);
+    expect(isShareSettled(1, open)).toBe(false);
+    expect(isShareSettled(2, open)).toBe(true);
+    expect(isShareSettled(1, { memberId: 2, settledAt: new Date() })).toBe(
+      true,
+    );
   });
 });
 

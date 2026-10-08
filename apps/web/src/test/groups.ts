@@ -19,6 +19,7 @@ export const makeMember = (id: number, name: string, extra: Partial<GroupMember>
   userId: id * 100,
   name,
   email: `${name.toLowerCase()}@example.com`,
+  pending: false,
   role: 'MEMBER',
   joinedAt: '2026-10-01T12:00:00.000Z',
   ...extra,
@@ -68,12 +69,13 @@ export const makeGroupTransaction = (id: number, extra: Partial<GroupTransaction
   description: 'Água',
   month: '2026-10',
   amountCents: 10000,
+  dueDay: null,
   splitMethod: { id: equalRule.id, name: equalRule.name, type: 'EQUAL' },
   paidBy: null,
   series: null,
   shares: [
-    { memberId: 1, name: 'Ana', amountCents: 5000 },
-    { memberId: 2, name: 'Bruno', amountCents: 5000 },
+    { memberId: 1, name: 'Ana', amountCents: 5000, settled: false },
+    { memberId: 2, name: 'Bruno', amountCents: 5000, settled: false },
   ],
   ...extra,
 })
@@ -86,8 +88,8 @@ export const rentTransaction = makeGroupTransaction(10, {
   paidBy: { memberId: 1, name: 'Ana' },
   series: { index: 1, count: 12, firstMonth: '2026-10', lastMonth: '2027-09' },
   shares: [
-    { memberId: 1, name: 'Ana', amountCents: 60000 },
-    { memberId: 2, name: 'Bruno', amountCents: 140000 },
+    { memberId: 1, name: 'Ana', amountCents: 60000, settled: false },
+    { memberId: 2, name: 'Bruno', amountCents: 140000, settled: false },
   ],
 })
 export const waterTransaction = makeGroupTransaction(11)
@@ -96,8 +98,8 @@ export const subletTransaction = makeGroupTransaction(12, {
   description: 'Sublocação',
   amountCents: 4000,
   shares: [
-    { memberId: 1, name: 'Ana', amountCents: 2000 },
-    { memberId: 2, name: 'Bruno', amountCents: 2000 },
+    { memberId: 1, name: 'Ana', amountCents: 2000, settled: false },
+    { memberId: 2, name: 'Bruno', amountCents: 2000, settled: false },
   ],
 })
 
@@ -113,11 +115,24 @@ export const groupBalance: GroupBalance = {
     { memberId: 2, name: 'Bruno', active: true, shareCents: 143000, paidCents: 0, receivedCents: 0, netCents: -140000 },
   ],
   transfers: [{ fromMemberId: 2, toMemberId: 1, amountCents: 140000 }],
+  settlements: [
+    {
+      transactionId: 10,
+      kind: 'EXPENSE',
+      description: 'Aluguel',
+      memberId: 2,
+      payerMemberId: 1,
+      amountCents: 140000,
+      settled: false,
+      canSettle: true,
+    },
+  ],
 }
 
 export const pendingInvitation: GroupInvitation = {
   id: 30,
-  invitee: { id: 300, name: 'Carla', email: 'carla@example.com' },
+  status: 'PENDING',
+  invitee: { id: 300, name: 'Carla', email: 'carla@example.com', pending: false },
   inviter: { id: 1, name: 'Ana', email: 'ana@example.com' },
   createdAt: '2026-10-02T12:00:00.000Z',
 }
@@ -173,4 +188,5 @@ export function stubGroupsApi({
   vi.mocked(groupsApi.unpayGroupTransaction).mockResolvedValue(transactions[0])
   vi.mocked(groupsApi.setGroupTransactionSeriesEnd).mockResolvedValue([transactions[0]])
   vi.mocked(groupsApi.fetchGroupBalance).mockResolvedValue(balance)
+  vi.mocked(groupsApi.setSettlement).mockResolvedValue()
 }

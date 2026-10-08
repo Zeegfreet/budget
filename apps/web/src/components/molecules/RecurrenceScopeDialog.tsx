@@ -72,13 +72,14 @@ export function RecurrenceScopeDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={change}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto [overflow-wrap:anywhere]">
         <AlertDialogHeader>
           <AlertDialogTitle>{copy.title}</AlertDialogTitle>
           <AlertDialogDescription>{copy.description}</AlertDialogDescription>
         </AlertDialogHeader>
         {error && <FormAlert>{error}</FormAlert>}
-        <AlertDialogFooter>
+        {/* Three long labels don't fit side by side: stacked on every screen */}
+        <AlertDialogFooter className="sm:flex-col-reverse sm:justify-start">
           <AlertDialogCancel disabled={!!pending}>Cancelar</AlertDialogCancel>
           {/* Plain buttons: an Action would close before the request ends */}
           <Button variant="outline" disabled={!!pending} onClick={() => choose('ONE')}>

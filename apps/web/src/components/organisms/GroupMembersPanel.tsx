@@ -42,6 +42,11 @@ export function GroupMembersPanel({ group, invitations, onAction }: GroupMembers
                     {m.name}
                     {m.id === group.memberId && <Badge variant="secondary">Você</Badge>}
                     {m.role === 'OWNER' && <Badge variant="outline">Dono</Badge>}
+                    {m.pending && (
+                      <Badge variant="outline" title="Ainda não tem conta; o nome é o apelido dado no convite">
+                        Pré-cadastro
+                      </Badge>
+                    )}
                   </p>
                   <p className="truncate text-sm text-muted-foreground">{m.email}</p>
                 </div>

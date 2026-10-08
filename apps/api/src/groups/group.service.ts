@@ -84,7 +84,7 @@ export class GroupService {
             userId: true,
             role: true,
             joinedAt: true,
-            user: { select: { name: true, email: true } },
+            user: { select: { name: true, email: true, pending: true } },
           },
         },
       },

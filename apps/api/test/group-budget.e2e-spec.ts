@@ -10,6 +10,7 @@ import {
 import {
   addTransactions,
   type Agent,
+  createPaymentMethod,
   createTestApp,
   resetDatabase,
   signUp,
@@ -57,15 +58,25 @@ interface GroupStatement {
   items: {
     transactionId: number;
     kind: string;
+    description: string;
+    dueDay: number | null;
     shareCents: number;
     totalCents: number;
     paid: boolean;
+    groupPaid: boolean;
     paidByName: string | null;
     category: { id: number; name: string } | null;
   }[];
 }
 
 const MONTH = '2026-10';
+
+// Leaving reaches the pending shares from the "current" month on: fix it
+// after MONTH, so MONTH is in the past
+vi.mock('../src/budget/month.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/budget/month.js')>()),
+  currentMonth: () => '2026-11',
+}));
 
 describe('Groups in the personal budget (e2e)', () => {
   let app: INestApplication<App>;
@@ -387,7 +398,9 @@ describe('Groups in the personal budget (e2e)', () => {
           kind: 'EXPENSE',
           shareCents: 100000,
           totalCents: 200000,
-          paid: true,
+          // Bruno paid, but hasn't confirmed Ana paid him back yet
+          paid: false,
+          groupPaid: true,
           paidByName: 'Bruno Lima',
           category: expect.objectContaining({ id: moradia }),
         }),
@@ -398,6 +411,22 @@ describe('Groups in the personal budget (e2e)', () => {
           category: expect.objectContaining({ id: extra }),
         }),
       ]);
+
+      // Only Bruno, who received the money, confirms Ana's share
+      const settle = { items: [{ transactionId: rent.id, memberId: anaId }] };
+      await ana
+        .post(`/groups/${group.id}/settlements`)
+        .send({ ...settle, settled: true })
+        .expect(403);
+      await bruno
+        .post(`/groups/${group.id}/settlements`)
+        .send({ ...settle, settled: true })
+        .expect(204);
+      const [settled] = await statements(ana);
+      expect(settled).toMatchObject({ netCents: 0, transfers: [] });
+      expect(settled.items[0]).toMatchObject({ paid: true, groupPaid: true });
+      // The amount counted in the budget doesn't change
+      expect((await summary(ana)).expenseCents).toBe(100000);
 
       await ana
         .delete(`/groups/${group.id}/transactions/${rent.id}`)
@@ -437,10 +466,20 @@ describe('Groups in the personal budget (e2e)', () => {
         description: 'Aluguel',
         amountCents: 300000,
       });
+      // Pending in the current month: goes to whoever stays
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Aluguel',
+        month: '2026-11',
+        amountCents: 300000,
+      });
 
       await bruno.post(`/groups/${group.id}/leave`).expect(204);
 
       expect((await summary(bruno)).expenseCents).toBe(150000);
+      expect((await summary(bruno, '2026-11')).expenseCents).toBe(0);
+      const [next] = await statements(ana, '2026-11');
+      expect(next.expenseShareCents).toBe(300000);
       const [statement] = await statements(bruno);
       expect(statement).toMatchObject({
         active: false,
@@ -448,6 +487,58 @@ describe('Groups in the personal budget (e2e)', () => {
       });
       // A month without their shares no longer lists the group
       expect(await statements(bruno, '2026-11')).toEqual([]);
+    });
+  });
+
+  describe('due day', () => {
+    it('shows each share’s due day, the linked method’s winning for expenses', async () => {
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Aluguel',
+        amountCents: 300000,
+        dueDay: 5,
+      });
+      await createTransaction({
+        kind: 'INCOME',
+        description: 'Sublocação',
+        amountCents: 40000,
+        dueDay: 3,
+      });
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Água',
+        amountCents: 10000,
+      });
+      const days = async (client: Agent) =>
+        (await statements(client))[0].items.map((i) => [
+          i.description,
+          i.dueDay,
+        ]);
+
+      expect(await days(bruno)).toEqual([
+        ['Sublocação', 3],
+        ['Aluguel', 5],
+        ['Água', null],
+      ]);
+
+      const card = await createPaymentMethod(bruno, { dueDay: 12 });
+      await link(bruno, {
+        expenseCategoryId: null,
+        incomeCategoryId: null,
+        paymentMethodId: card.id,
+      }).expect(200);
+
+      expect(await days(bruno)).toEqual([
+        ['Sublocação', 3],
+        ['Aluguel', 12],
+        ['Água', 12],
+      ]);
+      // Ana's link is her own
+      expect(await days(ana)).toEqual([
+        ['Sublocação', 3],
+        ['Aluguel', 5],
+        ['Água', null],
+      ]);
     });
   });
 

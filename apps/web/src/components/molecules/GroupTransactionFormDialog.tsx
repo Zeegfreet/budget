@@ -1,9 +1,8 @@
 import { useId, useState } from 'react'
-import { FormAlert, MoneyInput, MoneyText, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, MoneyInput, MoneyText, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -17,6 +16,7 @@ import type { EntryKind, Month } from '@/features/budget/types'
 import { previewShares, ruleError } from '@/features/groups/split'
 import type { GroupMember, SplitMethod } from '@/features/groups/types'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
+import { parseWhole } from '@/lib/numbers'
 import { FormField } from './FormField'
 import { MAX_REPEAT_MONTHS, MAX_TRANSACTION_DESCRIPTION_LENGTH } from './TransactionFormDialog'
 
@@ -26,6 +26,8 @@ export interface GroupTransactionFormValues {
   description: string
   amountCents: number
   splitMethodId: number
+  /** Day of the month it is due (1–31); `null` = none */
+  dueDay: number | null
   /** `null` while pending */
   paidByMemberId: number | null
   /** 1 when not recurring */
@@ -42,7 +44,7 @@ interface GroupTransactionFormDialogProps {
   /** The group's rules; only active ones are offered */
   splitMethods: SplitMethod[]
   /** Editing: the current values, and no payer or recurrence fields */
-  initial?: { description: string; amountCents: number; splitMethodId: number | null }
+  initial?: { description: string; amountCents: number; splitMethodId: number | null; dueDay: number | null }
   /** Rejects to show `errorMessage(error)` */
   onSubmit: (values: GroupTransactionFormValues) => Promise<void>
   errorMessage: (error: unknown) => string
@@ -50,15 +52,15 @@ interface GroupTransactionFormDialogProps {
 
 const KIND_LABEL = { INCOME: 'receita', EXPENSE: 'despesa' } as const
 
-type Errors = Partial<Record<'description' | 'amount' | 'splitMethodId' | 'repeatMonths', string>>
+type Errors = Partial<Record<'description' | 'amount' | 'splitMethodId' | 'dueDay' | 'repeatMonths', string>>
 
 /** Launches an income or expense of the group, split by one of its rules, or edits one. */
 export function GroupTransactionFormDialog({ open, onOpenChange, ...props }: GroupTransactionFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+      <FormDialogContent size="md">
         {open && <GroupTransactionForm onDone={() => onOpenChange(false)} {...props} />}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }
@@ -80,6 +82,7 @@ function GroupTransactionForm({
   const [description, setDescription] = useState(initial?.description ?? '')
   const [amount, setAmount] = useState(initial ? formatAmount(initial.amountCents) : '')
   const [ruleId, setRuleId] = useState(initialRule?.id.toString() ?? '')
+  const [dueDay, setDueDay] = useState(initial?.dueDay?.toString() ?? '')
   const [payer, setPayer] = useState('')
   const [repeat, setRepeat] = useState(false)
   const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
@@ -107,6 +110,8 @@ function GroupTransactionForm({
     if (cents === null || cents <= 0) next.amount = 'Informe um valor maior que zero.'
     else if (fitError) next.amount = fitError
     if (!rule) next.splitMethodId = 'Escolha a regra de rateio.'
+    const day = parseWhole(dueDay, 1, 31)
+    if (day === undefined) next.dueDay = 'Informe um dia entre 1 e 31.'
     if (repeat && !validTimes) next.repeatMonths = `Informe de 2 a ${MAX_REPEAT_MONTHS} meses.`
     setErrors(next)
     if (Object.keys(next).length > 0) return
@@ -118,6 +123,7 @@ function GroupTransactionForm({
         description: text,
         amountCents: cents!,
         splitMethodId: rule!.id,
+        dueDay: day ?? null,
         paidByMemberId: payer ? Number(payer) : null,
         repeatMonths: repeat ? times : 1,
       })
@@ -193,6 +199,17 @@ function GroupTransactionForm({
         )}
         {errors.splitMethodId && <FieldError>{errors.splitMethodId}</FieldError>}
       </Field>
+
+      <FormField
+        label="Dia de vencimento (opcional)"
+        description="Dia do mês em que vence, de 1 a 31."
+        placeholder="Ex.: 10"
+        inputMode="numeric"
+        value={dueDay}
+        onChange={(e) => setDueDay(e.target.value)}
+        error={errors.dueDay}
+        className="w-24"
+      />
 
       {!editing && (
         <>

@@ -1,4 +1,10 @@
-import { computeShares, SplitRuleError, validateRule } from './split.js';
+import {
+  computeShares,
+  distribute,
+  redistribute,
+  SplitRuleError,
+  validateRule,
+} from './split.js';
 
 describe('computeShares', () => {
   it('splits equally among every active member when the rule names nobody', () => {
@@ -149,5 +155,67 @@ describe('validateRule', () => {
 
   it('accepts an equal rule without participants', () => {
     expect(() => validateRule({ type: 'EQUAL', shares: [] })).not.toThrow();
+  });
+});
+
+describe('distribute', () => {
+  it('gives the leftover cents to the largest remainders, ties to the earlier entry', () => {
+    expect(
+      distribute(100, [
+        { memberId: 1, value: 1 },
+        { memberId: 2, value: 1 },
+        { memberId: 3, value: 1 },
+      ]),
+    ).toEqual([
+      { memberId: 1, amountCents: 34 },
+      { memberId: 2, amountCents: 33 },
+      { memberId: 3, amountCents: 33 },
+    ]);
+  });
+});
+
+describe('redistribute', () => {
+  const shares = [
+    { memberId: 1, amountCents: 50000 },
+    { memberId: 2, amountCents: 30000 },
+    { memberId: 3, amountCents: 20000 },
+  ];
+
+  it('gives the shares of who left to the others, in proportion to their shares', () => {
+    expect(redistribute(100000, shares, [1, 2])).toEqual([
+      { memberId: 1, amountCents: 62500 },
+      { memberId: 2, amountCents: 37500 },
+    ]);
+  });
+
+  it('keeps whole cents adding up to the total', () => {
+    const result = redistribute(100001, shares, [2, 3])!;
+
+    expect(result.reduce((t, s) => t + s.amountCents, 0)).toBe(100001);
+    expect(result).toEqual([
+      { memberId: 2, amountCents: 60001 },
+      { memberId: 3, amountCents: 40000 },
+    ]);
+  });
+
+  it('splits equally when the kept shares are all zero', () => {
+    expect(
+      redistribute(
+        100,
+        [
+          { memberId: 1, amountCents: 0 },
+          { memberId: 2, amountCents: 0 },
+          { memberId: 3, amountCents: 100 },
+        ],
+        [1, 2],
+      ),
+    ).toEqual([
+      { memberId: 1, amountCents: 50 },
+      { memberId: 2, amountCents: 50 },
+    ]);
+  });
+
+  it('returns null when nobody is kept', () => {
+    expect(redistribute(100, shares, [9])).toBeNull();
   });
 });

@@ -1,9 +1,8 @@
 import { useId, useState } from 'react'
-import { FormAlert, MoneyText, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, MoneyText, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -32,7 +31,7 @@ interface PaymentDialogProps {
 export function PaymentDialog({ open, onOpenChange, ...props }: PaymentDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>{open && <PaymentForm onDone={() => onOpenChange(false)} {...props} />}</DialogContent>
+      <FormDialogContent>{open && <PaymentForm onDone={() => onOpenChange(false)} {...props} />}</FormDialogContent>
     </Dialog>
   )
 }

@@ -3,7 +3,6 @@ import { ApiError } from '@/lib/api/client'
 
 /** The API's messages for group rules the user can fix, in Portuguese */
 const MESSAGES: Record<string, string> = {
-  'No user with this e-mail': 'Nenhum usuário cadastrado com este e-mail.',
   'Already invited': 'Este usuário já tem um convite pendente.',
   'Already a member': 'Este usuário já é membro do grupo.',
   "You can't invite yourself": 'Você já faz parte do grupo.',
@@ -19,6 +18,17 @@ const MESSAGES: Record<string, string> = {
   'Category is inactive': 'Escolha uma categoria ativa.',
   'expenseCategoryId must be an expense category': 'Escolha uma categoria de despesa para as despesas do grupo.',
   'incomeCategoryId must be an income category': 'Escolha uma categoria de receita para as receitas do grupo.',
+  'Undo the confirmed shares first':
+    'Há partes já marcadas como recebidas neste lançamento. Desmarque-as no Balanço antes de mudar o pagamento, o valor ou a regra.',
+  'Only who receives the money can confirm it': 'Só quem recebe o dinheiro pode confirmar o recebimento.',
+  'Transaction is pending': 'O lançamento ainda não foi pago.',
+}
+
+const NICKNAME_REQUIRED = 'Nickname required for an unregistered e-mail'
+
+/** The invited e-mail has no account, so a nickname is needed to pre-register them */
+export function needsNickname(error: unknown): boolean {
+  return error instanceof ApiError && error.messages.includes(NICKNAME_REQUIRED)
 }
 
 /** Message for a failed change in a group */

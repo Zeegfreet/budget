@@ -27,6 +27,8 @@ export interface GroupMember {
   userId: number
   name: string
   email: string
+  /** Pre-registered by an invitation (no account yet); `name` is the nickname */
+  pending: boolean
   role: GroupRole
   joinedAt: string
 }
@@ -48,6 +50,12 @@ export interface FinanceGroup extends FinanceGroupSummary {
   members: GroupMember[]
 }
 
+/** Without an account, `nickname` pre-registers the person, who joins right away */
+export interface InvitationInput {
+  email: string
+  nickname?: string
+}
+
 export interface GroupInput {
   name: string
   description: string | null
@@ -59,10 +67,14 @@ export interface InvitationUser {
   email: string
 }
 
-/** A pending invitation, as the group's members see it */
+/**
+ * An invitation, as the group's members see it: `PENDING` until the invitee
+ * answers, or `ACCEPTED` right away for a pre-registered person
+ */
 export interface GroupInvitation {
   id: number
-  invitee: InvitationUser
+  status: 'PENDING' | 'ACCEPTED'
+  invitee: InvitationUser & { pending: boolean }
   inviter: InvitationUser
   createdAt: string
 }
@@ -99,6 +111,8 @@ export interface MemberShare {
   memberId: number
   name: string
   amountCents: number
+  /** Whoever receives the money confirmed this share was paid back */
+  settled: boolean
 }
 
 export interface GroupTransaction {
@@ -107,6 +121,8 @@ export interface GroupTransaction {
   description: string
   month: Month
   amountCents: number
+  /** Day of the month it is due (1–31) */
+  dueDay: number | null
   /** `null` once the rule was deleted */
   splitMethod: { id: number; name: string; type: SplitType } | null
   /** Who paid (expense) or received (income); `null` while pending */
@@ -124,9 +140,12 @@ export interface GroupTransactionInput {
   splitMethodId: number
   paidByMemberId?: number | null
   repeatMonths?: number
+  dueDay?: number | null
 }
 
-export type GroupTransactionPatch = Partial<Pick<GroupTransactionInput, 'description' | 'amountCents' | 'splitMethodId'>>
+export type GroupTransactionPatch = Partial<
+  Pick<GroupTransactionInput, 'description' | 'amountCents' | 'splitMethodId' | 'dueDay'>
+>
 
 export interface MemberBalance {
   memberId: number
@@ -137,7 +156,7 @@ export interface MemberBalance {
   shareCents: number
   paidCents: number
   receivedCents: number
-  /** > 0: to receive; < 0: owes. Paid items only. */
+  /** > 0: to receive; < 0: owes. Paid items only, without the shares already paid back. */
   netCents: number
 }
 
@@ -145,6 +164,28 @@ export interface Transfer {
   fromMemberId: number
   toMemberId: number
   amountCents: number
+}
+
+/** A share of a paid item that one member owes another */
+export interface SettlementItem {
+  transactionId: number
+  kind: EntryKind
+  description: string
+  /** The member whose share it is */
+  memberId: number
+  /** Who paid the expense or received the income */
+  payerMemberId: number
+  amountCents: number
+  /** Confirmed as paid back */
+  settled: boolean
+  /** The user receives the money (payer of an expense, share member of an income), so they confirm it */
+  canSettle: boolean
+}
+
+/** Shares to confirm (or undo) as paid back */
+export interface SettlementInput {
+  items: { transactionId: number; memberId: number }[]
+  settled: boolean
 }
 
 export interface GroupBalance {
@@ -155,4 +196,6 @@ export interface GroupBalance {
   pendingCents: number
   members: MemberBalance[]
   transfers: Transfer[]
+  /** Shares of the paid items owed to whoever paid or received them */
+  settlements: SettlementItem[]
 }

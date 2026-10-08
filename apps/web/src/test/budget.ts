@@ -132,9 +132,11 @@ export const makeStatementItem = (
   kind: 'EXPENSE',
   description: 'Aluguel',
   month: '2026-10',
+  dueDay: null,
   shareCents: 100000,
   totalCents: 200000,
   paid: false,
+  groupPaid: false,
   paidByName: null,
   series: null,
   category: housing,
@@ -160,7 +162,7 @@ export const makeGroupStatement = (extra: Partial<GroupStatement> = {}): GroupSt
   netCents: -100000,
   transfers: [{ fromMemberId: 1, fromName: 'Ana', toMemberId: 2, toName: 'Bruno', amountCents: 100000 }],
   items: [
-    makeStatementItem(10, { paid: true, paidByName: 'Bruno' }),
+    makeStatementItem(10, { paid: true, groupPaid: true, paidByName: 'Bruno' }),
     makeStatementItem(12, {
       kind: 'INCOME',
       description: 'Sublocação',

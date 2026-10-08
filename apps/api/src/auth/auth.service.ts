@@ -38,21 +38,23 @@ export class AuthService {
     const passwordHash = await argon2.hash(dto.password, {
       type: argon2.argon2id,
     });
-    let user: AuthUser;
+    const email = normalizeEmail(dto.email);
+    const profile = {
+      name: dto.name,
+      passwordHash,
+      birthDate: new Date(`${dto.birthDate}T00:00:00.000Z`),
+      cep: dto.cep,
+      city: dto.city,
+      state: dto.state,
+    };
+    let user: AuthUser | null;
     try {
-      user = await this.users.create({
-        name: dto.name,
-        email: normalizeEmail(dto.email),
-        passwordHash,
-        birthDate: new Date(`${dto.birthDate}T00:00:00.000Z`),
-        cep: dto.cep,
-        city: dto.city,
-        state: dto.state,
-      });
+      user = await this.users.create({ email, ...profile });
     } catch (error) {
-      if (isUniqueViolation(error))
-        throw new ConflictException('E-mail already registered');
-      throw error;
+      if (!isUniqueViolation(error)) throw error;
+      // Pre-registered by a group invitation: the account takes it over
+      user = await this.users.claimPending(email, profile);
+      if (!user) throw new ConflictException('E-mail already registered');
     }
     return this.signIn(user, meta);
   }
@@ -66,9 +68,11 @@ export class AuthService {
     if (password.length > MAX_PASSWORD_LENGTH) return null;
 
     const user = await this.users.findByEmail(normalizeEmail(email));
-    const hash = user?.passwordHash ?? (await this.getDummyHash());
+    // A pre-registration has no password and can't sign in
+    const usable = user && !user.pending ? user.passwordHash : null;
+    const hash = usable ?? (await this.getDummyHash());
     const valid = await argon2.verify(hash, password).catch(() => false);
-    if (!user || !valid) return null;
+    if (!user || !usable || !valid) return null;
     return { id: user.id, email: user.email, name: user.name };
   }
 

@@ -17,6 +17,7 @@ import {
   ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -36,6 +37,7 @@ import {
   GroupBalanceDto,
   GroupTransactionDto,
   PaymentDto,
+  SetSettlementDto,
   UpdateGroupTransactionDto,
 } from './dto/group-transaction.dto.js';
 import { GroupMonthQueryDto } from './dto/group.dto.js';
@@ -75,6 +77,10 @@ export class GroupTransactionController {
 
   @Patch('transactions/:id')
   @ApiOkResponse({ type: GroupTransactionDto })
+  @ApiConflictResponse({
+    description:
+      'New amount or rule for an item whose shares are confirmed as paid back',
+  })
   update(
     @CurrentUser() user: JwtUser,
     @Param('groupId', ParseIntPipe) groupId: number,
@@ -115,6 +121,9 @@ export class GroupTransactionController {
 
   @Put('transactions/:id/payment')
   @ApiOkResponse({ type: GroupTransactionDto })
+  @ApiConflictResponse({
+    description: 'Another payer while shares are confirmed as paid back',
+  })
   pay(
     @CurrentUser() user: JwtUser,
     @Param('groupId', ParseIntPipe) groupId: number,
@@ -126,6 +135,7 @@ export class GroupTransactionController {
 
   @Delete('transactions/:id/payment')
   @ApiOkResponse({ type: GroupTransactionDto, description: 'Back to pending' })
+  @ApiConflictResponse({ description: 'Shares are confirmed as paid back' })
   unpay(
     @CurrentUser() user: JwtUser,
     @Param('groupId', ParseIntPipe) groupId: number,
@@ -142,5 +152,22 @@ export class GroupTransactionController {
     @Query() { month }: GroupMonthQueryDto,
   ): Promise<GroupBalanceDto> {
     return this.service.balance(user.id, groupId, month);
+  }
+
+  @Post('settlements')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({
+    description: 'The shares are confirmed as paid back (or open again)',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Only who receives the money confirms: the payer of an expense, the share member of an income',
+  })
+  setSettlement(
+    @CurrentUser() user: JwtUser,
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Body() body: SetSettlementDto,
+  ): Promise<void> {
+    return this.service.setSettlement(user.id, groupId, body);
   }
 }

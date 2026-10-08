@@ -83,7 +83,7 @@ describe('Auth (e2e)', () => {
       });
       expect(user.passwordHash).toMatch(/^\$argon2id\$/);
       expect(user.passwordHash).not.toContain(validBody.password);
-      expect(user.birthDate.toISOString()).toBe('1990-05-20T00:00:00.000Z');
+      expect(user.birthDate?.toISOString()).toBe('1990-05-20T00:00:00.000Z');
       expect(user).toMatchObject({
         cep: '01001000',
         city: 'São Paulo',

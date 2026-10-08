@@ -55,6 +55,38 @@ describe('Statement route (/extrato) with finance groups', () => {
     expect(within(region('Receitas')).queryByText('Sublocação')).not.toBeInTheDocument()
   })
 
+  it('shows a share someone else paid as open until they confirm it', async () => {
+    stubBudgetApi({
+      groupStatements: [
+        makeGroupStatement({ items: [makeStatementItem(10, { paid: false, groupPaid: true, paidByName: 'Bruno' })] }),
+      ],
+    })
+    await openStatement()
+
+    const share = screen.getByRole('listitem', { name: 'Aluguel (República)' })
+    expect(share).toHaveTextContent('Moradia · A acertar com Bruno')
+    expect(share).not.toHaveAttribute('data-realized')
+    // Still counted, as pending
+    expect(summaryItem('Despesas do mês')).toHaveTextContent('Realizado R$ 750,00 · a realizar R$ 2.800,00')
+    const items = within(region('Grupos')).getByRole('list', { name: 'Lançamentos de República' })
+    expect(within(items).getByLabelText('A acertar com Bruno')).toBeInTheDocument()
+  })
+
+  it('shows the share’s due day in the statement and in the groups card', async () => {
+    stubBudgetApi({
+      groupStatements: [
+        makeGroupStatement({ items: [makeStatementItem(10, { paid: true, paidByName: 'Bruno', dueDay: 12 })] }),
+      ],
+    })
+    await openStatement()
+
+    const share = screen.getByRole('listitem', { name: 'Aluguel (República)' })
+    expect(within(share).getByText('Vence dia')).toBeInTheDocument()
+    expect(share).toHaveTextContent('Vence dia 12')
+    const items = within(region('Grupos')).getByRole('list', { name: 'Lançamentos de República' })
+    expect(within(items).getByText('Aluguel').closest('li')).toHaveTextContent('Vence dia 12')
+  })
+
   it('shows every group item and the settlement in the groups card', async () => {
     await openStatement()
 

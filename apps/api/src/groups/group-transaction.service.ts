@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -13,6 +15,7 @@ import type {
   CreateGroupTransactionDto,
   GroupBalanceDto,
   GroupTransactionDto,
+  SetSettlementDto,
   UpdateGroupTransactionDto,
 } from './dto/group-transaction.dto.js';
 import { activeMembers, assertMember } from './group-access.js';
@@ -30,17 +33,37 @@ const groupTransactionSelect = {
   month: true,
   amountCents: true,
   seriesId: true,
+  dueDay: true,
   splitMethod: { select: { id: true, name: true, type: true } },
   paidBy: memberName,
   shares: {
     orderBy: { memberId: 'asc' },
-    select: { amountCents: true, member: memberName },
+    select: { amountCents: true, settledAt: true, member: memberName },
   },
 } satisfies Prisma.GroupTransactionSelect;
 
 type GroupTransactionRow = Prisma.GroupTransactionGetPayload<{
   select: typeof groupTransactionSelect;
 }>;
+
+/**
+ * The member who receives the money of a share: an expense's payer is paid
+ * back by the share's member; an income's receiver passes the share on.
+ */
+export const receiverOf = (
+  kind: GroupTransactionRow['kind'],
+  payerMemberId: number,
+  shareMemberId: number,
+) => (kind === 'EXPENSE' ? payerMemberId : shareMemberId);
+
+/** 409 for changes that would drop confirmed shares. */
+const settledConflict = () =>
+  new ConflictException('Undo the confirmed shares first');
+
+/** Launches with a due day first, by day; then by creation. */
+type DueDayOrdered = { id: number; dueDay: number | null };
+const byDueDay = (a: DueDayOrdered, b: DueDayOrdered) =>
+  (a.dueDay ?? 32) - (b.dueDay ?? 32) || a.id - b.id;
 
 /**
  * The group's incomes and expenses ("lançamentos"). Each one is divided by a
@@ -63,7 +86,7 @@ export class GroupTransactionService {
       orderBy: { id: 'asc' },
       select: groupTransactionSelect,
     });
-    return this.present(groupId, rows);
+    return this.present(groupId, rows.sort(byDueDay));
   }
 
   /** Creates one occurrence per month; several share a new series. */
@@ -78,6 +101,7 @@ export class GroupTransactionService {
       splitMethodId,
       paidByMemberId = null,
       repeatMonths = 1,
+      dueDay = null,
     }: CreateGroupTransactionDto,
   ): Promise<GroupTransactionDto[]> {
     await assertMember(this.prisma, userId, groupId);
@@ -100,6 +124,7 @@ export class GroupTransactionService {
             paidByMemberId: i === 0 ? paidByMemberId : null,
             createdById: userId,
             seriesId,
+            dueDay,
             shares: { create: shares },
           },
           select: groupTransactionSelect,
@@ -123,6 +148,7 @@ export class GroupTransactionService {
       description,
       amountCents,
       splitMethodId,
+      dueDay,
     }: UpdateGroupTransactionDto,
   ): Promise<GroupTransactionDto> {
     await assertMember(this.prisma, userId, groupId);
@@ -138,13 +164,16 @@ export class GroupTransactionService {
         methodId,
         amountCents ?? current.amountCents,
       );
+      if (current.shares.some((s) => s.settledAt !== null)) {
+        throw settledConflict();
+      }
     }
 
     const ids = [id, ...(await this.followingIds(groupId, current, scope))];
     await this.prisma.$transaction(async (tx) => {
       await tx.groupTransaction.updateMany({
         where: { id: { in: ids } },
-        data: { kind, description, amountCents, splitMethodId },
+        data: { kind, description, amountCents, splitMethodId, dueDay },
       });
       if (shares) {
         await tx.groupTransactionShare.deleteMany({
@@ -229,6 +258,7 @@ export class GroupTransactionService {
             month,
             amountCents: template.amountCents,
             splitMethodId: template.splitMethodId,
+            dueDay: template.dueDay,
             createdById: userId,
             seriesId,
             shares: { create: template.shares },
@@ -244,7 +274,10 @@ export class GroupTransactionService {
     return this.present(groupId, rows);
   }
 
-  /** Records who paid (or received) it; `null` makes it pending again. */
+  /**
+   * Records who paid (or received) it; `null` makes it pending again. Another
+   * payer, or none, needs the confirmed shares undone first (409).
+   */
   async setPayment(
     userId: number,
     groupId: number,
@@ -252,8 +285,14 @@ export class GroupTransactionService {
     memberId: number | null,
   ): Promise<GroupTransactionDto> {
     await assertMember(this.prisma, userId, groupId);
-    await this.find(groupId, id);
+    const current = await this.find(groupId, id);
     if (memberId !== null) await this.assertActiveMember(groupId, memberId);
+    if (
+      memberId !== (current.paidBy?.id ?? null) &&
+      current.shares.some((s) => s.settledAt !== null)
+    ) {
+      throw settledConflict();
+    }
     const updated = await this.prisma.groupTransaction.update({
       where: { id },
       data: { paidByMemberId: memberId },
@@ -268,20 +307,48 @@ export class GroupTransactionService {
     groupId: number,
     month: string,
   ): Promise<GroupBalanceDto> {
-    await assertMember(this.prisma, userId, groupId);
+    const me = await assertMember(this.prisma, userId, groupId);
     const transactions = await this.prisma.groupTransaction.findMany({
       where: { groupId, month },
+      orderBy: { id: 'asc' },
       select: {
+        id: true,
         kind: true,
+        description: true,
         amountCents: true,
         paidByMemberId: true,
-        shares: { select: { memberId: true, amountCents: true } },
+        dueDay: true,
+        shares: {
+          orderBy: { memberId: 'asc' },
+          select: { memberId: true, amountCents: true, settledAt: true },
+        },
       },
     });
     const active = await activeMembers(this.prisma, groupId);
     const balance = computeGroupBalance(
-      transactions,
+      transactions.map((t) => ({
+        ...t,
+        shares: t.shares.map((s) => ({ ...s, settled: s.settledAt !== null })),
+      })),
       active.map((m) => m.id),
+    );
+    // Every share someone owes the payer (or the receiver owes its member)
+    const settlements = transactions.sort(byDueDay).flatMap((t) =>
+      t.paidByMemberId === null
+        ? []
+        : t.shares
+            .filter((s) => s.memberId !== t.paidByMemberId)
+            .map((s) => ({
+              transactionId: t.id,
+              kind: t.kind,
+              description: t.description,
+              memberId: s.memberId,
+              payerMemberId: t.paidByMemberId!,
+              amountCents: s.amountCents,
+              settled: s.settledAt !== null,
+              canSettle:
+                receiverOf(t.kind, t.paidByMemberId!, s.memberId) === me.id,
+            })),
     );
     const members = await this.prisma.groupMember.findMany({
       where: { id: { in: balance.members.map((m) => m.memberId) } },
@@ -291,12 +358,71 @@ export class GroupTransactionService {
     return {
       month,
       ...balance,
+      settlements,
       members: balance.members.map((m) => ({
         ...m,
         name: byId.get(m.memberId)?.user.name ?? '',
         active: byId.get(m.memberId)?.leftAt === null,
       })),
     };
+  }
+
+  /**
+   * Confirms (or undoes) that members' shares of paid transactions were paid
+   * back. Only whoever receives the money confirms: the payer of an expense,
+   * the share's own member for an income (403 for anyone else). All or
+   * nothing: one invalid item rejects the whole request.
+   */
+  async setSettlement(
+    userId: number,
+    groupId: number,
+    { items, settled }: SetSettlementDto,
+  ): Promise<void> {
+    const me = await assertMember(this.prisma, userId, groupId);
+    const ids = [...new Set(items.map((i) => i.transactionId))];
+    const transactions = await this.prisma.groupTransaction.findMany({
+      where: { groupId, id: { in: ids } },
+      select: {
+        id: true,
+        kind: true,
+        paidByMemberId: true,
+        shares: { select: { memberId: true } },
+      },
+    });
+    const byId = new Map(transactions.map((t) => [t.id, t]));
+    for (const { transactionId, memberId } of items) {
+      const t = byId.get(transactionId);
+      if (!t || !t.shares.some((s) => s.memberId === memberId)) {
+        throw new NotFoundException('Share not found');
+      }
+      if (t.paidByMemberId === null) {
+        throw new BadRequestException('Transaction is pending');
+      }
+      if (t.paidByMemberId === memberId) {
+        throw new BadRequestException(
+          "The payer's own share has no settlement",
+        );
+      }
+      if (receiverOf(t.kind, t.paidByMemberId, memberId) !== me.id) {
+        throw new ForbiddenException(
+          'Only who receives the money can confirm it',
+        );
+      }
+    }
+    const settledAt = settled ? new Date() : null;
+    await this.prisma.$transaction(
+      items.map(({ transactionId, memberId }) =>
+        this.prisma.groupTransactionShare.updateMany({
+          where: {
+            transactionId,
+            memberId,
+            // Keeps the first confirmation date
+            ...(settled && { settledAt: null }),
+          },
+          data: { settledAt },
+        }),
+      ),
+    );
   }
 
   private async find(groupId: number, id: number) {
@@ -389,6 +515,7 @@ export class GroupTransactionService {
         memberId: s.member.id,
         name: s.member.user.name,
         amountCents: s.amountCents,
+        settled: s.settledAt !== null,
       })),
     }));
   }

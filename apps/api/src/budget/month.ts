@@ -21,3 +21,8 @@ export function addMonths(month: string, count: number): string {
   const next = (total % 12) + 1;
   return `${Math.floor(total / 12)}-${String(next).padStart(2, '0')}`;
 }
+
+/** The month of `now` (server's local time) as `YYYY-MM`. */
+export function currentMonth(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}

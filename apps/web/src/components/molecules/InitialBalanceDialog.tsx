@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { FormAlert, MoneyInput, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, MoneyInput, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -25,10 +24,10 @@ interface InitialBalanceDialogProps {
 export function InitialBalanceDialog({ open, onOpenChange, ...props }: InitialBalanceDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <FormDialogContent>
         {/* Mounted only while open, so it always starts from the saved value */}
         {open && <InitialBalanceForm onDone={() => onOpenChange(false)} {...props} />}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

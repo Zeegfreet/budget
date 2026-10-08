@@ -52,14 +52,18 @@ export class GroupInvitationController {
 
   @Post()
   @ApiCreatedResponse({ type: GroupInvitationDto })
-  @ApiNotFoundResponse({ description: 'Group not found or no such user' })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid body, yourself, or an unknown e-mail without nickname',
+  })
+  @ApiNotFoundResponse({ description: 'Group not found' })
   @ApiConflictResponse({ description: 'Already a member or already invited' })
   invite(
     @CurrentUser() user: JwtUser,
     @Param('groupId', ParseIntPipe) groupId: number,
-    @Body() { email }: CreateInvitationDto,
+    @Body() dto: CreateInvitationDto,
   ): Promise<GroupInvitationDto> {
-    return this.invitationService.invite(user.id, groupId, email);
+    return this.invitationService.invite(user.id, groupId, dto);
   }
 
   @Delete(':id')

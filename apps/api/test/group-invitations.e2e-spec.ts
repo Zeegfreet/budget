@@ -1,7 +1,14 @@
 import { INestApplication } from '@nestjs/common';
 import { App } from 'supertest/types.js';
-import { createGroup, type GroupDetail } from './groups.js';
-import { type Agent, createTestApp, resetDatabase, signUp } from './utils.js';
+import request from 'supertest';
+import { createGroup, type GroupDetail, splitMethods } from './groups.js';
+import {
+  type Agent,
+  createTestApp,
+  resetDatabase,
+  signUp,
+  userBody,
+} from './utils.js';
 
 interface Received {
   id: number;
@@ -16,8 +23,25 @@ describe('Group invitations (e2e)', () => {
   let carla: Agent;
   let group: GroupDetail;
 
-  const invite = (client: Agent, email: string, groupId = group.id) =>
-    client.post(`/groups/${groupId}/invitations`).send({ email });
+  const invite = (
+    client: Agent,
+    email: string,
+    groupId = group.id,
+    nickname?: string,
+  ) => client.post(`/groups/${groupId}/invitations`).send({ email, nickname });
+
+  const members = async (client: Agent, groupId = group.id) =>
+    (
+      (await client.get(`/groups/${groupId}`).expect(200)).body as {
+        members: {
+          id: number;
+          userId: number;
+          name: string;
+          email: string;
+          pending: boolean;
+        }[];
+      }
+    ).members;
 
   const received = async (client: Agent) =>
     (await client.get('/invitations').expect(200)).body as Received[];
@@ -38,7 +62,12 @@ describe('Group invitations (e2e)', () => {
   it('invites a registered user, who accepts and gains access', async () => {
     const res = await invite(ana, '  Bruno@Example.com ').expect(201);
     expect(res.body).toMatchObject({
-      invitee: { name: 'Bruno Lima', email: 'bruno@example.com' },
+      status: 'PENDING',
+      invitee: {
+        name: 'Bruno Lima',
+        email: 'bruno@example.com',
+        pending: false,
+      },
       inviter: { name: 'Ana Souza', email: 'ana@example.com' },
     });
     expect(
@@ -93,9 +122,11 @@ describe('Group invitations (e2e)', () => {
       .expect(404);
   });
 
-  it('rejects unknown users, self, members and duplicate invitations', async () => {
-    const missing = await invite(ana, 'nobody@example.com').expect(404);
-    expect(missing.body.message).toBe('No user with this e-mail');
+  it('rejects unknown e-mails without nickname, self, members and duplicate invitations', async () => {
+    const missing = await invite(ana, 'nobody@example.com').expect(400);
+    expect(missing.body.message).toBe(
+      'Nickname required for an unregistered e-mail',
+    );
     await invite(ana, 'ana@example.com').expect(400);
 
     await invite(ana, 'bruno@example.com').expect(201);
@@ -106,6 +137,142 @@ describe('Group invitations (e2e)', () => {
     await bruno.post(`/invitations/${invitation.id}/accept`).expect(204);
     const member = await invite(ana, 'bruno@example.com').expect(409);
     expect(member.body.message).toBe('Already a member');
+  });
+
+  describe('pre-registration', () => {
+    const login = (email: string) =>
+      request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password: 'segredo123' });
+
+    it('pre-registers an unknown e-mail, who joins right away under the nickname', async () => {
+      const res = await invite(
+        ana,
+        ' Diego@Example.com',
+        group.id,
+        '  Didi ',
+      ).expect(201);
+      expect(res.body).toMatchObject({
+        status: 'ACCEPTED',
+        invitee: { name: 'Didi', email: 'diego@example.com', pending: true },
+        inviter: { name: 'Ana Souza' },
+      });
+      // Not a pending invitation
+      expect(
+        (await ana.get(`/groups/${group.id}/invitations`).expect(200)).body,
+      ).toEqual([]);
+
+      const list = await members(ana);
+      expect(list).toEqual([
+        expect.objectContaining({ name: 'Ana Souza', pending: false }),
+        expect.objectContaining({
+          name: 'Didi',
+          email: 'diego@example.com',
+          pending: true,
+          role: 'MEMBER',
+        }),
+      ]);
+
+      // Enters the equal split and the balance
+      const [equal] = await splitMethods(ana, group.id);
+      const tx = await ana
+        .post(`/groups/${group.id}/transactions`)
+        .send({
+          kind: 'EXPENSE',
+          description: 'Aluguel',
+          month: '2026-10',
+          amountCents: 100000,
+          splitMethodId: equal.id,
+          paidByMemberId: list[1].id,
+        })
+        .expect(201);
+      expect(tx.body[0]).toMatchObject({
+        paidBy: { memberId: list[1].id, name: 'Didi' },
+        shares: [
+          { name: 'Ana Souza', amountCents: 50000 },
+          { name: 'Didi', amountCents: 50000 },
+        ],
+      });
+      await invite(ana, 'diego@example.com').expect(409);
+    });
+
+    it('cannot sign in until the person signs up, then takes the place over', async () => {
+      await invite(ana, 'diego@example.com', group.id, 'Didi').expect(201);
+      const [, placeholder] = await members(ana);
+      await login('diego@example.com').expect(401);
+
+      const diego = request.agent(app.getHttpServer());
+      const res = await diego
+        .post('/auth/register')
+        .send(userBody('Diego Alves', 'Diego@example.com'))
+        .expect(201);
+      expect(res.body).toMatchObject({
+        id: placeholder.userId,
+        name: 'Diego Alves',
+      });
+
+      // Same membership, with the real name, for everyone
+      expect((await members(diego))[1]).toMatchObject({
+        id: placeholder.id,
+        name: 'Diego Alves',
+        pending: false,
+      });
+      expect(
+        ((await diego.get('/groups').expect(200)).body as { id: number }[]).map(
+          (g) => g.id,
+        ),
+      ).toEqual([group.id]);
+      await login('diego@example.com').expect(200);
+
+      // Registered once
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send(userBody('Outro', 'diego@example.com'))
+        .expect(409);
+    });
+
+    it('lets another group add the same pre-registration, keeping its name', async () => {
+      await invite(ana, 'diego@example.com', group.id, 'Didi').expect(201);
+      const other = await createGroup(bruno, 'Viagem');
+
+      const res = await invite(
+        bruno,
+        'diego@example.com',
+        other.id,
+        'Diego',
+      ).expect(201);
+      expect(res.body.invitee).toMatchObject({ name: 'Didi', pending: true });
+      // An existing pre-registration doesn't need a nickname
+      const third = await createGroup(carla, 'Trabalho');
+      await invite(carla, 'diego@example.com', third.id).expect(201);
+      expect((await members(bruno, other.id))[1].name).toBe('Didi');
+    });
+
+    it('removes a pre-registered member like any other', async () => {
+      await invite(ana, 'diego@example.com', group.id, 'Didi').expect(201);
+      const [, didi] = await members(ana);
+
+      await ana.delete(`/groups/${group.id}/members/${didi.id}`).expect(204);
+      expect(await members(ana)).toHaveLength(1);
+      // Adding again brings the same person back
+      await invite(ana, 'diego@example.com').expect(201);
+      expect((await members(ana))[1]).toMatchObject({ id: didi.id });
+    });
+
+    it('validates the nickname and keeps non-members out', async () => {
+      await invite(ana, 'diego@example.com', group.id, 'D').expect(400);
+      await invite(ana, 'diego@example.com', group.id, 'x'.repeat(101)).expect(
+        400,
+      );
+      await ana
+        .post(`/groups/${group.id}/invitations`)
+        .send({ email: 'diego@example.com', nickname: 7 })
+        .expect(400);
+      await invite(carla, 'diego@example.com', group.id, 'Didi').expect(404);
+      expect(await members(ana)).toHaveLength(1);
+      // Nothing was pre-registered: signing up works as usual
+      await signUp(app, 'Diego Alves', 'diego@example.com');
+    });
   });
 
   it('validates the body', async () => {

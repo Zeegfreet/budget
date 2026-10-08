@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { FormAlert, MoneyInput, MoneyText, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, MoneyInput, MoneyText, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -29,10 +28,10 @@ interface RealizeDialogProps {
 export function RealizeDialog({ open, onOpenChange, ...props }: RealizeDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <FormDialogContent>
         {/* Mounted only while open, so it always starts from `initialCents` */}
         {open && <RealizeForm onDone={() => onOpenChange(false)} {...props} />}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

@@ -71,12 +71,24 @@ export function computeShares(
     return ordered.map((s) => ({ memberId: s.memberId, amountCents: s.value }));
   }
 
-  const weightTotal = sum(ordered.map((s) => s.value));
-  const parts = ordered.map((s, index) => ({
+  return distribute(totalCents, ordered);
+}
+
+/**
+ * Divides `totalCents` in proportion to the weights with the largest remainder
+ * method: whole cents adding up to the total, the leftover cents going to the
+ * largest remainders (ties to the earlier entry). Entries keep their order.
+ */
+export function distribute(
+  totalCents: number,
+  weights: { memberId: number; value: number }[],
+): MemberShare[] {
+  const weightTotal = sum(weights.map((w) => w.value));
+  const parts = weights.map((w, index) => ({
     index,
-    memberId: s.memberId,
-    amountCents: Math.floor((totalCents * s.value) / weightTotal),
-    remainder: (totalCents * s.value) % weightTotal,
+    memberId: w.memberId,
+    amountCents: Math.floor((totalCents * w.value) / weightTotal),
+    remainder: (totalCents * w.value) % weightTotal,
   }));
   let left = totalCents - sum(parts.map((p) => p.amountCents));
   for (const part of [...parts].sort(
@@ -87,6 +99,31 @@ export function computeShares(
     left -= 1;
   }
   return parts.map(({ memberId, amountCents }) => ({ memberId, amountCents }));
+}
+
+/**
+ * Divides `totalCents` among the members of `shares` still in `keepIds`, in
+ * proportion to their current shares (equally when those are all zero). Used
+ * when a member leaves and the item's rule can't divide it anymore. `null`
+ * when nobody is kept.
+ */
+export function redistribute(
+  totalCents: number,
+  shares: MemberShare[],
+  keepIds: number[],
+): MemberShare[] | null {
+  const kept = shares
+    .filter((s) => keepIds.includes(s.memberId))
+    .sort((a, b) => a.memberId - b.memberId);
+  if (kept.length === 0) return null;
+  const allZero = kept.every((s) => s.amountCents === 0);
+  return distribute(
+    totalCents,
+    kept.map((s) => ({
+      memberId: s.memberId,
+      value: allZero ? 1 : s.amountCents,
+    })),
+  );
 }
 
 function sum(values: number[]): number {

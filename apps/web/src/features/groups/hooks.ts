@@ -16,6 +16,7 @@ import {
   removeMember,
   setGroupLink,
   setGroupTransactionSeriesEnd,
+  setSettlement,
   unpayGroupTransaction,
   updateGroup,
   updateGroupTransaction,
@@ -29,7 +30,9 @@ import type {
   GroupLink,
   GroupTransactionInput,
   GroupTransactionPatch,
+  InvitationInput,
   RecurrenceScope,
+  SettlementInput,
   SplitMethodInput,
 } from './types'
 
@@ -100,10 +103,19 @@ export function useInvitationActions() {
     queryClient.invalidateQueries({ queryKey: groupQueries.invitations(groupId).queryKey })
 
   return {
-    async invite(groupId: number, email: string) {
-      await inviteMember(groupId, email)
-      await refreshGroup(groupId)
-      toast.success('Convite enviado')
+    async invite(groupId: number, input: InvitationInput) {
+      const invitation = await inviteMember(groupId, input)
+      if (invitation.status === 'PENDING') {
+        await refreshGroup(groupId)
+        toast.success('Convite enviado')
+        return
+      }
+      // A pre-registration joins right away: members, rules and shares change
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey }),
+        queryClient.invalidateQueries({ queryKey: budgetQueries.all() }),
+      ])
+      toast.success(`${invitation.invitee.name} entrou no grupo (pré-cadastro)`)
     },
     async cancel(groupId: number, id: number) {
       await cancelInvitation(groupId, id)
@@ -127,10 +139,18 @@ export function useInvitationActions() {
   }
 }
 
-/** The group's split rules; changes refresh the whole group (rules show up in its transactions). */
+/**
+ * The group's split rules; changes refresh the whole group (rules show up in
+ * its transactions) and the personal budget, since editing a rule divides the
+ * pending transactions again.
+ */
 export function useSplitMethodActions(groupId: number) {
   const queryClient = useQueryClient()
-  const refresh = () => queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey })
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey }),
+      queryClient.invalidateQueries({ queryKey: budgetQueries.all() }),
+    ])
 
   return {
     async create(input: SplitMethodInput) {
@@ -190,6 +210,11 @@ export function useGroupTransactionActions(groupId: number) {
     },
     async unpay(id: number) {
       await unpayGroupTransaction(groupId, id)
+      await refresh()
+    },
+    /** Confirms (or undoes) that members paid their shares back */
+    async setSettlement(input: SettlementInput) {
+      await setSettlement(groupId, input)
       await refresh()
     },
   }

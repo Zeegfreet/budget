@@ -19,7 +19,12 @@ const dto: RegisterDto = {
 const authUser = { id: 1, email: 'ana@example.com', name: 'Ana Souza' };
 
 describe('AuthService', () => {
-  const users = { create: vi.fn(), findByEmail: vi.fn(), findById: vi.fn() };
+  const users = {
+    create: vi.fn(),
+    claimPending: vi.fn(),
+    findByEmail: vi.fn(),
+    findById: vi.fn(),
+  };
   const sessions = { create: vi.fn(), rotate: vi.fn(), revoke: vi.fn() };
   const jwt = { signAsync: vi.fn() };
   const service = new AuthService(
@@ -61,18 +66,40 @@ describe('AuthService', () => {
       expect(sessions.create).toHaveBeenCalledWith(1, { ip: '::1' });
     });
 
+    const duplicate = () =>
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+
     it('maps a duplicate e-mail to 409', async () => {
-      users.create.mockRejectedValue(
-        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-          code: 'P2002',
-          clientVersion: 'test',
-        }),
-      );
+      users.create.mockRejectedValue(duplicate());
+      users.claimPending.mockResolvedValue(null);
 
       await expect(service.register(dto)).rejects.toBeInstanceOf(
         ConflictException,
       );
       expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('takes over the pre-registration of the e-mail', async () => {
+      users.create.mockRejectedValue(duplicate());
+      users.claimPending.mockResolvedValue(authUser);
+
+      const result = await service.register(dto);
+
+      expect(result.user).toEqual(authUser);
+      const [email, data] = users.claimPending.mock.calls[0];
+      expect(email).toBe('ana@example.com');
+      expect(data).toMatchObject({
+        name: 'Ana Souza',
+        birthDate: new Date('1990-05-20T00:00:00.000Z'),
+        cep: '01001000',
+        city: 'São Paulo',
+        state: 'SP',
+      });
+      expect(data).not.toHaveProperty('email');
+      expect(sessions.create).toHaveBeenCalledWith(1, {});
     });
 
     it('rethrows other errors', async () => {
@@ -103,6 +130,30 @@ describe('AuthService', () => {
 
       await expect(
         service.validateCredentials('ana@example.com', 'errada123'),
+      ).resolves.toBeNull();
+    });
+
+    it('returns null for a pre-registration, even with a hash', async () => {
+      users.findByEmail.mockResolvedValue({
+        ...authUser,
+        pending: true,
+        passwordHash,
+      });
+
+      await expect(
+        service.validateCredentials('ana@example.com', 'segredo123'),
+      ).resolves.toBeNull();
+    });
+
+    it('returns null for a user without a password', async () => {
+      users.findByEmail.mockResolvedValue({
+        ...authUser,
+        pending: false,
+        passwordHash: null,
+      });
+
+      await expect(
+        service.validateCredentials('ana@example.com', 'segredo123'),
       ).resolves.toBeNull();
     });
 

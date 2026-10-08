@@ -1,10 +1,9 @@
 import { MinusIcon, PlusIcon } from 'lucide-react'
 import { useId, useState } from 'react'
-import { FormAlert, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -33,12 +32,12 @@ interface SeriesRangeDialogProps {
 export function SeriesRangeDialog({ open, onOpenChange, ...props }: SeriesRangeDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <FormDialogContent>
         {/* Mounted only while open, so it always starts from the current range */}
         {open && props.series && (
           <SeriesRangeForm {...props} series={props.series} onDone={() => onOpenChange(false)} />
         )}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

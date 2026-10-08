@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchMe } from '@/features/auth/api'
 import {
@@ -9,11 +10,19 @@ import {
   fetchGroupTransactions,
   payGroupTransaction,
   setGroupTransactionSeriesEnd,
+  setSettlement,
   unpayGroupTransaction,
   updateGroupTransaction,
 } from '@/features/groups/api'
 import { ApiError } from '@/lib/api/client'
-import { makeSplitMethod, rentTransaction, stubGroupsApi, waterTransaction } from '@/test/groups'
+import {
+  groupBalance,
+  makeSplitMethod,
+  octoberGroupTransactions,
+  rentTransaction,
+  stubGroupsApi,
+  waterTransaction,
+} from '@/test/groups'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -232,6 +241,94 @@ describe('Group route (/grupos/$groupId)', () => {
     })
   })
 
+  describe('due day', () => {
+    it('shows the due day of the launches that have one', async () => {
+      stubGroupsApi({
+        transactions: octoberGroupTransactions.map((t) => (t.id === waterTransaction.id ? { ...t, dueDay: 5 } : t)),
+      })
+      await openGroup()
+
+      expect(within(row('Água')).getByText('Vence dia')).toBeInTheDocument()
+      expect(row('Água')).toHaveTextContent(/^Vence dia 05/)
+      expect(within(row('Aluguel')).queryByText('Vence dia')).not.toBeInTheDocument()
+    })
+
+    it('launches with a due day, validating it', async () => {
+      await openGroup()
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Nova despesa' })[0])
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa do grupo' })
+      await userEvent.type(within(dialog).getByLabelText('Descrição'), 'Internet')
+      await userEvent.type(within(dialog).getByLabelText('Valor (R$)'), '120')
+      await userEvent.type(within(dialog).getByLabelText('Dia de vencimento (opcional)'), '32')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+      expect(within(dialog).getByText('Informe um dia entre 1 e 31.')).toBeInTheDocument()
+      expect(createGroupTransaction).not.toHaveBeenCalled()
+
+      await userEvent.clear(within(dialog).getByLabelText('Dia de vencimento (opcional)'))
+      await userEvent.type(within(dialog).getByLabelText('Dia de vencimento (opcional)'), '10')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      await waitFor(() =>
+        expect(createGroupTransaction).toHaveBeenCalledWith(7, {
+          kind: 'EXPENSE',
+          description: 'Internet',
+          month: '2026-10',
+          amountCents: 12000,
+          splitMethodId: 1,
+          dueDay: 10,
+        }),
+      )
+    })
+
+    it('changes the due day of the following occurrences', async () => {
+      stubGroupsApi({
+        transactions: octoberGroupTransactions.map((t) => (t.id === rentTransaction.id ? { ...t, dueDay: 5 } : t)),
+      })
+      await openGroup()
+
+      await rowAction('Aluguel', 'Editar')
+      const dialog = await screen.findByRole('dialog', { name: 'Editar lançamento do grupo' })
+      const day = within(dialog).getByLabelText('Dia de vencimento (opcional)')
+      expect(day).toHaveValue('5')
+      await userEvent.clear(day)
+      await userEvent.type(day, '8')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+      const scope = await screen.findByRole('alertdialog', { name: 'Alterar lançamento recorrente' })
+      await userEvent.click(within(scope).getByRole('button', { name: 'Alterar também os próximos' }))
+
+      await waitFor(() =>
+        expect(updateGroupTransaction).toHaveBeenCalledWith(
+          7,
+          rentTransaction.id,
+          { description: 'Aluguel', amountCents: 200000, splitMethodId: 2, dueDay: 8 },
+          'FOLLOWING',
+        ),
+      )
+    })
+
+    it('clears the due day', async () => {
+      stubGroupsApi({
+        transactions: octoberGroupTransactions.map((t) => (t.id === waterTransaction.id ? { ...t, dueDay: 5 } : t)),
+      })
+      await openGroup()
+
+      await rowAction('Água', 'Editar')
+      const dialog = await screen.findByRole('dialog', { name: 'Editar lançamento do grupo' })
+      await userEvent.clear(within(dialog).getByLabelText('Dia de vencimento (opcional)'))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      await waitFor(() =>
+        expect(updateGroupTransaction).toHaveBeenCalledWith(
+          7,
+          waterTransaction.id,
+          { description: 'Água', amountCents: 10000, splitMethodId: 1, dueDay: null },
+          'ONE',
+        ),
+      )
+    })
+  })
+
   describe('recurrence range', () => {
     const openRange = async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Recorrência de Aluguel: 1 de 12' }))
@@ -300,11 +397,95 @@ describe('Group route (/grupos/$groupId)', () => {
           pendingCents: 0,
           members: [],
           transfers: [],
+          settlements: [],
         },
       })
       await openGroup('/grupos/7?tab=balanco')
 
       expect(within(region('Acerto do mês')).getByText('Ninguém deve nada neste mês.')).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Recebimentos' })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('settlements', () => {
+    const rentShare = groupBalance.settlements[0]
+    const light = { ...rentShare, transactionId: 13, description: 'Luz', amountCents: 5000 }
+
+    it('marks a share as received with the green check button', async () => {
+      const user = userEvent.setup()
+      await openGroup('/grupos/7?tab=balanco')
+
+      const pair = within(region('Recebimentos')).getByRole('region', { name: 'Bruno → você' })
+      expect(pair).toHaveTextContent(/Bruno deve a Ana \(você\).*1\.400,00 em aberto/)
+      const check = within(pair).getByRole('button', { name: 'Recebido: Bruno — Aluguel' })
+      expect(check).toHaveAttribute('aria-pressed', 'false')
+
+      vi.mocked(fetchGroupBalance).mockResolvedValue({
+        ...groupBalance,
+        transfers: [],
+        settlements: [{ ...rentShare, settled: true }],
+      })
+      await user.click(check)
+
+      expect(setSettlement).toHaveBeenCalledWith(7, {
+        items: [{ transactionId: 10, memberId: 2 }],
+        settled: true,
+      })
+      await waitFor(() => expect(check).toHaveAttribute('aria-pressed', 'true'))
+      expect(region('Recebimentos')).toHaveTextContent('tudo recebido')
+
+      // Clicking again undoes it
+      await user.click(check)
+      expect(setSettlement).toHaveBeenLastCalledWith(7, {
+        items: [{ transactionId: 10, memberId: 2 }],
+        settled: false,
+      })
+    })
+
+    it('marks every open share of a member at once', async () => {
+      const user = userEvent.setup()
+      stubGroupsApi({ balance: { ...groupBalance, settlements: [rentShare, light] } })
+      await openGroup('/grupos/7?tab=balanco')
+
+      await user.click(within(region('Recebimentos')).getByRole('button', { name: 'Marcar tudo como recebido' }))
+
+      expect(setSettlement).toHaveBeenCalledWith(7, {
+        items: [
+          { transactionId: 10, memberId: 2 },
+          { transactionId: 13, memberId: 2 },
+        ],
+        settled: true,
+      })
+    })
+
+    it('only shows the state of shares someone else receives', async () => {
+      stubGroupsApi({
+        balance: {
+          ...groupBalance,
+          settlements: [{ ...rentShare, memberId: 1, payerMemberId: 2, canSettle: false, settled: true }],
+        },
+      })
+      await openGroup('/grupos/7?tab=balanco')
+
+      const pair = within(region('Recebimentos')).getByRole('region', { name: 'você → Bruno' })
+      const check = within(pair).getByRole('button', { name: 'Recebido: Ana — Aluguel' })
+      expect(check).toBeDisabled()
+      expect(check).toHaveAttribute('aria-pressed', 'true')
+      expect(within(pair).queryByRole('button', { name: 'Marcar tudo como recebido' })).not.toBeInTheDocument()
+    })
+
+    it('explains why a confirmed share blocks undoing the payment', async () => {
+      const error = vi.spyOn(toast, 'error')
+      vi.mocked(unpayGroupTransaction).mockRejectedValue(
+        new ApiError(409, ['Undo the confirmed shares first']),
+      )
+      await openGroup()
+
+      await rowAction('Aluguel', 'Desfazer pagamento')
+
+      await waitFor(() =>
+        expect(error).toHaveBeenCalledWith(expect.stringMatching(/Há partes já marcadas como recebidas neste lançamento/)),
+      )
     })
   })
 })

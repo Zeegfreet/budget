@@ -129,7 +129,7 @@ export function GroupDialogs({
         open={dialog?.type === 'invite'}
         onOpenChange={close}
         groupName={group.name}
-        onSubmit={(email) => invitations.invite(group.id, email)}
+        onSubmit={(input) => invitations.invite(group.id, input)}
         errorMessage={message('Não foi possível enviar o convite.')}
       />
       <ConfirmDialog

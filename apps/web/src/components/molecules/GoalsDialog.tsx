@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { FormAlert, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -32,7 +31,7 @@ interface GoalsDialogProps {
 export function GoalsDialog({ open, onOpenChange, ...props }: GoalsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>{open && <GoalsForm onDone={() => onOpenChange(false)} {...props} />}</DialogContent>
+      <FormDialogContent>{open && <GoalsForm onDone={() => onOpenChange(false)} {...props} />}</FormDialogContent>
     </Dialog>
   )
 }
@@ -96,10 +95,10 @@ function GoalsForm({
         <ul className="flex flex-col gap-2">
           {parsed.map((g) => (
             <li key={g.id} className="flex items-center justify-between gap-3">
-              <label htmlFor={`goal-${g.id}`} className="text-sm">
+              <label htmlFor={`goal-${g.id}`} className="min-w-0 text-sm">
                 {g.name}
               </label>
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 <Input
                   id={`goal-${g.id}`}
                   inputMode="numeric"

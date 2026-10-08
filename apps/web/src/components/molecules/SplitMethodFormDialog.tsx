@@ -1,10 +1,9 @@
 import { useId, useState } from 'react'
-import { FormAlert, MoneyInput, MoneyText, Spinner } from '@/components/atoms'
+import { FormAlert, FormDialogContent, MoneyInput, MoneyText, Spinner } from '@/components/atoms'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -34,9 +33,10 @@ interface SplitMethodFormDialogProps {
 }
 
 const TYPE_HELP: Record<SplitType, string> = {
-  EQUAL: 'Divide em partes iguais entre os participantes.',
+  EQUAL: 'Divide em partes iguais entre os participantes. Quem entrar no grupo passa a participar.',
   PERCENT: 'Cada participante paga um percentual; a soma deve dar 100%.',
-  WEIGHT: 'Divide proporcionalmente aos pesos (ex.: 2 para quem tem o quarto maior, 1 para os demais).',
+  WEIGHT:
+    'Divide proporcionalmente aos pesos (ex.: 2 para quem tem o quarto maior, 1 para os demais). Quem entrar no grupo entra com peso 1.',
   FIXED: 'Cada participante paga um valor fixo; o lançamento deve ter o valor total da regra.',
 }
 
@@ -44,9 +44,9 @@ const TYPE_HELP: Record<SplitType, string> = {
 export function SplitMethodFormDialog({ open, onOpenChange, ...props }: SplitMethodFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto">
+      <FormDialogContent size="md">
         {open && <SplitMethodForm onDone={() => onOpenChange(false)} {...props} />}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }
@@ -146,7 +146,9 @@ function SplitMethodForm({
         <DialogDescription>
           {initial && !initial.active
             ? 'Esta regra está inativa porque um membro saiu do grupo. Ajuste a divisão para usá-la de novo.'
-            : 'Define como os lançamentos do grupo são divididos entre os membros.'}
+            : editing
+              ? 'Ao salvar, os lançamentos ainda não pagos que usam esta regra são divididos de novo.'
+              : 'Define como os lançamentos do grupo são divididos entre os membros.'}
         </DialogDescription>
       </DialogHeader>
 
@@ -217,10 +219,10 @@ function SplitMethodForm({
                     placeholder="0,00"
                     value={values[m.id] ?? ''}
                     onValueChange={(text) => setValues((v) => ({ ...v, [m.id]: text }))}
-                    className="w-32"
+                    className="w-32 shrink-0"
                   />
                 ) : (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     <Input
                       id={`${id}-m${m.id}`}
                       inputMode={type === 'WEIGHT' ? 'numeric' : 'decimal'}

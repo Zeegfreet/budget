@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { computeGroupBalance } from '../groups/settlement.js';
+import { computeGroupBalance, isShareSettled } from '../groups/settlement.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -26,7 +26,8 @@ const linkRef = (c: CategoryRow | null) =>
 /**
  * The final statement of the user's groups in a month, from their side: their
  * shares, what they paid or received, what they owe or are owed, and which
- * personal category each share counts in. Groups the user left only show up
+ * personal category each share counts in. A share someone else paid only
+ * counts as paid once that member confirms the user paid them back. Groups the user left only show up
  * while the month still has their shares (those keep counting in the budget).
  */
 @Injectable()
@@ -69,7 +70,10 @@ export class GroupStatementService {
           amountCents: true,
           paidByMemberId: true,
           seriesId: true,
-          shares: { select: { memberId: true, amountCents: true } },
+          dueDay: true,
+          shares: {
+            select: { memberId: true, amountCents: true, settledAt: true },
+          },
         },
       }),
       this.prisma.groupMember.findMany({
@@ -90,7 +94,13 @@ export class GroupStatementService {
     return memberships.map((me) => {
       const own = transactions.filter((t) => t.groupId === me.groupId);
       const balance = computeGroupBalance(
-        own,
+        own.map((t) => ({
+          ...t,
+          shares: t.shares.map((s) => ({
+            ...s,
+            settled: s.settledAt !== null,
+          })),
+        })),
         members
           .filter((m) => m.groupId === me.groupId && m.leftAt === null)
           .map((m) => m.id),
@@ -118,9 +128,14 @@ export class GroupStatementService {
             kind: t.kind,
             description: t.description,
             month: t.month,
+            // Expense shares are paid with the linked method, whose due day wins
+            dueDay:
+              (t.kind === 'EXPENSE' ? me.paymentMethod?.dueDay : null) ??
+              t.dueDay,
             shareCents: share.amountCents,
             totalCents: t.amountCents,
-            paid: t.paidByMemberId !== null,
+            paid: isShareSettled(t.paidByMemberId, share),
+            groupPaid: t.paidByMemberId !== null,
             paidByName:
               t.paidByMemberId === null
                 ? null
@@ -130,6 +145,11 @@ export class GroupStatementService {
           },
         ];
       });
+      items.sort(
+        (a, b) =>
+          (a.dueDay ?? 32) - (b.dueDay ?? 32) ||
+          a.transactionId - b.transactionId,
+      );
 
       return {
         group: me.group,

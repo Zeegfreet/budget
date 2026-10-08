@@ -1,5 +1,7 @@
+import { currentMonth } from '../budget/month.js';
 import type { GroupMember, Prisma } from '../prisma/generated/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import { resplitPending } from './resplit.js';
 
 /**
  * Ends a membership (leaving or removal). The row stays, with `leftAt`, so the
@@ -8,7 +10,9 @@ import type { PrismaService } from '../prisma/prisma.service.js';
  * - the owner left: the oldest remaining member becomes the owner;
  * - equal and weight rules drop the member (and turn off if left empty);
  *   percent and fixed rules naming the member turn off until edited, since
- *   their values no longer add up.
+ *   their values no longer add up;
+ * - the unpaid transactions from the current month on are divided again
+ *   without the member (see `resplitPending`).
  */
 export async function endMembership(
   prisma: PrismaService,
@@ -34,7 +38,50 @@ export async function endMembership(
       });
     }
     await adjustRules(tx, member);
+    await resplitPending(tx, member.groupId, { fromMonth: currentMonth() });
   });
+}
+
+/**
+ * Brings a member who just joined into the group's equal and weight rules
+ * (weight 1), turning back on those that were off for having nobody left,
+ * then divides the unpaid transactions from the current month on again.
+ * Equal rules without participants already cover every active member;
+ * percent and fixed rules stay as they are, since their values would no
+ * longer add up.
+ */
+export async function includeInRules(
+  tx: Prisma.TransactionClient,
+  groupId: number,
+  memberId: number,
+): Promise<void> {
+  const rules = await tx.splitMethod.findMany({
+    where: { groupId, type: { in: ['EQUAL', 'WEIGHT'] } },
+    select: {
+      id: true,
+      type: true,
+      active: true,
+      shares: { select: { memberId: true } },
+    },
+  });
+  for (const rule of rules) {
+    // An equal rule naming nobody is the "everyone" rule: nothing to add
+    if (rule.type === 'EQUAL' && rule.active && rule.shares.length === 0) {
+      continue;
+    }
+    if (!rule.shares.some((s) => s.memberId === memberId)) {
+      await tx.splitMethodShare.create({
+        data: { splitMethodId: rule.id, memberId, value: 1 },
+      });
+    }
+    if (!rule.active && rule.shares.length === 0) {
+      await tx.splitMethod.update({
+        where: { id: rule.id },
+        data: { active: true },
+      });
+    }
+  }
+  await resplitPending(tx, groupId, { fromMonth: currentMonth() });
 }
 
 async function adjustRules(tx: Prisma.TransactionClient, member: GroupMember) {

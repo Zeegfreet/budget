@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { CircleCheckIcon, CreditCardIcon, PencilIcon, Trash2Icon } from 'lucide-react'
-import { MoneyText } from '@/components/atoms'
+import { DueDayBadge, MoneyText } from '@/components/atoms'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { transactionTitle } from '@/features/transactions/statement'
@@ -54,12 +54,7 @@ export function TransactionRow({
               aria-label={`Realizado: ${title}`}
             />
           </label>
-          {t.dueDay !== null && (
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
-              <span className="sr-only">Vence dia </span>
-              {String(t.dueDay).padStart(2, '0')}
-            </span>
-          )}
+          {t.dueDay !== null && <DueDayBadge day={t.dueDay} />}
           <div className="min-w-0 flex-1 pl-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className={cn('truncate', realized && 'text-muted-foreground')}>{title}</span>

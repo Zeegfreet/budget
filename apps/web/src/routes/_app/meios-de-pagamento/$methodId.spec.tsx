@@ -63,6 +63,28 @@ describe('Invoice route (/meios-de-pagamento/:id)', () => {
     expect(october).toHaveAttribute('aria-current', 'date')
   })
 
+  it('shows a share the payer still has to confirm as open in the group', async () => {
+    stubPaymentMethodsApi({
+      invoice: makeInvoice({
+        shares: [
+          {
+            transactionId: 30,
+            group: { id: 7, name: 'República' },
+            description: 'Aluguel',
+            shareCents: 10000,
+            paid: false,
+            groupPaid: true,
+          },
+        ],
+      }),
+    })
+    await openInvoice()
+
+    const share = within(region('Lançamentos da fatura')).getByRole('listitem', { name: 'Aluguel (República)' })
+    expect(share).toHaveTextContent('Sua parte · A acertar no grupo')
+    expect(share).not.toHaveAttribute('data-realized')
+  })
+
   it('opens another month from the history', async () => {
     const { router } = await openInvoice()
 

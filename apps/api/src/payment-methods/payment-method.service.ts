@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { addMonths, MAX_MONTH_SPAN, monthSpan } from '../budget/month.js';
 import { TransactionService } from '../budget/transaction.service.js';
+import { isShareSettled } from '../groups/settlement.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -119,7 +120,8 @@ export class PaymentMethodService {
       group: s.transaction.group,
       description: s.transaction.description,
       shareCents: s.amountCents,
-      paid: s.transaction.paidByMemberId !== null,
+      paid: isShareSettled(s.transaction.paidByMemberId, s),
+      groupPaid: s.transaction.paidByMemberId !== null,
     }));
     return {
       paymentMethod,
@@ -231,7 +233,7 @@ export class PaymentMethodService {
           paymentMethodId: s.member.paymentMethodId!,
           month: s.transaction.month,
           shareCents: s.amountCents,
-          paid: s.transaction.paidByMemberId !== null,
+          paid: isShareSettled(s.transaction.paidByMemberId, s),
         }),
       ),
     };
@@ -240,6 +242,7 @@ export class PaymentMethodService {
   /**
    * The user's shares of group expenses assigned to the methods. Former
    * memberships count too, so leaving a group doesn't rewrite past invoices.
+   * A share is paid once the user paid the item or the payer confirmed it.
    */
   private shareRows(
     userId: number,
@@ -254,6 +257,8 @@ export class PaymentMethodService {
       orderBy: [{ transaction: { month: 'asc' } }, { transactionId: 'asc' }],
       select: {
         amountCents: true,
+        memberId: true,
+        settledAt: true,
         member: { select: { paymentMethodId: true } },
         transaction: {
           select: {

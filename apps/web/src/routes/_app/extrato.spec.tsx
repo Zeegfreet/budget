@@ -404,6 +404,14 @@ describe('Statement route (/extrato)', () => {
 
       await rowAction('Aluguel', 'Excluir')
       const ask = await screen.findByRole('alertdialog', { name: 'Excluir lançamento recorrente' })
+      // The three long labels are stacked on every screen (they don't fit side by side)
+      const footer = within(ask).getByRole('button', { name: 'Cancelar' }).parentElement!
+      expect(footer).toHaveClass('sm:flex-col-reverse')
+      expect(within(footer).getAllByRole('button').map((b) => b.textContent)).toEqual([
+        'Cancelar',
+        'Excluir só este',
+        'Excluir também os próximos',
+      ])
       await userEvent.click(within(ask).getByRole('button', { name: 'Excluir só este' }))
 
       await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(2, 'ONE'))

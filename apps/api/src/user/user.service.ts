@@ -25,10 +25,47 @@ export class UserService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  /** Public view by e-mail (normalized like at sign-up), e.g. to invite someone. */
-  async findPublicByEmail(email: string): Promise<AuthUser | null> {
+  /**
+   * Public view by e-mail (normalized like at sign-up), e.g. to invite
+   * someone; `pending` tells a pre-registration apart.
+   */
+  async findPublicByEmail(
+    email: string,
+  ): Promise<(AuthUser & Pick<User, 'pending'>) | null> {
     return this.prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
+      select: { ...authUserSelect, pending: true },
+    });
+  }
+
+  /**
+   * Pre-registers someone invited to a group before having an account: just
+   * the e-mail and a nickname, no password. Throws Prisma `P2002` when the
+   * e-mail is already taken.
+   */
+  async createPending(email: string, name: string): Promise<AuthUser> {
+    return this.prisma.user.create({
+      data: { email: email.trim().toLowerCase(), name, pending: true },
+      select: authUserSelect,
+    });
+  }
+
+  /**
+   * Completes the pre-registration of this e-mail with the sign-up data,
+   * keeping its id (and so its group memberships). `null` when there is no
+   * pre-registration (the e-mail is free or already registered).
+   */
+  async claimPending(
+    email: string,
+    data: Omit<Prisma.UserUpdateManyMutationInput, 'email' | 'pending'>,
+  ): Promise<AuthUser | null> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { email, pending: true },
+      data: { ...data, pending: false },
+    });
+    if (count === 0) return null;
+    return this.prisma.user.findUnique({
+      where: { email },
       select: authUserSelect,
     });
   }

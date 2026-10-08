@@ -335,7 +335,12 @@ describe('Payment methods (e2e)', () => {
 
     it('includes the user’s shares of group expenses assigned to the method', async () => {
       const group = await createGroup(ana);
-      await addMember(ana, bruno, group.id, 'bruno@example.com');
+      const { memberId: brunoId } = await addMember(
+        ana,
+        bruno,
+        group.id,
+        'bruno@example.com',
+      );
       const [equal] = await splitMethods(ana, group.id);
       const tx = await ana
         .post(`/groups/${group.id}/transactions`)
@@ -376,6 +381,7 @@ describe('Payment methods (e2e)', () => {
           description: 'Aluguel',
           shareCents: 150000,
           paid: false,
+          groupPaid: false,
         },
       ]);
       expect(result).toMatchObject({ plannedCents: 150000, count: 1 });
@@ -385,6 +391,25 @@ describe('Payment methods (e2e)', () => {
         .put(`/payment-methods/${card.id}/invoice/payment?month=${MONTH}`)
         .expect(200);
       expect((await invoice(ana, card.id)).shares[0].paid).toBe(false);
+
+      // Bruno paid the rent: Ana's share is paid once he confirms it
+      await bruno
+        .put(`/groups/${group.id}/transactions/${rent.id}/payment`)
+        .send({ memberId: brunoId })
+        .expect(200);
+      expect((await invoice(ana, card.id)).shares[0]).toMatchObject({
+        paid: false,
+        groupPaid: true,
+      });
+      const anaMemberId = (linked.body as { memberId: number }).memberId;
+      await bruno
+        .post(`/groups/${group.id}/settlements`)
+        .send({
+          items: [{ transactionId: rent.id, memberId: anaMemberId }],
+          settled: true,
+        })
+        .expect(204);
+      expect((await invoice(ana, card.id)).shares[0].paid).toBe(true);
 
       // Omitting the method keeps it; null removes it
       await ana

@@ -65,14 +65,17 @@ describe('group controllers', () => {
     );
 
     await group.list(user, 5);
-    await group.invite(user, 5, { email: 'b@example.com' });
+    await group.invite(user, 5, { email: 'b@example.com', nickname: 'Bia' });
     await group.cancel(user, 5, 3);
     await received.list(user);
     await received.accept(user, 3);
     await received.decline(user, 4);
 
     expect(service.listForGroup).toHaveBeenCalledWith(7, 5);
-    expect(service.invite).toHaveBeenCalledWith(7, 5, 'b@example.com');
+    expect(service.invite).toHaveBeenCalledWith(7, 5, {
+      email: 'b@example.com',
+      nickname: 'Bia',
+    });
     expect(service.cancel).toHaveBeenCalledWith(7, 5, 3);
     expect(service.listReceived).toHaveBeenCalledWith(7);
     expect(service.accept).toHaveBeenCalledWith(7, 3);
@@ -110,6 +113,7 @@ describe('group controllers', () => {
       remove: vi.fn(),
       setPayment: vi.fn(),
       balance: vi.fn(),
+      setSettlement: vi.fn(),
     };
     const controller = new GroupTransactionController(
       service as unknown as GroupTransactionService,
@@ -129,6 +133,11 @@ describe('group controllers', () => {
     await controller.pay(user, 5, 3, { memberId: 2 });
     await controller.unpay(user, 5, 3);
     await controller.balance(user, 5, { month: '2026-10' });
+    const settlement = {
+      items: [{ transactionId: 3, memberId: 2 }],
+      settled: true,
+    };
+    await controller.setSettlement(user, 5, settlement);
 
     expect(service.list).toHaveBeenCalledWith(7, 5, '2026-10');
     expect(service.create).toHaveBeenCalledWith(7, 5, body);
@@ -139,5 +148,6 @@ describe('group controllers', () => {
     expect(service.setPayment).toHaveBeenNthCalledWith(1, 7, 5, 3, 2);
     expect(service.setPayment).toHaveBeenNthCalledWith(2, 7, 5, 3, null);
     expect(service.balance).toHaveBeenCalledWith(7, 5, '2026-10');
+    expect(service.setSettlement).toHaveBeenCalledWith(7, 5, settlement);
   });
 });

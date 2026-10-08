@@ -10,8 +10,10 @@ import type {
   GroupTransaction,
   GroupTransactionInput,
   GroupTransactionPatch,
+  InvitationInput,
   ReceivedInvitation,
   RecurrenceScope,
+  SettlementInput,
   SplitMethod,
   SplitMethodInput,
 } from './types'
@@ -59,8 +61,8 @@ export async function fetchGroupInvitations(groupId: number): Promise<GroupInvit
   return data
 }
 
-export async function inviteMember(groupId: number, email: string): Promise<GroupInvitation> {
-  const { data } = await api.post<GroupInvitation>(`/groups/${groupId}/invitations`, { email })
+export async function inviteMember(groupId: number, input: InvitationInput): Promise<GroupInvitation> {
+  const { data } = await api.post<GroupInvitation>(`/groups/${groupId}/invitations`, input)
   return data
 }
 
@@ -150,6 +152,11 @@ export async function payGroupTransaction(groupId: number, id: number, memberId:
 export async function unpayGroupTransaction(groupId: number, id: number): Promise<GroupTransaction> {
   const { data } = await api.delete<GroupTransaction>(`/groups/${groupId}/transactions/${id}/payment`)
   return data
+}
+
+/** Confirms (or undoes) that shares of paid items were paid back; only who receives the money may */
+export async function setSettlement(groupId: number, input: SettlementInput): Promise<void> {
+  await api.post(`/groups/${groupId}/settlements`, input)
 }
 
 export async function fetchGroupBalance(groupId: number, month: Month): Promise<GroupBalance> {

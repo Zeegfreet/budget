@@ -26,7 +26,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - **Isolamento total por usuário (multi-tenant)**: cada usuário vê e altera apenas as próprias finanças. O dono dos dados vem sempre do contexto de autenticação, nunca do corpo da requisição. Acesso a dados de outro usuário retorna `404`, para não revelar que o recurso existe.
 - **Receitas e despesas pessoais**: valores guardados em centavos (inteiros), sem ponto flutuante, para que totais e divisões fiquem exatos.
 - **Grupos de finanças**: um usuário cria um grupo com receitas e despesas próprias (ex.: aluguel). Só os membros enxergam os dados do grupo.
-- **Convites**: um membro convida outro usuário, que só ganha acesso depois de aceitar. Quem sai ou é removido do grupo perde o acesso.
+- **Convites**: um membro convida outro usuário, que só ganha acesso depois de aceitar. Quem ainda não tem conta é **pré-cadastrado** com um apelido e já entra no grupo; ao se cadastrar com o mesmo e-mail, assume o lugar. Quem sai ou é removido do grupo perde o acesso.
 - **Métodos de divisão**: cada grupo define como dividir as receitas e despesas entre os membros (partes iguais, valores fixos, percentuais/pesos). A soma das partes sempre fecha com o total.
 
 ## Status dos recursos
@@ -46,9 +46,9 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Metas por tipo de despesa | ✅ | ✅ | Meta em % das receitas por tipo de despesa, com termômetro do mês atual e do período acima dos cards |
 | Receitas e despesas pessoais (lançamentos) | ✅ | ✅ | Lançamentos por categoria e mês, com descrição, dia de vencimento, valor previsto e realizado. No Dashboard, cada categoria se expande nos seus lançamentos (uma linha por série recorrente ou lançamento avulso), editados direto na tabela e refletidos no Extrato |
 | Extrato mensal (realização e recorrência) | ✅ | ✅ | Tela `/extrato`: lista do mês com navegação entre meses, marcar como realizado (com outro valor, se for o caso), lançar receitas e despesas com repetição por N meses, alterar/excluir "só este" ou "também os próximos" e estender ou encurtar a recorrência pelo selo **3/12**. Veja [Extrato](#extrato) |
-| Grupos de finanças | ✅ | ✅ | Telas `/grupos` e `/grupos/:id` (abas Lançamentos, Balanço, Membros e Rateio): criar, renomear, excluir e sair; lançamentos do grupo com recorrência (estender ou encurtar pelo selo **3/12**), "pago por" e balanço mensal por membro com o acerto (quem paga quem). Veja [Grupos](#grupos) |
-| Convites para grupos | ✅ | ✅ | Convite por e-mail de usuário cadastrado; o convidado aceita ou recusa em `/grupos`. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
-| Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total |
+| Grupos de finanças | ✅ | ✅ | Telas `/grupos` e `/grupos/:id` (abas Lançamentos, Balanço, Membros e Rateio): criar, renomear, excluir e sair; lançamentos do grupo com dia de vencimento, recorrência (estender ou encurtar pelo selo **3/12**), "pago por" e balanço mensal por membro com o acerto (quem paga quem) e os **recebimentos**: quem pagou marca a parte de cada um como recebida (botão ✓ verde) e ela sai do saldo. Veja [Grupos](#grupos) |
+| Convites para grupos | ✅ | ✅ | Convite por e-mail; quem tem conta aceita ou recusa em `/grupos`. E-mail sem conta vira **pré-cadastro** com apelido, que já entra no grupo e é assumido no cadastro com o mesmo e-mail. O dono remove membros; quem sai ou é removido perde o acesso (`404`) |
+| Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
 | Docker / deploy em containers | ⏳ | ⏳ | Próximo passo, veja [Deploy](#deploy) |
@@ -169,7 +169,7 @@ Entrada por **e-mail + senha** e **cadastro** em `/signup`. Os botões de **GitH
 
 | Método | Rota | Corpo | Resposta |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | `{ name, email, password, birthDate, cep, city, state }` | `201` com o usuário e os cookies de sessão (já entra logado); `400` em dados inválidos; `409` se o e-mail já estiver cadastrado; `429` após 5 tentativas/min |
+| `POST` | `/auth/register` | `{ name, email, password, birthDate, cep, city, state }` | `201` com o usuário e os cookies de sessão (já entra logado); `400` em dados inválidos; `409` se o e-mail já estiver cadastrado; `429` após 5 tentativas/min. Um e-mail **pré-cadastrado** por convite de grupo é assumido pelo cadastro (mesmo `id`, grupos mantidos) em vez de dar `409` |
 | `POST` | `/auth/login` | `{ email, password }` | `200` com o usuário e os cookies; `401` `Invalid credentials` (mesma resposta para e-mail inexistente e senha errada); `429` após 5 tentativas/min |
 | `POST` | `/auth/refresh` | — (cookie `refresh_token`) | `200` com o usuário e cookies novos; `401` (e cookies apagados) se o refresh estiver ausente, inválido, expirado ou revogado |
 | `GET` | `/auth/me` | — | `200` com o usuário da sessão, ou `401` |
@@ -297,8 +297,8 @@ Menu lateral **Grupos** (`/grupos`): lista os grupos do usuário e, quando houve
 
 A página do grupo (`/grupos/:id`) tem quatro abas. A aba aberta e o mês ficam na URL, por exemplo `/grupos/3?tab=balanco&month=2026-11`.
 
-- **Lançamentos**: receitas e despesas do grupo no mês. Cada linha mostra a regra usada, a cota de cada membro e quem pagou, ou o selo **A pagar** / **A receber**.
-  - **Nova receita / Nova despesa** pede descrição, valor e regra de rateio, e mostra a prévia da divisão.
+- **Lançamentos**: receitas e despesas do grupo no mês, ordenadas pelo dia de vencimento (os sem dia vêm por último). Cada linha mostra o vencimento, a regra usada, a cota de cada membro e quem pagou, ou o selo **A pagar** / **A receber**.
+  - **Nova receita / Nova despesa** pede descrição, valor, regra de rateio e **dia de vencimento** opcional (1 a 31, repetido em toda a recorrência), e mostra a prévia da divisão.
   - É possível informar quem já pagou (ou recebeu) e repetir o lançamento por 2 a 60 meses. Na repetição, só o primeiro mês sai como pago.
   - **Marcar como pago** registra o membro que pagou; **Desfazer pagamento** volta para pendente.
   - Editar ou excluir um lançamento recorrente pergunta se vale **só este** ou **também os próximos**, como no extrato. Os já pagos não mudam.
@@ -308,9 +308,12 @@ A página do grupo (`/grupos/:id`) tem quatro abas. A aba aberta e o mês ficam 
   - quanto **pagou** e quanto **recebeu**;
   - **saldo**: a receber ou deve.
 
-  O **Acerto do mês** lista as transferências que deixam todos em dia, por exemplo "Bruno paga R$ 1.400,00 para Ana". O saldo considera só o que já foi pago ou recebido; o que está em aberto aparece à parte.
+  O **Acerto do mês** lista as transferências que deixam todos em dia, por exemplo "Bruno paga R$ 1.400,00 para Ana". O saldo considera só o que já foi pago ou recebido e ainda não foi acertado; o que está em aberto aparece à parte.
+
+  **Recebimentos** lista, por par ("Bruno deve a Ana (você)"), a parte de cada membro nos itens já pagos. Quem recebe o dinheiro marca a parte como recebida com o botão ✓ verde (clicar de novo desmarca), ou usa **Marcar tudo como recebido**: numa despesa, quem pagou; numa receita, o dono da parte (quem recebeu a receita repassa). Para os outros membros o botão só mostra o estado. Uma parte recebida sai do saldo e do acerto, e para quem devia ela passa a contar como paga no orçamento pessoal. Enquanto houver partes recebidas, trocar o pagador, desfazer o pagamento ou mudar o valor ou a regra do lançamento é bloqueado (`409`); desmarque-as antes.
 - **Membros**: membros e convites pendentes.
-  - **Convidar** envia um convite por e-mail para um usuário cadastrado.
+  - **Convidar** envia um convite por e-mail. Quem já tem conta vê o convite em `/grupos` e entra ao aceitar.
+  - Se o e-mail não tiver conta, informe um **apelido**: a pessoa é **pré-cadastrada** e já entra no grupo (rateios, balanço, "pago por"), com o selo **Pré-cadastro**. O pré-cadastro não faz login. Ao se cadastrar com o mesmo e-mail, a conta assume o pré-cadastro (mesmos grupos e histórico) e o nome do cadastro substitui o apelido. Outro grupo que convidar o mesmo e-mail usa o apelido já existente.
   - O convite pode ser cancelado enquanto estiver pendente.
   - O dono pode **remover** membros.
 - **Rateio**: regras de divisão do grupo (criar, editar e excluir).
@@ -321,16 +324,20 @@ O menu **⋯** do cabeçalho tem **Vincular ao orçamento** (veja [Grupos no or�
 
 | Tipo | Como divide | Validação |
 | --- | --- | --- |
-| Igualitário | Partes iguais entre todos os membros (inclusive os que entrarem depois) ou entre os escolhidos | Ao menos um participante |
+| Igualitário | Partes iguais entre todos os membros ou entre os escolhidos (quem entrar no grupo passa a participar nos dois casos) | Ao menos um participante |
 | Percentual | Cada participante paga um percentual (ex.: 30% / 70%; aceita `33,33`) | Soma de 100% |
-| Pesos | Proporcional aos pesos (ex.: 2 para o quarto maior, 1 para os demais) | Pesos inteiros de 1 a 1000 |
+| Pesos | Proporcional aos pesos (ex.: 2 para o quarto maior, 1 para os demais); quem entrar no grupo entra com peso 1 | Pesos inteiros de 1 a 1000 |
 | Valores fixos | Cada participante paga um valor fixo | O lançamento precisa ter exatamente o total da regra |
 
 - **Centavos que sobram:** na divisão proporcional, ficam com os maiores restos; no empate, com o membro mais antigo. Assim as cotas sempre somam o total.
-- **Cotas gravadas:** as cotas ficam gravadas em cada lançamento. Alterar ou excluir uma regra não muda os lançamentos já feitos; editar o valor ou a regra de um lançamento recalcula as cotas.
+- **Cotas gravadas:** as cotas ficam gravadas em cada lançamento. Os **já pagos** nunca mudam. Os **ainda não pagos** acompanham o grupo:
+  - **editar uma regra** (tipo ou participantes) recalcula todos os pendentes que a usam, de qualquer mês; numa regra de valores fixos, o valor do lançamento passa a ser o novo total. Renomear ou excluir a regra não muda nada;
+  - **entrada e saída de membro** recalculam os pendentes do mês atual em diante: quem entra não herda pendências antigas, e quem sai continua com as partes dos meses passados;
+  - editar o valor ou a regra de um lançamento recalcula as cotas dele.
+- **Entrada de membro:** entra nas regras igualitárias (as de "todos" já o incluem; nas com participantes escolhidos ele é adicionado) e nas de pesos, com peso 1. Regras percentuais e de valores fixos não mudam.
 - **Saída de membro:** o histórico do membro é mantido, e ele continua aparecendo no balanço dos meses de que participou.
   - Regras igualitárias e de pesos apenas deixam de incluí-lo.
-  - Regras percentuais e de valores fixos que o incluíam ficam **inativas** até serem ajustadas.
+  - Regras percentuais e de valores fixos que o incluíam ficam **inativas** até serem ajustadas. Nos pendentes que as usam, a parte de quem saiu é redistribuída entre os demais participantes, na proporção das partes atuais.
   - Se o dono sai, o membro mais antigo vira dono. Se o último membro sai, o grupo é excluído.
 
 **Rotas da API**
@@ -341,40 +348,41 @@ Todas as rotas exigem sessão. Quem não é membro ativo, incluindo convidados c
 | --- | --- | --- | --- |
 | `GET` | `/groups` | — | `200` com `[{ id, name, description, role, memberCount }]` dos grupos do usuário |
 | `POST` | `/groups` | `{ name, description? }` | `201` com o grupo (`role`, `memberId` do usuário, `members`) |
-| `GET` | `/groups/:id` | — | `200` com o grupo, os membros ativos `{ id, userId, name, email, role, joinedAt }` e o vínculo do usuário `link: { expenseCategoryId, incomeCategoryId }` |
+| `GET` | `/groups/:id` | — | `200` com o grupo, os membros ativos `{ id, userId, name, email, pending, role, joinedAt }` (`pending`: pré-cadastro, `name` é o apelido) e o vínculo do usuário `link: { expenseCategoryId, incomeCategoryId }` |
 | `PUT` | `/groups/:id/link` | `{ expenseCategoryId, incomeCategoryId }` | `200` com o grupo. Categorias do próprio usuário onde entra a sua parte (`null` desvincula; os dois campos são obrigatórios). `404` se a categoria não for do usuário, `400` se for do tipo errado ou estiver inativa (manter uma já vinculada que foi inativada é permitido) |
 | `PATCH` | `/groups/:id` | `{ name?, description? }` | `200`; só o dono (`403` para os demais membros) |
 | `DELETE` | `/groups/:id` | — | `204`; só o dono. Apaga lançamentos, regras e convites |
 | `POST` | `/groups/:id/leave` | — | `204`; o acesso termina |
 | `DELETE` | `/groups/:id/members/:memberId` | — | `204`; só o dono, e não para si mesmo (`400`) |
-| `GET` | `/groups/:id/invitations` | — | `200` com os convites pendentes `{ id, invitee, inviter, createdAt }` |
-| `POST` | `/groups/:id/invitations` | `{ email }` | `201`. `404` se não houver usuário com o e-mail, `400` para si mesmo, `409` se já for membro ou já tiver convite pendente |
+| `GET` | `/groups/:id/invitations` | — | `200` com os convites pendentes `{ id, status, invitee: { id, name, email, pending }, inviter, createdAt }` |
+| `POST` | `/groups/:id/invitations` | `{ email, nickname? }` | `201` com o convite. Usuário cadastrado: `status: PENDING`. E-mail sem conta: cria o pré-cadastro com o `nickname` (2 a 100 caracteres) e já o adiciona como membro (`status: ACCEPTED`); um pré-cadastro existente entra do mesmo jeito, mantendo o apelido. `400` sem `nickname` para e-mail sem conta (`Nickname required for an unregistered e-mail`) ou para si mesmo, `409` se já for membro ou já tiver convite pendente |
 | `DELETE` | `/groups/:id/invitations/:invId` | — | `204`; cancela um convite pendente |
 | `GET` | `/invitations` | — | `200` com os convites pendentes recebidos `{ id, group, inviter, createdAt }` |
 | `POST` | `/invitations/:id/accept` | — | `204`; entra no grupo (`404` se o convite não for do usuário ou não estiver pendente) |
 | `POST` | `/invitations/:id/decline` | — | `204` |
 | `GET` | `/groups/:id/split-methods` | — | `200` com `[{ id, name, type, active, shares: [{ memberId, value }] }]` |
 | `POST` | `/groups/:id/split-methods` | `{ name, type, shares: [{ memberId, value? }] }` | `201`. `type`: `EQUAL`, `PERCENT` (`value` em centésimos de ponto percentual, 30% = `3000`), `WEIGHT` (peso) ou `FIXED` (centavos). `EQUAL` com `shares: []` divide entre todos. `400` se a regra não fechar ou citar quem não é membro ativo; `409` em nome duplicado |
-| `PATCH` | `/groups/:id/split-methods/:methodId` | `{ name?, type?, shares? }` | `200`; mudar tipo ou participantes revalida a regra e a reativa |
+| `PATCH` | `/groups/:id/split-methods/:methodId` | `{ name?, type?, shares? }` | `200`; mudar tipo ou participantes revalida a regra, a reativa e recalcula os lançamentos pendentes que a usam |
 | `DELETE` | `/groups/:id/split-methods/:methodId` | — | `204`; os lançamentos que a usavam mantêm as cotas |
-| `GET` | `/groups/:id/transactions` | `?month=YYYY-MM` | `200` com `{ id, kind, description, month, amountCents, splitMethod, paidBy: { memberId, name } \| null, series, shares: [{ memberId, name, amountCents }] }` |
-| `POST` | `/groups/:id/transactions` | `{ kind, description, month, amountCents, splitMethodId, paidByMemberId?, repeatMonths? }` | `201` com os lançamentos criados. `400` se a regra estiver inativa ou não dividir o valor (ex.: valores fixos com outro total) |
-| `PATCH` | `/groups/:id/transactions/:txId` | `{ kind?, description?, amountCents?, splitMethodId?, scope? }` | `200`; novo valor ou regra recalcula as cotas. `scope` `FOLLOWING` atinge os próximos pendentes da série |
+| `GET` | `/groups/:id/transactions` | `?month=YYYY-MM` | `200`, ordenado pelo vencimento, com `{ id, kind, description, month, amountCents, dueDay, splitMethod, paidBy: { memberId, name } \| null, series, shares: [{ memberId, name, amountCents, settled }] }` (`settled`: parte confirmada como recebida) |
+| `POST` | `/groups/:id/transactions` | `{ kind, description, month, amountCents, splitMethodId, paidByMemberId?, repeatMonths?, dueDay? }` | `201` com os lançamentos criados. `400` se a regra estiver inativa ou não dividir o valor (ex.: valores fixos com outro total) |
+| `PATCH` | `/groups/:id/transactions/:txId` | `{ kind?, description?, amountCents?, splitMethodId?, dueDay?, scope? }` | `200`; novo valor ou regra recalcula as cotas (`409` se houver partes recebidas); `dueDay: null` remove o vencimento. `scope` `FOLLOWING` atinge os próximos pendentes da série |
 | `DELETE` | `/groups/:id/transactions/:txId` | `?scope=ONE\|FOLLOWING` | `204` |
 | `PUT` | `/groups/:id/transactions/:txId/series` | `{ untilMonth }` | `200` com todos os lançamentos da série; como no extrato, mas `409` se houver lançamento pago depois do novo fim |
-| `PUT` | `/groups/:id/transactions/:txId/payment` | `{ memberId }` | `200`; registra quem pagou ou recebeu (membro ativo) |
-| `DELETE` | `/groups/:id/transactions/:txId/payment` | — | `200`; volta para pendente |
-| `GET` | `/groups/:id/balance` | `?month=YYYY-MM` | `200` com `{ month, incomeCents, expenseCents, pendingCents, members: [{ memberId, name, active, shareCents, paidCents, receivedCents, netCents }], transfers: [{ fromMemberId, toMemberId, amountCents }] }`. A soma dos `netCents` é sempre zero |
+| `PUT` | `/groups/:id/transactions/:txId/payment` | `{ memberId }` | `200`; registra quem pagou ou recebeu (membro ativo). `409` ao trocar o pagador com partes recebidas |
+| `DELETE` | `/groups/:id/transactions/:txId/payment` | — | `200`; volta para pendente. `409` com partes recebidas |
+| `POST` | `/groups/:id/settlements` | `{ items: [{ transactionId, memberId }], settled }` (1 a 100 itens) | `204`; confirma (`settled: true`) ou desfaz a confirmação de que as partes foram pagas a quem recebeu o dinheiro. Tudo ou nada: `404` parte fora do grupo, `400` lançamento pendente ou parte do próprio pagador, `403` se o usuário não for quem recebe (despesa: quem pagou; receita: o dono da parte) |
+| `GET` | `/groups/:id/balance` | `?month=YYYY-MM` | `200` com `{ month, incomeCents, expenseCents, pendingCents, members: [{ memberId, name, active, shareCents, paidCents, receivedCents, netCents }], transfers: [{ fromMemberId, toMemberId, amountCents }], settlements: [{ transactionId, kind, description, memberId, payerMemberId, amountCents, settled, canSettle }] }`. A soma dos `netCents` é sempre zero; partes recebidas ficam fora deles. `settlements` traz as partes dos outros membros nos itens pagos; `canSettle` diz se o usuário é quem confirma |
 
 ## Grupos no orçamento pessoal
 
 A sua parte nos grupos aparece no Dashboard e no Extrato.
 
-- **Card Grupos** (Dashboard, mês atual; Extrato, mês escolhido): para cada grupo, a sua parte nas despesas e nas receitas (de quanto), o que você pagou ou recebeu, o saldo (**A pagar**, **A receber** ou **Em dia**) e o acerto que envolve você ("Pague R$ 1.000,00 a Bruno"). No Extrato, o card também lista cada lançamento do grupo com a sua parte e se já foi pago.
+- **Card Grupos** (Dashboard, mês atual; Extrato, mês escolhido): para cada grupo, a sua parte nas despesas e nas receitas (de quanto), o que você pagou ou recebeu, o saldo (**A pagar**, **A receber** ou **Em dia**) e o acerto que envolve você ("Pague R$ 1.000,00 a Bruno"). No Extrato, o card também lista cada lançamento do grupo com o vencimento, a sua parte e se já foi pago (nas despesas, vale o vencimento do meio de pagamento vinculado ao grupo, se houver).
 - **Vínculo**: em **Vincular categorias** (no card) ou **Vincular ao orçamento** (menu do grupo), cada membro escolhe uma categoria **de despesa** e uma **de receita** suas. Cada membro escolhe as próprias categorias, e o vínculo de um não afeta os outros. Sem vínculo, nada entra no seu orçamento; o grupo só aparece no card.
 - **O que entra no saldo**: só a **sua parte** já rateada (a cota gravada em cada lançamento), não importa quem pagou. O acerto entre os membros fica no grupo. A parte é calculada na leitura, então editar o valor, a regra, o pagamento ou excluir o lançamento do grupo reflete na hora.
 - **Dashboard**: a parte soma no valor da categoria vinculada (a célula fica somente leitura, com link para o Extrato), nos totais, nas metas e nos cards de saldo.
-- **Extrato**: a parte aparece no tipo da categoria vinculada, somente leitura, com o selo do grupo e o total do lançamento. Paga no grupo conta como **realizada**; pendente, como **a realizar**. O menu da linha tem **Abrir no grupo**.
+- **Extrato**: a parte aparece no tipo da categoria vinculada, somente leitura, com o selo do grupo e o total do lançamento. Conta como **realizada** quando você mesmo pagou ou quando quem pagou confirmou que recebeu a sua parte; até lá, como **a realizar**, com "A acertar com Bruno". O menu da linha tem **Abrir no grupo**.
 - **Meio de pagamento**: no mesmo vínculo, escolha um cartão ou conta para a sua parte das despesas do grupo entrar na fatura dele (veja [Meios de pagamento](#meios-de-pagamento)).
 - **Histórico**: excluir a categoria vinculada desfaz o vínculo. Quem sai do grupo mantém as partes dos meses em que participou (o saldo passado não muda), e o grupo aparece com o selo **Você saiu** nos meses em que você tem parte nele.
 
@@ -383,7 +391,7 @@ A sua parte nos grupos aparece no Dashboard e no Extrato.
 | Método | Rota | Corpo / query | Resposta |
 | --- | --- | --- | --- |
 | `PUT` | `/groups/:id/link` | `{ expenseCategoryId, incomeCategoryId, paymentMethodId? }` | Veja [Grupos](#grupos). `paymentMethodId` é o meio de pagamento da sua parte nas despesas (omitido mantém o atual, `null` tira) |
-| `GET` | `/budget/group-statements` | `?month=YYYY-MM` | `200` com os grupos do usuário no mês: `{ group, active, memberId, link: { expenseCategory, incomeCategory, paymentMethod }, expenseCents, incomeCents, pendingCents, expenseShareCents, incomeShareCents, paidCents, receivedCents, netCents, transfers: [{ fromMemberId, fromName, toMemberId, toName, amountCents }], items: [{ transactionId, kind, description, month, shareCents, totalCents, paid, paidByName, series, category }] }`. `transfers` só traz as que envolvem o usuário; `category` é a categoria vinculada (`null` = fora do orçamento) |
+| `GET` | `/budget/group-statements` | `?month=YYYY-MM` | `200` com os grupos do usuário no mês: `{ group, active, memberId, link: { expenseCategory, incomeCategory, paymentMethod }, expenseCents, incomeCents, pendingCents, expenseShareCents, incomeShareCents, paidCents, receivedCents, netCents, transfers: [{ fromMemberId, fromName, toMemberId, toName, amountCents }], items: [{ transactionId, kind, description, month, dueDay, shareCents, totalCents, paid, groupPaid, paidByName, series, category }] }`. `paid`: a sua parte está quitada (você pagou ou quem pagou confirmou o recebimento); `groupPaid`: alguém pagou no grupo. `transfers` só traz as que envolvem o usuário; `category` é a categoria vinculada (`null` = fora do orçamento); `dueDay` é o vencimento efetivo (nas despesas, o do meio de pagamento vinculado ao grupo, se tiver, ou o do lançamento) e ordena os itens |
 
 ## Meios de pagamento
 
@@ -393,7 +401,7 @@ Tela `/meios-de-pagamento` (menu lateral **Meios de pagamento**), para cartões 
 - **Vencimento**: a despesa lançada num meio de pagamento vence no dia dele; sem meio (ou num meio sem dia), vale o vencimento do próprio lançamento. O extrato ordena e mostra os lançamentos pelo vencimento efetivo.
 - **Fatura = mês do lançamento**: não há dia de fechamento; as despesas de outubro no cartão formam a fatura de outubro, com vencimento no dia do meio dentro do mês (dia 31 em fevereiro cai no último dia).
 - **Lista**: cada card mostra o tipo, o vencimento, o total da fatura do mês escolhido e quanto falta pagar. Inativos ficam escondidos atrás de **Mostrar inativos**.
-- **Fatura** (`/meios-de-pagamento/:id?month=YYYY-MM`): total, pago, a pagar e data de vencimento; os lançamentos do mês (dá para marcar como realizado, editar e excluir como no Extrato); a sua parte nas despesas dos grupos ligados a esse meio (somente leitura, o "pago" vem do grupo); e o histórico de 12 meses (5 antes, 6 depois), clicável.
+- **Fatura** (`/meios-de-pagamento/:id?month=YYYY-MM`): total, pago, a pagar e data de vencimento; os lançamentos do mês (dá para marcar como realizado, editar e excluir como no Extrato); a sua parte nas despesas dos grupos ligados a esse meio (somente leitura: fica paga quando você pagou no grupo ou quem pagou confirmou o recebimento da sua parte; até lá, "A acertar no grupo"); e o histórico de 12 meses (5 antes, 6 depois), clicável.
 - **Pagar fatura**: realiza de uma vez todos os lançamentos pendentes do meio no mês, pelo valor previsto (os já realizados mantêm o valor). **Desfazer pagamento** volta todos os lançamentos do meio no mês para pendente. As partes de grupos não mudam.
 - **Grupos**: em **Vincular ao orçamento**, escolha o meio de pagamento das suas partes nas despesas do grupo.
 - **Isolamento**: meio de pagamento de outro usuário responde `404` (ler, alterar, pagar, usar num lançamento ou no vínculo de grupo).
@@ -406,7 +414,7 @@ Tela `/meios-de-pagamento` (menu lateral **Meios de pagamento**), para cartões 
 | `POST` | `/payment-methods` | `{ name, type: CREDIT_CARD\|ACCOUNT\|OTHER, dueDay? }` | `201`; `409` se o nome já existir |
 | `PATCH` | `/payment-methods/:id` | `{ name?, type?, dueDay?, active? }` (`dueDay: null` tira o dia) | `200`; `409` em nome duplicado |
 | `DELETE` | `/payment-methods/:id` | — | `204`; os lançamentos ficam sem meio |
-| `GET` | `/payment-methods/:id/invoice` | `?month=YYYY-MM` | `200`: `{ paymentMethod, month, dueDate, plannedCents, realizedCents, pendingCents, effectiveCents, count, transactions: [lançamento], shares: [{ transactionId, group, description, shareCents, paid }] }` |
+| `GET` | `/payment-methods/:id/invoice` | `?month=YYYY-MM` | `200`: `{ paymentMethod, month, dueDate, plannedCents, realizedCents, pendingCents, effectiveCents, count, transactions: [lançamento], shares: [{ transactionId, group, description, shareCents, paid, groupPaid }] }` (`paid`: a sua parte está quitada; `groupPaid`: alguém pagou no grupo) |
 | `GET` | `/payment-methods/:id/invoices` | `?from=YYYY-MM&to=YYYY-MM` (até 24 meses) | `200` com os totais de cada mês: `[{ month, plannedCents, realizedCents, pendingCents, effectiveCents, count }]` |
 | `PUT` | `/payment-methods/:id/invoice/payment` | `?month=YYYY-MM` | `200` com a fatura; realiza os pendentes pelo valor previsto |
 | `DELETE` | `/payment-methods/:id/invoice/payment` | `?month=YYYY-MM` | `200` com a fatura; volta os lançamentos para pendente |
