@@ -2,14 +2,16 @@ import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tansta
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { BudgetGridToolbar, EmptyState, GroupLinkDialog } from '@/components/molecules'
+import { BudgetGridToolbar, EmptyState, GroupLinkDialog, MonthRangePicker } from '@/components/molecules'
 import {
   BalanceSummary,
   BudgetDialogs,
   BudgetGrid,
   BudgetLineDialogs,
+  ExpenseBreakdownTable,
   GoalsPanel,
   GroupStatementsCard,
+  MonthlyTrendChart,
   SaveBar,
   type BudgetDialog,
   type GridAction,
@@ -17,7 +19,9 @@ import {
 } from '@/components/organisms'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { authQueries } from '@/features/auth/queries'
+import { buildExpenseBreakdown, buildMonthlyTrend } from '@/features/budget/analytics'
 import { savePlan } from '@/features/budget/api'
 import { buildGoalsOverview } from '@/features/budget/goals'
 import {
@@ -26,11 +30,19 @@ import {
   usePlanCategoryActions,
   usePlanLineActions,
   useUnsavedChangesGuard,
+  type GuardedLocation,
 } from '@/features/budget/hooks'
-import { currentMonth, endOfYear, formatMonthLabel, formatMonthLong, monthWindow } from '@/features/budget/months'
+import {
+  endOfYear,
+  formatMonthLabel,
+  formatMonthLong,
+  monthsBetween,
+  parseRange,
+  type MonthRange,
+} from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
 import { buildBudgetTable, lineTarget } from '@/features/budget/rows'
-import type { GroupStatement } from '@/features/budget/types'
+import type { GroupStatement, Month } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import { useGroupActions } from '@/features/groups/hooks'
 import { EMPTY_LINK, statementLink } from '@/features/groups/link'
@@ -41,13 +53,36 @@ import { ApiError } from '@/lib/api/client'
 /** The API's answer to a duplicate type or category name */
 const DUPLICATE_NAME = 'An item with this name already exists'
 
-/** The grid shows the current month and the 11 after it */
-const WINDOW_MONTHS = 12
+const TABS = ['planejamento', 'analise'] as const
+type DashboardTab = (typeof TABS)[number]
+
+interface DashboardSearch {
+  /** Open tab; the planning table when absent */
+  tab?: DashboardTab
+  /** Period (`YYYY-MM`, both or neither); the current month and the 11 after it when absent */
+  from?: Month
+  to?: Month
+}
+
+/** Tabs share the page's draft: only a new period (or another page) may discard it */
+const keepsDraft = (current: GuardedLocation, next: GuardedLocation) =>
+  next.pathname === current.pathname && sameRange(parseRange(current.search), parseRange(next.search))
+
+const sameRange = (a: MonthRange, b: MonthRange) => a.from === b.from && a.to === b.to
 
 export const Route = createFileRoute('/_app/')({
-  loader: async ({ context: { queryClient } }) => {
-    const months = monthWindow(currentMonth(), WINDOW_MONTHS)
-    const [from, to] = [months[0], months[months.length - 1]]
+  validateSearch: (search: Record<string, unknown>): DashboardSearch => {
+    const range = parseRange(search)
+    // A period the page can't use is dropped (the default one applies)
+    const valid = range.from === search.from && range.to === search.to
+    return {
+      tab: TABS.includes(search.tab as DashboardTab) ? (search.tab as DashboardTab) : undefined,
+      ...(valid ? range : {}),
+    }
+  },
+  loaderDeps: ({ search }) => parseRange(search),
+  loader: async ({ context: { queryClient }, deps: { from, to } }) => {
+    const months = monthsBetween(from, to)
     await Promise.all([
       queryClient.ensureQueryData(budgetQueries.categories()),
       queryClient.ensureQueryData(budgetQueries.entries(from, to)),
@@ -63,7 +98,14 @@ export const Route = createFileRoute('/_app/')({
 
 function DashboardPage() {
   const { months } = Route.useLoaderData()
+  // A new period starts with a new draft (leaving it asks first)
+  return <Dashboard key={`${months[0]}:${months.at(-1)}`} months={months} />
+}
+
+function Dashboard({ months }: { months: Month[] }) {
   const month = months[0]
+  const { tab = 'planejamento' } = Route.useSearch()
+  const navigateHere = Route.useNavigate()
   const queryClient = useQueryClient()
   const { data: user } = useQuery(authQueries.me())
   const { data: savedGroups } = useSuspenseQuery(budgetQueries.categories())
@@ -79,7 +121,7 @@ function DashboardPage() {
   const draft = useBudgetPlan(base, entries, months)
   const { groups, lines } = draft
   const dirty = draft.count > 0
-  useUnsavedChangesGuard(dirty)
+  useUnsavedChangesGuard(dirty, keepsDraft)
 
   const table = buildBudgetTable(
     groups,
@@ -105,6 +147,7 @@ function DashboardPage() {
   const [dialog, setDialog] = useState<BudgetDialog>(null)
   const [lineDialog, setLineDialog] = useState<LineDialog>(null)
   const navigate = useNavigate()
+  const changeSearch = (search: DashboardSearch) => navigateHere({ search: (prev) => ({ ...prev, ...search }) })
   const lineActions = usePlanLineActions(draft.dispatch)
   const launchMethods = usePaymentMethodOptions(month, lineDialog !== null && lineDialog.type !== 'delete-line')
   const [linking, setLinking] = useState<GroupStatement | null>(null)
@@ -143,77 +186,128 @@ function DashboardPage() {
   const saveInitialBalance = useInitialBalance()
 
   const firstName = user?.name.split(' ')[0]
+  const monthLabel = formatMonthLabel(month)
+  const periodLabel = `${monthLabel} a ${formatMonthLabel(to)}`
+  // The analysis shows what is saved; the draft only lives in the planning tab
+  const trend = buildMonthlyTrend(savedGroups, entries, months, summary.openingBalanceCents)
+  const breakdown = buildExpenseBreakdown(savedGroups, entries, months)
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground">
-          {firstName ? `Olá, ${firstName}! ` : ''}Este é o seu balanço de {formatMonthLong(month)}.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-muted-foreground">
+            {firstName ? `Olá, ${firstName}! ` : ''}Este é o seu balanço de {formatMonthLong(month)}.
+          </p>
+        </div>
+        <MonthRangePicker from={month} to={to} onChange={(range) => changeSearch(range)} />
       </div>
 
-      <GoalsPanel
-        overview={goals}
-        monthLabel={formatMonthLong(month)}
-        periodLabel={`${formatMonthLabel(months[0])} a ${formatMonthLabel(months[months.length - 1])}`}
-        onEditGoals={() => setDialog({ type: 'goals' })}
-      />
+      <Tabs value={tab} onValueChange={(value) => changeSearch({ tab: value as DashboardTab })} className="gap-6">
+        <TabsList>
+          <TabsTrigger value="planejamento">Planejamento</TabsTrigger>
+          <TabsTrigger value="analise">Análise</TabsTrigger>
+        </TabsList>
 
-      <BalanceSummary
-        openingCents={summary.openingBalanceCents}
-        incomeCents={incomes}
-        expenseCents={expenses}
-        initialBalanceCents={summary.initialBalanceCents}
-        onSaveInitialBalance={saveInitialBalance}
-      />
-
-      {groupStatements.length > 0 && (
-        <GroupStatementsCard statements={groupStatements} month={month} onLink={setLinking} />
-      )}
-
-      <Card className="gap-0 pb-0">
-        <CardHeader className="pb-4">
-          <CardTitle>Planejamento mensal</CardTitle>
-          <CardDescription>
-            Expanda uma categoria para ver os lançamentos dela e clique em um valor previsto para
-            editar; cada linha é um lançamento (recorrente ou avulso) e aparece também no Extrato. Valores
-            já realizados (marcados com ✓) substituem o previsto e são alterados no Extrato. Use o
-            menu da célula (ou o botão direito) para replicar para os meses seguintes, e o menu de cada
-            linha para criar, editar, inativar ou excluir. Teste seus cenários à vontade: nada é gravado
-            (valores, tipos, categorias, lançamentos ou metas) até clicar em Salvar.
-          </CardDescription>
-          <CardAction>
-            <BudgetGridToolbar
-              showInactive={showInactive}
-              onShowInactiveChange={setShowInactive}
-              onCreateGroup={(kind) => setDialog({ type: 'create-group', kind })}
-            />
-          </CardAction>
-        </CardHeader>
-        <CardContent className="border-t px-0">
-          <BudgetGrid
-            table={table}
-            months={months}
-            showInactive={showInactive}
-            onAction={handleGridAction}
-            isChanged={draft.isChanged}
-            isRealized={draft.isRealized}
-            isPending={draft.isPending}
-            onChange={(anchorId, m, amountCents) => draft.dispatch({ type: 'set', anchorId, month: m, amountCents })}
-            onFill={(anchorId, start, scope) => {
-              const until = scope === 'year' ? endOfYear(start) : to
-              draft.dispatch({
-                type: 'fill',
-                anchorId,
-                // Realized months keep their amount
-                months: months.filter((m) => m > start && m <= until && !draft.isRealized(anchorId, m)),
-                amountCents: draft.value(anchorId, start),
-              })
-            }}
+        {/* Kept mounted while hidden, so expanded rows survive a look at the analysis */}
+        <TabsContent value="planejamento" forceMount className="flex flex-col gap-6 data-[state=inactive]:hidden">
+          <GoalsPanel
+            overview={goals}
+            monthLabel={formatMonthLong(month)}
+            periodLabel={periodLabel}
+            onEditGoals={() => setDialog({ type: 'goals' })}
           />
-        </CardContent>
-      </Card>
+
+          <BalanceSummary
+            openingCents={summary.openingBalanceCents}
+            incomeCents={incomes}
+            expenseCents={expenses}
+            initialBalanceCents={summary.initialBalanceCents}
+            onSaveInitialBalance={saveInitialBalance}
+          />
+
+          {groupStatements.length > 0 && (
+            <GroupStatementsCard statements={groupStatements} month={month} onLink={setLinking} />
+          )}
+
+          <Card className="gap-0 pb-0">
+            <CardHeader className="pb-4">
+              <CardTitle>Planejamento mensal</CardTitle>
+              <CardDescription>
+                Expanda uma categoria para ver os lançamentos dela e clique em um valor previsto para
+                editar; cada linha é um lançamento (recorrente ou avulso) e aparece também no Extrato. Valores
+                já realizados (marcados com ✓) substituem o previsto e são alterados no Extrato. Use o
+                menu da célula (ou o botão direito) para replicar para os meses seguintes, e o menu de cada
+                linha para criar, editar, inativar ou excluir. Teste seus cenários à vontade: nada é gravado
+                (valores, tipos, categorias, lançamentos ou metas) até clicar em Salvar.
+              </CardDescription>
+              <CardAction>
+                <BudgetGridToolbar
+                  showInactive={showInactive}
+                  onShowInactiveChange={setShowInactive}
+                  onCreateGroup={(kind) => setDialog({ type: 'create-group', kind })}
+                />
+              </CardAction>
+            </CardHeader>
+            <CardContent className="border-t px-0">
+              <BudgetGrid
+                table={table}
+                months={months}
+                showInactive={showInactive}
+                onAction={handleGridAction}
+                isChanged={draft.isChanged}
+                isRealized={draft.isRealized}
+                isPending={draft.isPending}
+                onChange={(anchorId, m, amountCents) => draft.dispatch({ type: 'set', anchorId, month: m, amountCents })}
+                onFill={(anchorId, start, scope) => {
+                  const until = scope === 'year' ? endOfYear(start) : to
+                  draft.dispatch({
+                    type: 'fill',
+                    anchorId,
+                    // Realized months keep their amount
+                    months: months.filter((m) => m > start && m <= until && !draft.isRealized(anchorId, m)),
+                    amountCents: draft.value(anchorId, start),
+                  })
+                }}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analise" className="flex flex-col gap-6">
+          {dirty && (
+            <p className="text-sm text-muted-foreground">
+              A análise mostra apenas valores salvos; salve o planejamento para incluir as alterações pendentes.
+            </p>
+          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>Evolução mensal</CardTitle>
+              <CardDescription>
+                Receitas, despesas, saldo do mês e saldo acumulado (a partir do saldo de abertura de{' '}
+                {monthLabel}), de {periodLabel}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MonthlyTrendChart data={trend} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Despesas por categoria</CardTitle>
+              <CardDescription>
+                O valor de {monthLabel}, o total de {periodLabel} e quanto cada categoria representa nesse
+                total. Valores realizados substituem o previsto e os rateios de grupos vinculados entram na
+                categoria.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ExpenseBreakdownTable breakdown={breakdown} monthLabel={monthLabel} periodLabel={periodLabel} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <SaveBar
         count={draft.count}

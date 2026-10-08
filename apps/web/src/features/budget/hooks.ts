@@ -113,10 +113,24 @@ export function useInitialBalance() {
 
 export const UNSAVED_CHANGES_MESSAGE = 'Você tem alterações não salvas. Sair mesmo assim?'
 
-/** Asks before leaving the page (in-app navigation or closing the tab) with unsaved changes. */
-export function useUnsavedChangesGuard(dirty: boolean) {
+/** Where a navigation starts or goes, as the guard sees it */
+export interface GuardedLocation {
+  pathname: string
+  search: object
+}
+
+/**
+ * Asks before leaving the page (in-app navigation or closing the tab) with
+ * unsaved changes. `allow` lets through navigations that keep them (e.g.
+ * switching tabs of the same page).
+ */
+export function useUnsavedChangesGuard(
+  dirty: boolean,
+  allow?: (current: GuardedLocation, next: GuardedLocation) => boolean,
+) {
   useBlocker({
-    shouldBlockFn: () => !window.confirm(UNSAVED_CHANGES_MESSAGE),
+    shouldBlockFn: ({ current, next }) =>
+      !allow?.(current, next) && !window.confirm(UNSAVED_CHANGES_MESSAGE),
     disabled: !dirty,
     enableBeforeUnload: dirty,
   })

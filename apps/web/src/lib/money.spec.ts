@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAmount, formatCents, parseMoneyInput } from './money'
+import { formatAmount, formatCents, formatCentsCompact, parseMoneyInput } from './money'
 
 describe('formatCents', () => {
   it('formats integer cents as BRL by default', () => {
@@ -17,6 +17,15 @@ describe('formatCents', () => {
 
   it('rejects non-integer values to avoid float money', () => {
     expect(() => formatCents(10.5)).toThrow(TypeError)
+  })
+})
+
+describe('formatCentsCompact', () => {
+  it('shortens thousands and millions for chart axes', () => {
+    const plain = (text: string) => text.replace(/\s/g, ' ')
+    expect(plain(formatCentsCompact(1250000))).toBe('R$ 12,5 mil')
+    expect(plain(formatCentsCompact(150000000))).toBe('R$ 1,5 mi')
+    expect(plain(formatCentsCompact(-50000))).toBe('-R$ 500')
   })
 })
 

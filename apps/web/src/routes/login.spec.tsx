@@ -151,11 +151,11 @@ describe('Login route (/login)', () => {
 
     it('returns to the internal page in ?redirect', async () => {
       loginMock.mockResolvedValue(ana)
-      const { router } = await renderRoute('/login?redirect=%2F%3Ftab%3Dgroups')
+      const { router } = await renderRoute('/login?redirect=%2F%3Ftab%3Danalise')
 
       await fillAndSubmit('ana@example.com', 'segredo123')
 
-      await waitFor(() => expect(router.state.location.href).toBe('/?tab=groups'))
+      await waitFor(() => expect(router.state.location.href).toBe('/?tab=analise'))
     })
 
     it('ignores an external ?redirect (open redirect)', async () => {
