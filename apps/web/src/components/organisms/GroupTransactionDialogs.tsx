@@ -61,11 +61,12 @@ export function GroupTransactionDialogs({
 
   async function saveEdit(
     t: GroupTransaction,
-    { description, amountCents, splitMethodId, dueDay }: GroupTransactionFormValues,
+    { description, amountCents, splitMethodId, dueDay, paymentUrl }: GroupTransactionFormValues,
   ) {
     const patch: GroupTransactionPatch = { description, amountCents, splitMethodId }
-    // Sent only when it changes, so editing other fields keeps it as it is
+    // Sent only when they change, so editing other fields keeps them as they are
     if (dueDay !== t.dueDay) patch.dueDay = dueDay
+    if (paymentUrl !== t.paymentUrl) patch.paymentUrl = paymentUrl
     if (hasFollowing(t)) {
       afterEdit.current = { type: 'update-scope', transaction: t, patch }
       return
@@ -82,13 +83,14 @@ export function GroupTransactionDialogs({
         month={month}
         members={group.members}
         splitMethods={splitMethods}
-        onSubmit={({ repeatMonths, paidByMemberId, dueDay, ...values }) =>
+        onSubmit={({ repeatMonths, paidByMemberId, dueDay, paymentUrl, ...values }) =>
           actions.create({
             ...values,
             kind: dialog?.type === 'create' ? dialog.kind : 'EXPENSE',
             month,
             ...(paidByMemberId !== null ? { paidByMemberId } : {}),
             ...(dueDay !== null ? { dueDay } : {}),
+            ...(paymentUrl !== null ? { paymentUrl } : {}),
             ...(repeatMonths > 1 ? { repeatMonths } : {}),
           })
         }
@@ -108,6 +110,7 @@ export function GroupTransactionDialogs({
                 amountCents: transaction.amountCents,
                 splitMethodId: transaction.splitMethod?.id ?? null,
                 dueDay: transaction.dueDay,
+                paymentUrl: transaction.paymentUrl,
               }
             : undefined
         }

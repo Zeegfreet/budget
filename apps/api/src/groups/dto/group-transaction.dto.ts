@@ -21,6 +21,7 @@ import {
   IsPresent,
   MAX_DESCRIPTION_LENGTH,
 } from '../../budget/dto/category.dto.js';
+import { IsPaymentUrl } from '../../budget/dto/payment-url.js';
 import { MAX_AMOUNT_CENTS } from '../../budget/dto/save-lines.dto.js';
 import {
   RECURRENCE_SCOPES,
@@ -90,6 +91,9 @@ export class CreateGroupTransactionDto {
   @Min(1)
   @Max(31)
   dueDay?: number | null;
+
+  @IsPaymentUrl()
+  paymentUrl?: string | null;
 }
 
 /**
@@ -132,6 +136,9 @@ export class UpdateGroupTransactionDto {
   @Min(1)
   @Max(31)
   dueDay?: number | null;
+
+  @IsPaymentUrl()
+  paymentUrl?: string | null;
 
   @ApiPropertyOptional({
     enum: RECURRENCE_SCOPES,
@@ -243,6 +250,14 @@ export class GroupTransactionDto {
     description: 'Day of the month it is due (1–31)',
   })
   dueDay: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'https://www.exemplo.com.br/boleto/123',
+    description: 'Link to the bill or payment portal',
+  })
+  paymentUrl: string | null;
 
   @ApiProperty({
     type: TransactionSplitMethodDto,

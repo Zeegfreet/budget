@@ -17,6 +17,7 @@ import { previewShares, ruleError } from '@/features/groups/split'
 import type { GroupMember, SplitMethod } from '@/features/groups/types'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
 import { parseWhole } from '@/lib/numbers'
+import { INVALID_PAYMENT_URL, MAX_PAYMENT_URL_LENGTH, parsePaymentUrl } from '@/lib/payment-url'
 import { FormField } from './FormField'
 import { MAX_REPEAT_MONTHS, MAX_TRANSACTION_DESCRIPTION_LENGTH } from './TransactionFormDialog'
 
@@ -28,6 +29,8 @@ export interface GroupTransactionFormValues {
   splitMethodId: number
   /** Day of the month it is due (1–31); `null` = none */
   dueDay: number | null
+  /** Link to the bill (boleto) or payment portal; `null` = none */
+  paymentUrl: string | null
   /** `null` while pending */
   paidByMemberId: number | null
   /** 1 when not recurring */
@@ -44,7 +47,13 @@ interface GroupTransactionFormDialogProps {
   /** The group's rules; only active ones are offered */
   splitMethods: SplitMethod[]
   /** Editing: the current values, and no payer or recurrence fields */
-  initial?: { description: string; amountCents: number; splitMethodId: number | null; dueDay: number | null }
+  initial?: {
+    description: string
+    amountCents: number
+    splitMethodId: number | null
+    dueDay: number | null
+    paymentUrl: string | null
+  }
   /** Rejects to show `errorMessage(error)` */
   onSubmit: (values: GroupTransactionFormValues) => Promise<void>
   errorMessage: (error: unknown) => string
@@ -52,7 +61,9 @@ interface GroupTransactionFormDialogProps {
 
 const KIND_LABEL = { INCOME: 'receita', EXPENSE: 'despesa' } as const
 
-type Errors = Partial<Record<'description' | 'amount' | 'splitMethodId' | 'dueDay' | 'repeatMonths', string>>
+type Errors = Partial<
+  Record<'description' | 'amount' | 'splitMethodId' | 'dueDay' | 'paymentUrl' | 'repeatMonths', string>
+>
 
 /** Launches an income or expense of the group, split by one of its rules, or edits one. */
 export function GroupTransactionFormDialog({ open, onOpenChange, ...props }: GroupTransactionFormDialogProps) {
@@ -83,6 +94,7 @@ function GroupTransactionForm({
   const [amount, setAmount] = useState(initial ? formatAmount(initial.amountCents) : '')
   const [ruleId, setRuleId] = useState(initialRule?.id.toString() ?? '')
   const [dueDay, setDueDay] = useState(initial?.dueDay?.toString() ?? '')
+  const [link, setLink] = useState(initial?.paymentUrl ?? '')
   const [payer, setPayer] = useState('')
   const [repeat, setRepeat] = useState(false)
   const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
@@ -112,6 +124,8 @@ function GroupTransactionForm({
     if (!rule) next.splitMethodId = 'Escolha a regra de rateio.'
     const day = parseWhole(dueDay, 1, 31)
     if (day === undefined) next.dueDay = 'Informe um dia entre 1 e 31.'
+    const paymentUrl = parsePaymentUrl(link)
+    if (paymentUrl === undefined) next.paymentUrl = INVALID_PAYMENT_URL
     if (repeat && !validTimes) next.repeatMonths = `Informe de 2 a ${MAX_REPEAT_MONTHS} meses.`
     setErrors(next)
     if (Object.keys(next).length > 0) return
@@ -124,6 +138,7 @@ function GroupTransactionForm({
         amountCents: cents!,
         splitMethodId: rule!.id,
         dueDay: day ?? null,
+        paymentUrl: paymentUrl ?? null,
         paidByMemberId: payer ? Number(payer) : null,
         repeatMonths: repeat ? times : 1,
       })
@@ -209,6 +224,18 @@ function GroupTransactionForm({
         onChange={(e) => setDueDay(e.target.value)}
         error={errors.dueDay}
         className="w-24"
+      />
+
+      <FormField
+        label="Link de pagamento (opcional)"
+        description="Boleto ou portal onde a conta é paga."
+        type="url"
+        inputMode="url"
+        placeholder="https://"
+        value={link}
+        onChange={(e) => setLink(e.target.value)}
+        maxLength={MAX_PAYMENT_URL_LENGTH}
+        error={errors.paymentUrl}
       />
 
       {!editing && (

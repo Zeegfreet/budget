@@ -34,6 +34,7 @@ const groupTransactionSelect = {
   amountCents: true,
   seriesId: true,
   dueDay: true,
+  paymentUrl: true,
   splitMethod: { select: { id: true, name: true, type: true } },
   paidBy: memberName,
   shares: {
@@ -102,6 +103,7 @@ export class GroupTransactionService {
       paidByMemberId = null,
       repeatMonths = 1,
       dueDay = null,
+      paymentUrl = null,
     }: CreateGroupTransactionDto,
   ): Promise<GroupTransactionDto[]> {
     await assertMember(this.prisma, userId, groupId);
@@ -125,6 +127,7 @@ export class GroupTransactionService {
             createdById: userId,
             seriesId,
             dueDay,
+            paymentUrl,
             shares: { create: shares },
           },
           select: groupTransactionSelect,
@@ -149,6 +152,7 @@ export class GroupTransactionService {
       amountCents,
       splitMethodId,
       dueDay,
+      paymentUrl,
     }: UpdateGroupTransactionDto,
   ): Promise<GroupTransactionDto> {
     await assertMember(this.prisma, userId, groupId);
@@ -173,7 +177,14 @@ export class GroupTransactionService {
     await this.prisma.$transaction(async (tx) => {
       await tx.groupTransaction.updateMany({
         where: { id: { in: ids } },
-        data: { kind, description, amountCents, splitMethodId, dueDay },
+        data: {
+          kind,
+          description,
+          amountCents,
+          splitMethodId,
+          dueDay,
+          paymentUrl,
+        },
       });
       if (shares) {
         await tx.groupTransactionShare.deleteMany({
@@ -259,6 +270,7 @@ export class GroupTransactionService {
             amountCents: template.amountCents,
             splitMethodId: template.splitMethodId,
             dueDay: template.dueDay,
+            paymentUrl: template.paymentUrl,
             createdById: userId,
             seriesId,
             shares: { create: template.shares },

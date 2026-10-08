@@ -43,6 +43,7 @@ export function BudgetLineDialogs({ dialog, onClose, month, groups, paymentMetho
           description: row.line.description,
           plannedCents: target.plannedCents,
           dueDay: row.line.dueDay,
+          paymentUrl: row.line.paymentUrl,
           paymentMethodId: row.line.paymentMethod?.id ?? null,
         }
       : undefined
@@ -55,6 +56,7 @@ export function BudgetLineDialogs({ dialog, onClose, month, groups, paymentMetho
     if (values.description !== initial.description) patch.description = values.description
     if (values.plannedCents !== initial.plannedCents) patch.plannedCents = values.plannedCents
     if (values.dueDay !== initial.dueDay) patch.dueDay = values.dueDay
+    if (values.paymentUrl !== initial.paymentUrl) patch.paymentUrl = values.paymentUrl
     if (values.paymentMethodId !== initial.paymentMethodId) patch.paymentMethodId = values.paymentMethodId
     if (Object.keys(patch).length > 0) await actions.update(target.transactionId, patch, 'FOLLOWING')
   }
@@ -69,12 +71,13 @@ export function BudgetLineDialogs({ dialog, onClose, month, groups, paymentMetho
         month={month}
         paymentMethods={paymentMethods}
         defaultCategoryId={dialog?.type === 'create-line' ? dialog.categoryId : undefined}
-        onSubmit={({ repeatMonths, dueDay, paymentMethodId, ...values }) =>
+        onSubmit={({ repeatMonths, dueDay, paymentUrl, paymentMethodId, ...values }) =>
           actions.create({
             ...values,
             month,
             ...(repeatMonths > 1 ? { repeatMonths } : {}),
             ...(dueDay !== null ? { dueDay } : {}),
+            ...(paymentUrl !== null ? { paymentUrl } : {}),
             ...(paymentMethodId !== null ? { paymentMethodId } : {}),
           })
         }

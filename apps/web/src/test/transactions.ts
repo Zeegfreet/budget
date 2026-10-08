@@ -42,6 +42,7 @@ export const makeTransaction = (
   paymentMethod: null,
   ownDueDay: null,
   dueDay: extra.paymentMethod?.dueDay ?? extra.ownDueDay ?? null,
+  paymentUrl: null,
   ...extra,
 })
 

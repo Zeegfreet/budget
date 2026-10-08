@@ -17,6 +17,7 @@ import { selectableMethods } from '@/features/payment-methods/labels'
 import type { PaymentMethod } from '@/features/payment-methods/types'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
 import { parseWhole } from '@/lib/numbers'
+import { INVALID_PAYMENT_URL, MAX_PAYMENT_URL_LENGTH, parsePaymentUrl } from '@/lib/payment-url'
 import { FormField } from './FormField'
 import { PaymentMethodSelect } from './PaymentMethodSelect'
 
@@ -32,6 +33,8 @@ export interface TransactionFormValues {
   repeatMonths: number
   /** Day of the month it is due (1–31) */
   dueDay: number | null
+  /** Link to the bill (boleto) or payment portal */
+  paymentUrl: string | null
   /** Expenses only; always `null` for incomes */
   paymentMethodId: number | null
 }
@@ -71,7 +74,9 @@ export function TransactionFormDialog({ open, onOpenChange, ...props }: Transact
   )
 }
 
-type Errors = Partial<Record<'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'repeatMonths', string>>
+type Errors = Partial<
+  Record<'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'paymentUrl' | 'repeatMonths', string>
+>
 
 function TransactionForm({
   kind,
@@ -95,6 +100,7 @@ function TransactionForm({
   const [note, setNote] = useState(initial?.description ?? '')
   const [amount, setAmount] = useState(initial ? formatAmount(initial.plannedCents) : '')
   const [dueDay, setDueDay] = useState(initial?.dueDay?.toString() ?? '')
+  const [link, setLink] = useState(initial?.paymentUrl ?? '')
   const [repeat, setRepeat] = useState(false)
   const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
   const currentMethodId = initial?.paymentMethodId ?? null
@@ -113,6 +119,7 @@ function TransactionForm({
     const plannedCents = parseMoneyInput(amount)
     const description = note.trim() || null
     const day = parseWhole(dueDay, 1, 31)
+    const paymentUrl = parsePaymentUrl(link)
     const next: Errors = {}
     if (!categoryId) next.categoryId = 'Escolha a categoria.'
     if (plannedCents === null || plannedCents <= 0) next.plannedCents = 'Informe um valor maior que zero.'
@@ -120,6 +127,7 @@ function TransactionForm({
       next.description = `Use até ${MAX_TRANSACTION_DESCRIPTION_LENGTH} caracteres.`
     }
     if (day === undefined) next.dueDay = 'Informe um dia entre 1 e 31.'
+    if (paymentUrl === undefined) next.paymentUrl = INVALID_PAYMENT_URL
     if (repeat && !validTimes) next.repeatMonths = `Informe de 2 a ${MAX_REPEAT_MONTHS} meses.`
     setErrors(next)
     if (Object.keys(next).length > 0) return
@@ -133,6 +141,7 @@ function TransactionForm({
         plannedCents: plannedCents!,
         repeatMonths: repeat ? times : 1,
         dueDay: day!,
+        paymentUrl: paymentUrl!,
         paymentMethodId: kind === 'EXPENSE' ? paymentMethodId : null,
       })
       onDone()
@@ -226,6 +235,18 @@ function TransactionForm({
           onChange={setPaymentMethodId}
         />
       )}
+
+      <FormField
+        label="Link de pagamento (opcional)"
+        description="Boleto ou portal onde a conta é paga."
+        type="url"
+        inputMode="url"
+        placeholder="https://"
+        value={link}
+        onChange={(e) => setLink(e.target.value)}
+        maxLength={MAX_PAYMENT_URL_LENGTH}
+        error={errors.paymentUrl}
+      />
 
       {!editing && (
         <div className="flex flex-col gap-3 rounded-lg border p-3">

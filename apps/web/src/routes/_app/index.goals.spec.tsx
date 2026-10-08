@@ -48,6 +48,7 @@ describe('Dashboard: goals per expense type', () => {
 
     const region = panel()
     expect(region).toHaveTextContent('Nenhuma meta definida')
+    expect(within(region).queryByRole('listitem', { name: 'Sobra / Aporte' })).not.toBeInTheDocument()
     expect(region).toHaveTextContent('Mês atual: outubro de 2026; período: out/26 a set/27.')
     const cards = screen.getByRole('region', { name: 'Saldo de abertura' })
     expect(region.compareDocumentPosition(cards) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -74,6 +75,45 @@ describe('Dashboard: goals per expense type', () => {
     expect(within(living).getByRole('meter', { name: 'Período' })).toHaveAttribute('aria-valuetext', '6% das receitas, meta 30%')
 
     expect(panel()).toHaveTextContent('Metas somadas: 80% das receitas · realizado no mês: 50% · no período: 92%')
+  })
+
+  it('shows what is left to save or invest next to the goals', async () => {
+    stubBudgetApi({ groups: withGoals })
+    await openDashboard()
+
+    // The goals take 80%: at least 20% should be left
+    const leftover = goal('Sobra / Aporte')
+    expect(leftover).toHaveTextContent('Meta mín. 20%')
+    // October: 5.000 − 2.500 = 2.500 (50%)
+    const month = within(leftover).getByRole('meter', { name: 'Mês atual' })
+    expect(month).toHaveAttribute('aria-valuenow', '50')
+    expect(month).toHaveAttribute('aria-valuetext', '50% das receitas, meta mínima 20%')
+    expect(month).toHaveAttribute('data-status', 'ok')
+    expect(leftover).toHaveTextContent('R$ 2.500,00')
+    // The period: 5.000 − 4.600 = 400 (8%), below the minimum
+    const period = within(leftover).getByRole('meter', { name: 'Período' })
+    expect(period).toHaveAttribute('aria-valuenow', '8')
+    expect(period).toHaveAttribute('data-status', 'warning')
+    expect(panel()).toHaveTextContent('sobra no mês: R$ 2.500,00')
+    // It comes after the goals
+    expect(within(panel()).getAllByRole('listitem').map((li) => li.getAttribute('aria-label'))).toEqual([
+      'Despesas Básicas',
+      'Custos de Vida',
+      'Sobra / Aporte',
+    ])
+  })
+
+  it('marks the leftover as over when the expenses pass the income', async () => {
+    stubBudgetApi({
+      groups: withGoals,
+      lines: [makeLine(101, 1, [['2026-10', 600000]]), makeLine(401, 4, [['2026-10', 500000]])],
+    })
+    await openDashboard()
+
+    const month = within(goal('Sobra / Aporte')).getByRole('meter', { name: 'Mês atual' })
+    expect(month).toHaveAttribute('data-status', 'over')
+    expect(month).toHaveAttribute('aria-valuetext', '-20% das receitas, meta mínima 20%')
+    expect(goal('Sobra / Aporte')).toHaveTextContent('-R$ 1.000,00')
   })
 
   it('follows unsaved edits of the grid', async () => {

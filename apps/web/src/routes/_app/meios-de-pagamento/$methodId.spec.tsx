@@ -72,6 +72,7 @@ describe('Invoice route (/meios-de-pagamento/:id)', () => {
             transactionId: 30,
             group: { id: 7, name: 'República' },
             description: 'Aluguel',
+            paymentUrl: null,
             shareCents: 10000,
             paid: false,
             groupPaid: true,
@@ -84,6 +85,27 @@ describe('Invoice route (/meios-de-pagamento/:id)', () => {
     const share = within(region('Lançamentos da fatura')).getByRole('listitem', { name: 'Aluguel (República)' })
     expect(share).toHaveTextContent('Sua parte · A acertar no grupo')
     expect(share).not.toHaveAttribute('data-realized')
+  })
+
+  it('opens the bill of a launch and of a group share', async () => {
+    const invoice = makeInvoice()
+    stubPaymentMethodsApi({
+      invoice: makeInvoice({
+        transactions: [{ ...invoice.transactions[0], paymentUrl: 'https://loja.com.br/fatura' }],
+        shares: [{ ...invoice.shares[0], paymentUrl: 'https://imobiliaria.com.br/boleto/42' }],
+      }),
+    })
+    await openInvoice()
+
+    const items = region('Lançamentos da fatura')
+    expect(await within(items).findByRole('link', { name: 'Abrir link de pagamento: Cinema' })).toHaveAttribute(
+      'href',
+      'https://loja.com.br/fatura',
+    )
+    expect(within(items).getByRole('link', { name: 'Abrir link de pagamento: Aluguel (República)' })).toHaveAttribute(
+      'href',
+      'https://imobiliaria.com.br/boleto/42',
+    )
   })
 
   it('opens another month from the history', async () => {

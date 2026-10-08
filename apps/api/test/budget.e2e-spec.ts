@@ -218,6 +218,7 @@ describe('Budget (e2e)', () => {
         categoryId: ids.leisure,
         description: 'Netflix',
         dueDay: 20,
+        paymentUrl: null,
         paymentMethod: null,
         cells: [
           {

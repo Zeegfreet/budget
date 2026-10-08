@@ -123,6 +123,8 @@ export interface GroupTransaction {
   amountCents: number
   /** Day of the month it is due (1–31) */
   dueDay: number | null
+  /** Link to the bill (boleto) or the portal where it is paid (http/https) */
+  paymentUrl: string | null
   /** `null` once the rule was deleted */
   splitMethod: { id: number; name: string; type: SplitType } | null
   /** Who paid (expense) or received (income); `null` while pending */
@@ -141,10 +143,11 @@ export interface GroupTransactionInput {
   paidByMemberId?: number | null
   repeatMonths?: number
   dueDay?: number | null
+  paymentUrl?: string | null
 }
 
 export type GroupTransactionPatch = Partial<
-  Pick<GroupTransactionInput, 'description' | 'amountCents' | 'splitMethodId' | 'dueDay'>
+  Pick<GroupTransactionInput, 'description' | 'amountCents' | 'splitMethodId' | 'dueDay' | 'paymentUrl'>
 >
 
 export interface MemberBalance {

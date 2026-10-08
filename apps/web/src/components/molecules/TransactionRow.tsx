@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { CircleCheckIcon, CreditCardIcon, PencilIcon, Trash2Icon } from 'lucide-react'
-import { DueDayBadge, MoneyText } from '@/components/atoms'
+import { DueDayBadge, MoneyText, PaymentLinkButton } from '@/components/atoms'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { transactionTitle } from '@/features/transactions/statement'
@@ -75,6 +75,7 @@ export function TransactionRow({
             </div>
             {t.description && <p className="truncate text-xs text-muted-foreground">{t.category.name}</p>}
           </div>
+          {t.paymentUrl && <PaymentLinkButton href={t.paymentUrl} title={title} />}
           <div className="flex shrink-0 flex-col items-end">
             {realized ? (
               <button

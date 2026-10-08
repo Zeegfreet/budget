@@ -70,6 +70,7 @@ export const makeGroupTransaction = (id: number, extra: Partial<GroupTransaction
   month: '2026-10',
   amountCents: 10000,
   dueDay: null,
+  paymentUrl: null,
   splitMethod: { id: equalRule.id, name: equalRule.name, type: 'EQUAL' },
   paidBy: null,
   series: null,

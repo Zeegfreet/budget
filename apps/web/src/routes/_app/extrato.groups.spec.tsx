@@ -88,6 +88,22 @@ describe('Statement route (/extrato) with finance groups', () => {
     expect(within(items).getByText('Aluguel').closest('li')).toHaveTextContent('Vence dia 12')
   })
 
+  it('opens the group launch’s bill from the statement and the groups card', async () => {
+    const bill = 'https://imobiliaria.com.br/boleto/42'
+    stubBudgetApi({
+      groupStatements: [makeGroupStatement({ items: [makeStatementItem(10, { paymentUrl: bill })] })],
+    })
+    await openStatement()
+
+    const share = screen.getByRole('listitem', { name: 'Aluguel (República)' })
+    expect(within(share).getByRole('link', { name: 'Abrir link de pagamento: Aluguel (República)' })).toHaveAttribute(
+      'href',
+      bill,
+    )
+    const items = within(region('Grupos')).getByRole('list', { name: 'Lançamentos de República' })
+    expect(within(items).getByRole('link', { name: 'Abrir link de pagamento: Aluguel' })).toHaveAttribute('href', bill)
+  })
+
   it('shows every group item and the settlement in the groups card', async () => {
     await openStatement()
 

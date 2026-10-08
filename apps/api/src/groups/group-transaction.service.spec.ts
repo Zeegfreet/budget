@@ -119,17 +119,21 @@ describe('GroupTransactionService', () => {
     ]);
   });
 
-  it('changes or clears the due day of the following occurrences', async () => {
+  it('changes or clears the due day and link of the following occurrences', async () => {
     prisma.groupTransaction.findFirst.mockResolvedValue(
       row(1, { seriesId: 's' }),
     );
     prisma.groupTransaction.findMany.mockResolvedValueOnce([{ id: 2 }]);
 
-    await service.update(7, 5, 1, { dueDay: null, scope: 'FOLLOWING' });
+    await service.update(7, 5, 1, {
+      dueDay: null,
+      paymentUrl: null,
+      scope: 'FOLLOWING',
+    });
 
     expect(tx.groupTransaction.updateMany).toHaveBeenCalledWith({
       where: { id: { in: [1, 2] } },
-      data: expect.objectContaining({ dueDay: null }),
+      data: expect.objectContaining({ dueDay: null, paymentUrl: null }),
     });
     expect(tx.groupTransactionShare.deleteMany).not.toHaveBeenCalled();
   });

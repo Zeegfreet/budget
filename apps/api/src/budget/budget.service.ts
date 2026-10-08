@@ -161,6 +161,7 @@ export class BudgetService {
         month: true,
         description: true,
         dueDay: true,
+        paymentUrl: true,
         plannedCents: true,
         realizedCents: true,
         seriesId: true,
@@ -187,6 +188,7 @@ export class BudgetService {
           categoryId: t.categoryId,
           description: t.description,
           dueDay: t.dueDay,
+          paymentUrl: t.paymentUrl,
           paymentMethod: t.paymentMethod,
           cells: [cell],
         });
@@ -218,6 +220,7 @@ export class BudgetService {
         categoryId: true,
         description: true,
         dueDay: true,
+        paymentUrl: true,
         paymentMethodId: true,
         seriesId: true,
       },

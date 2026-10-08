@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { CircleCheckIcon, UsersIcon } from 'lucide-react'
-import { MoneyText } from '@/components/atoms'
+import { MoneyText, PaymentLinkButton } from '@/components/atoms'
 import { TransactionRow, type TransactionRowAction } from '@/components/molecules'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -127,6 +127,7 @@ function ShareRow({ share, month }: { share: InvoiceShare; month: Month }) {
             Sua parte · {share.paid ? 'Pago no grupo' : share.groupPaid ? 'A acertar no grupo' : 'Pendente no grupo'}
           </p>
         </div>
+        {share.paymentUrl && <PaymentLinkButton href={share.paymentUrl} title={label} />}
         <MoneyText
           cents={share.shareCents}
           className={cn('shrink-0 font-medium', share.paid && 'font-normal text-muted-foreground')}

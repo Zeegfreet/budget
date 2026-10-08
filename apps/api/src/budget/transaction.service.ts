@@ -25,6 +25,7 @@ const transactionSelect = {
   realizedCents: true,
   seriesId: true,
   dueDay: true,
+  paymentUrl: true,
   paymentMethod: {
     select: { id: true, name: true, type: true, dueDay: true, active: true },
   },
@@ -107,6 +108,7 @@ export class TransactionService {
       plannedCents,
       repeatMonths = 1,
       dueDay = null,
+      paymentUrl = null,
       paymentMethodId = null,
     }: CreateTransactionDto,
   ): Promise<TransactionDto[]> {
@@ -127,6 +129,7 @@ export class TransactionService {
             plannedCents,
             seriesId,
             dueDay,
+            paymentUrl,
             paymentMethodId,
           },
           select: transactionSelect,
@@ -149,6 +152,7 @@ export class TransactionService {
       description,
       plannedCents,
       dueDay,
+      paymentUrl,
       paymentMethodId,
     }: UpdateTransactionDto,
   ): Promise<TransactionDto> {
@@ -180,6 +184,7 @@ export class TransactionService {
       description,
       plannedCents,
       dueDay,
+      paymentUrl,
       paymentMethodId,
     };
     const [updated] = await this.prisma.$transaction([
@@ -274,6 +279,7 @@ export class TransactionService {
             plannedCents: template.plannedCents,
             seriesId,
             dueDay: template.dueDay,
+            paymentUrl: template.paymentUrl,
             paymentMethodId: template.paymentMethodId,
           },
         }),

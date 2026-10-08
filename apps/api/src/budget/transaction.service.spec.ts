@@ -181,6 +181,7 @@ describe('TransactionService', () => {
         plannedCents: 1000,
         seriesId: null,
         dueDay: 10,
+        paymentUrl: null,
         paymentMethodId: null,
       });
     });
@@ -307,6 +308,7 @@ describe('TransactionService', () => {
       await service.update(7, 5, {
         plannedCents: 2000,
         dueDay: null,
+        paymentUrl: 'https://banco.com.br/boleto',
         scope: 'FOLLOWING',
       });
 
@@ -324,6 +326,7 @@ describe('TransactionService', () => {
           description: undefined,
           plannedCents: 2000,
           dueDay: null,
+          paymentUrl: 'https://banco.com.br/boleto',
           paymentMethodId: undefined,
         },
       });

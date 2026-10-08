@@ -190,6 +190,8 @@ model Transaction {
   seriesId        String?
   /// Day of the month the launch is due (1–31)
   dueDay          Int?
+  /// Link to the bill (boleto) or the portal where it is paid (http/https)
+  paymentUrl      String?
   /// Card or account the expense is paid with; its due day overrides the
   /// launch's. Expenses only.
   paymentMethodId Int?
@@ -362,6 +364,8 @@ model GroupTransaction {
   seriesId       String?
   /// Day of the month the launch is due (1–31)
   dueDay         Int?
+  /// Link to the bill (boleto) or the portal where it is paid (http/https)
+  paymentUrl     String?
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   /// Snapshot of each member's share; always adds up to `amountCents`

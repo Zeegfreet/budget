@@ -22,6 +22,7 @@ interface GroupTransaction {
   month: string;
   amountCents: number;
   dueDay: number | null;
+  paymentUrl: string | null;
   splitMethod: { id: number; name: string; type: string } | null;
   paidBy: { memberId: number; name: string } | null;
   series: {
@@ -314,6 +315,7 @@ describe('Group split methods, transactions and balance (e2e)', () => {
           month: '2026-10',
           amountCents: 200000,
           dueDay: null,
+          paymentUrl: null,
           splitMethod: {
             id: percent.id,
             name: 'Aluguel 30/70',
@@ -671,6 +673,80 @@ describe('Group split methods, transactions and balance (e2e)', () => {
           .send({ dueDay: 3 })
           .expect(404);
         expect((await month('2026-10'))[0].dueDay).toBe(10);
+      });
+    });
+
+    describe('payment link', () => {
+      const BILL = 'https://imobiliaria.com.br/boleto/42';
+      const PORTAL = 'https://imobiliaria.com.br/portal';
+      const launch = (body: Record<string, unknown> = {}) =>
+        create(ana, {
+          kind: 'EXPENSE',
+          description: 'Aluguel',
+          month: '2026-10',
+          amountCents: 300000,
+          splitMethodId: equal.id,
+          ...body,
+        });
+
+      it('repeats it in the series, changes it with FOLLOWING and clears it with null', async () => {
+        const series = (
+          await launch({ paymentUrl: BILL, repeatMonths: 3 }).expect(201)
+        ).body as GroupTransaction[];
+        expect(series.map((t) => t.paymentUrl)).toEqual([BILL, BILL, BILL]);
+        expect((await launch().expect(201)).body[0].paymentUrl).toBeNull();
+
+        const edited = await bruno
+          .patch(`${base()}/transactions/${series[1].id}`)
+          .send({ paymentUrl: PORTAL, scope: 'FOLLOWING' })
+          .expect(200);
+        expect(edited.body).toMatchObject({ paymentUrl: PORTAL });
+        await ana
+          .patch(`${base()}/transactions/${series[2].id}`)
+          .send({ paymentUrl: null })
+          .expect(200);
+
+        const link = async ({ id, month: m }: GroupTransaction) =>
+          (await month(m)).find((t) => t.id === id)!.paymentUrl;
+        expect(await link(series[0])).toBe(BILL);
+        expect(await link(series[1])).toBe(PORTAL);
+        expect(await link(series[2])).toBeNull();
+      });
+
+      it('copies it when the series is extended', async () => {
+        const [first] = (await launch({ paymentUrl: BILL }).expect(201))
+          .body as GroupTransaction[];
+
+        const res = await ana
+          .put(`${base()}/transactions/${first.id}/series`)
+          .send({ untilMonth: '2026-12' })
+          .expect(200);
+
+        expect(
+          (res.body as GroupTransaction[]).map((t) => t.paymentUrl),
+        ).toEqual([BILL, BILL, BILL]);
+      });
+
+      it.each(['aluguel', 'javascript:alert(1)', 'ftp://x.com/a', 42])(
+        'rejects %j',
+        async (paymentUrl) => {
+          await launch({ paymentUrl }).expect(400);
+          const [t] = (await launch().expect(201)).body as GroupTransaction[];
+          await ana
+            .patch(`${base()}/transactions/${t.id}`)
+            .send({ paymentUrl })
+            .expect(400);
+        },
+      );
+
+      it('is not reachable by non-members', async () => {
+        const [t] = (await launch({ paymentUrl: BILL }).expect(201))
+          .body as GroupTransaction[];
+        await carla
+          .patch(`${base()}/transactions/${t.id}`)
+          .send({ paymentUrl: PORTAL })
+          .expect(404);
+        expect((await month('2026-10'))[0].paymentUrl).toBe(BILL);
       });
     });
 

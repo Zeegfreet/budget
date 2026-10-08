@@ -59,11 +59,12 @@ export function TransactionDialogs({
 
   async function saveEdit(
     t: Transaction,
-    { categoryId, description, plannedCents, dueDay, paymentMethodId }: TransactionFormValues,
+    { categoryId, description, plannedCents, dueDay, paymentUrl, paymentMethodId }: TransactionFormValues,
   ) {
     const patch: TransactionPatch = { categoryId, description, plannedCents }
     // Sent only when they change, so editing other fields keeps them as they are
     if (dueDay !== t.ownDueDay) patch.dueDay = dueDay
+    if (paymentUrl !== t.paymentUrl) patch.paymentUrl = paymentUrl
     if (paymentMethodId !== (t.paymentMethod?.id ?? null)) patch.paymentMethodId = paymentMethodId
     if (hasFollowing(t)) {
       // The form closes and the scope question takes over
@@ -82,12 +83,13 @@ export function TransactionDialogs({
         groups={groups}
         month={month}
         paymentMethods={paymentMethods}
-        onSubmit={({ repeatMonths, dueDay, paymentMethodId, ...values }) =>
+        onSubmit={({ repeatMonths, dueDay, paymentUrl, paymentMethodId, ...values }) =>
           actions.create({
             ...values,
             month,
             ...(repeatMonths > 1 ? { repeatMonths } : {}),
             ...(dueDay !== null ? { dueDay } : {}),
+            ...(paymentUrl !== null ? { paymentUrl } : {}),
             ...(paymentMethodId !== null ? { paymentMethodId } : {}),
           })
         }
@@ -107,6 +109,7 @@ export function TransactionDialogs({
                 description: transaction.description,
                 plannedCents: transaction.plannedCents,
                 dueDay: transaction.ownDueDay,
+                paymentUrl: transaction.paymentUrl,
                 paymentMethodId: transaction.paymentMethod?.id ?? null,
               }
             : undefined

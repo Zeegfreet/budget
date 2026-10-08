@@ -71,7 +71,7 @@ export const makeInvoice = (extra: Partial<Invoice> = {}): Invoice => ({
       paymentMethod: card,
     }),
   ],
-  shares: [{ transactionId: 30, group: { id: 7, name: 'República' }, description: 'Aluguel', shareCents: 10000, paid: false, groupPaid: false }],
+  shares: [{ transactionId: 30, group: { id: 7, name: 'República' }, description: 'Aluguel', paymentUrl: null, shareCents: 10000, paid: false, groupPaid: false }],
   ...extra,
 })
 

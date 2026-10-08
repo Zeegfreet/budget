@@ -7,6 +7,8 @@ interface GoalMeterProps {
   label: string
   usage: GoalUsage
   goalPercent: number
+  /** `max` (a spending cap, the default) or `min` (a share to keep, like the leftover) */
+  mode?: 'max' | 'min'
   className?: string
 }
 
@@ -23,13 +25,15 @@ const TEXT = {
 } as const
 
 /**
- * Thermometer of one goal: the bar is the share of the income spent, the
- * marker is the goal. The scale is 0–100% of the income.
+ * Thermometer of one goal: the bar is the share of the income spent (or, in
+ * `min` mode, kept), the marker is the goal. The scale is 0–100% of the income.
  */
-export function GoalMeter({ label, usage, goalPercent, className }: GoalMeterProps) {
+export function GoalMeter({ label, usage, goalPercent, mode = 'max', className }: GoalMeterProps) {
   const { permille, status, spentCents } = usage
   const shown = permille === null ? 'sem receitas' : formatPermille(permille)
-  const width = permille === null ? (spentCents > 0 ? 100 : 0) : Math.min(permille / 10, 100)
+  const width =
+    permille === null ? (mode === 'max' && spentCents > 0 ? 100 : 0) : Math.min(Math.max(permille / 10, 0), 100)
+  const goal = `${mode === 'min' ? 'meta mínima' : 'meta'} ${goalPercent}%`
 
   return (
     <div className={cn('flex flex-col gap-1', className)}>
@@ -43,14 +47,14 @@ export function GoalMeter({ label, usage, goalPercent, className }: GoalMeterPro
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={permille === null ? undefined : permille / 10}
-        aria-valuetext={`${permille === null ? shown : `${shown} das receitas`}, meta ${goalPercent}%`}
+        aria-valuetext={`${permille === null ? shown : `${shown} das receitas`}, ${goal}`}
         data-status={status}
         className="relative h-2.5 rounded-full bg-muted"
       >
         <div className={cn('h-full rounded-full transition-[width]', BAR[status])} style={{ width: `${width}%` }} />
         <div
           aria-hidden
-          title={`Meta: ${goalPercent}%`}
+          title={`${mode === 'min' ? 'Meta mínima' : 'Meta'}: ${goalPercent}%`}
           className="absolute -top-1 h-4.5 w-0.5 rounded bg-foreground/70"
           style={{ left: `calc(${Math.min(goalPercent, 100)}% - 1px)` }}
         />

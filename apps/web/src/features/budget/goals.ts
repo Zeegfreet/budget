@@ -2,7 +2,10 @@ import type { BudgetTable } from './rows'
 
 export type GoalStatus = 'ok' | 'warning' | 'over'
 
-/** Share of the income spent by a type, in a month or the whole window. */
+/**
+ * Share of the income spent by a type, in a month or the whole window. For the
+ * leftover, `spentCents` is what is left (income − every expense, may be negative).
+ */
 export interface GoalUsage {
   spentCents: number
   incomeCents: number
@@ -19,6 +22,14 @@ export interface GoalProgress {
   period: GoalUsage
 }
 
+/** What is left of the income to save or invest, against the share no goal takes */
+export interface LeftoverProgress {
+  /** 100 − the sum of the goals (0 when they take everything): the minimum to keep */
+  targetPercent: number
+  month: GoalUsage
+  period: GoalUsage
+}
+
 export interface GoalsOverview {
   goals: GoalProgress[]
   /** Sum of every goal, in percent (may exceed 100) */
@@ -26,6 +37,7 @@ export interface GoalsOverview {
   /** Every type with a goal together, against the sum of the goals */
   month: GoalUsage
   period: GoalUsage
+  leftover: LeftoverProgress
 }
 
 /** At or above this share of the goal (in percent), the meter warns */
@@ -47,6 +59,19 @@ export function goalUsage(spentCents: number, incomeCents: number, goalPercent: 
 }
 
 /**
+ * The leftover's goal is a minimum: below it warns, a negative leftover (more
+ * expenses than income) is over.
+ */
+export function leftoverUsage(savedCents: number, incomeCents: number, targetPercent: number): GoalUsage {
+  const permille = incomeCents > 0 ? Math.round((savedCents * 1000) / incomeCents) : null
+  let status: GoalStatus = 'ok'
+  if (savedCents < 0) status = 'over'
+  // Exact cents again: saved/income vs target/100
+  else if (incomeCents > 0 && savedCents * 100 < incomeCents * targetPercent) status = 'warning'
+  return { spentCents: savedCents, incomeCents, permille, status }
+}
+
+/**
  * Goals of the active expense types, for the window's first month (the current
  * one) and for the whole window.
  */
@@ -65,11 +90,18 @@ export function buildGoalsOverview(table: BudgetTable): GoalsOverview {
   )
   const totalGoalPercent = goals.reduce((sum, g) => sum + g.goalPercent, 0)
   const spent = (pick: (g: GoalProgress) => GoalUsage) => goals.reduce((sum, g) => sum + pick(g).spentCents, 0)
+  // Every expense counts here, with a goal or not (group shares included)
+  const targetPercent = Math.max(0, 100 - totalGoalPercent)
   return {
     goals,
     totalGoalPercent,
     month: goalUsage(spent((g) => g.month), monthIncome, totalGoalPercent),
     period: goalUsage(spent((g) => g.period), table.incomeTotal, totalGoalPercent),
+    leftover: {
+      targetPercent,
+      month: leftoverUsage(table.balances[0] ?? 0, monthIncome, targetPercent),
+      period: leftoverUsage(table.balanceTotal, table.incomeTotal, targetPercent),
+    },
   }
 }
 

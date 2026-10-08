@@ -59,6 +59,7 @@ interface GroupStatement {
     transactionId: number;
     kind: string;
     description: string;
+    paymentUrl: string | null;
     dueDay: number | null;
     shareCents: number;
     totalCents: number;
@@ -487,6 +488,34 @@ describe('Groups in the personal budget (e2e)', () => {
       });
       // A month without their shares no longer lists the group
       expect(await statements(bruno, '2026-11')).toEqual([]);
+    });
+  });
+
+  describe('payment link', () => {
+    it('shows the group transaction’s link on each member’s item', async () => {
+      const bill = 'https://imobiliaria.com.br/boleto/42';
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Aluguel',
+        amountCents: 300000,
+        paymentUrl: bill,
+      });
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Água',
+        amountCents: 10000,
+      });
+      const links = async (client: Agent) =>
+        (await statements(client))[0].items.map((i) => [
+          i.description,
+          i.paymentUrl,
+        ]);
+
+      expect(await links(ana)).toEqual([
+        ['Aluguel', bill],
+        ['Água', null],
+      ]);
+      expect(await links(bruno)).toEqual(await links(ana));
     });
   });
 

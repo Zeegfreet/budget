@@ -35,6 +35,8 @@ export interface InvoiceShare {
   transactionId: number
   group: { id: number; name: string }
   description: string
+  /** The group transaction's link to the bill or payment portal */
+  paymentUrl: string | null
   shareCents: number
   /** The user's share is paid: they paid the expense, or the payer confirmed being paid back */
   paid: boolean

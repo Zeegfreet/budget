@@ -350,6 +350,7 @@ describe('Payment methods (e2e)', () => {
           month: MONTH,
           amountCents: 300000,
           splitMethodId: equal.id,
+          paymentUrl: 'https://imobiliaria.com.br/boleto/42',
         })
         .expect(201);
       const [rent] = tx.body as { id: number }[];
@@ -379,6 +380,7 @@ describe('Payment methods (e2e)', () => {
           transactionId: rent.id,
           group: { id: group.id, name: 'República' },
           description: 'Aluguel',
+          paymentUrl: 'https://imobiliaria.com.br/boleto/42',
           shareCents: 150000,
           paid: false,
           groupPaid: false,

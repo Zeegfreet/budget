@@ -71,6 +71,7 @@ export class GroupStatementService {
           paidByMemberId: true,
           seriesId: true,
           dueDay: true,
+          paymentUrl: true,
           shares: {
             select: { memberId: true, amountCents: true, settledAt: true },
           },
@@ -132,6 +133,7 @@ export class GroupStatementService {
             dueDay:
               (t.kind === 'EXPENSE' ? me.paymentMethod?.dueDay : null) ??
               t.dueDay,
+            paymentUrl: t.paymentUrl,
             shareCents: share.amountCents,
             totalCents: t.amountCents,
             paid: isShareSettled(t.paidByMemberId, share),

@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { CircleCheckIcon, ExternalLinkIcon, UsersIcon } from 'lucide-react'
 import { useId } from 'react'
-import { DueDayBadge, MoneyText } from '@/components/atoms'
+import { DueDayBadge, MoneyText, PaymentLinkButton } from '@/components/atoms'
 import { RowActions, SeriesBadge, TransactionRow, type RowAction, type TransactionRowAction } from '@/components/molecules'
 import { Badge } from '@/components/ui/badge'
 import type { Statement, StatementGroup, StatementShare } from '@/features/transactions/statement'
@@ -132,6 +132,7 @@ function ShareRow({ share: { group, item } }: { share: StatementShare }) {
               {item.category.name} · {status}
             </p>
           </div>
+          {item.paymentUrl && <PaymentLinkButton href={item.paymentUrl} title={`${title} (${group.name})`} />}
           <div className="flex shrink-0 flex-col items-end">
             <MoneyText cents={item.shareCents} className={cn('font-medium', item.paid && 'font-normal text-muted-foreground')} />
             <span className="text-xs text-muted-foreground">

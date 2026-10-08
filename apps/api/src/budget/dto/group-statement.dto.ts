@@ -69,6 +69,14 @@ export class GroupStatementItemDto {
   })
   dueDay: number | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'https://www.exemplo.com.br/boleto/123',
+    description: 'Link to the bill or payment portal',
+  })
+  paymentUrl: string | null;
+
   @ApiProperty({ example: 150000, description: 'The user’s share' })
   shareCents: number;
 

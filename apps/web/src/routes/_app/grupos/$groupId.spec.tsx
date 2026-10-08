@@ -330,6 +330,82 @@ describe('Group route (/grupos/$groupId)', () => {
     })
   })
 
+  describe('payment link', () => {
+    const bill = 'https://imobiliaria.com.br/boleto/42'
+
+    it('opens the bill of the launches that have one', async () => {
+      stubGroupsApi({
+        transactions: octoberGroupTransactions.map((t) => (t.id === rentTransaction.id ? { ...t, paymentUrl: bill } : t)),
+      })
+      await openGroup()
+
+      const link = within(row('Aluguel')).getByRole('link', { name: 'Abrir link de pagamento: Aluguel' })
+      expect(link).toHaveAttribute('href', bill)
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(within(row('Água')).queryByRole('link', { name: /Abrir link de pagamento/ })).not.toBeInTheDocument()
+    })
+
+    it('launches with a link, validating it', async () => {
+      await openGroup()
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Nova despesa' })[0])
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa do grupo' })
+      await userEvent.type(within(dialog).getByLabelText('Descrição'), 'Aluguel')
+      await userEvent.type(within(dialog).getByLabelText('Valor (R$)'), '2000')
+      const link = within(dialog).getByLabelText('Link de pagamento (opcional)')
+      await userEvent.type(link, 'javascript:alert(1)')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+      expect(within(dialog).getByText(/Informe um link válido/)).toBeInTheDocument()
+      expect(createGroupTransaction).not.toHaveBeenCalled()
+
+      await userEvent.clear(link)
+      await userEvent.type(link, bill)
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      await waitFor(() =>
+        expect(createGroupTransaction).toHaveBeenCalledWith(7, {
+          kind: 'EXPENSE',
+          description: 'Aluguel',
+          month: '2026-10',
+          amountCents: 200000,
+          splitMethodId: 1,
+          paymentUrl: bill,
+        }),
+      )
+    })
+
+    it('changes the link of the following occurrences', async () => {
+      stubGroupsApi({
+        transactions: octoberGroupTransactions.map((t) => (t.id === rentTransaction.id ? { ...t, paymentUrl: bill } : t)),
+      })
+      await openGroup()
+
+      await rowAction('Aluguel', 'Editar')
+      const dialog = await screen.findByRole('dialog', { name: 'Editar lançamento do grupo' })
+      const link = within(dialog).getByLabelText('Link de pagamento (opcional)')
+      expect(link).toHaveValue(bill)
+      await userEvent.clear(link)
+      await userEvent.type(link, 'https://imobiliaria.com.br/portal')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+      const scope = await screen.findByRole('alertdialog', { name: 'Alterar lançamento recorrente' })
+      await userEvent.click(within(scope).getByRole('button', { name: 'Alterar também os próximos' }))
+
+      await waitFor(() =>
+        expect(updateGroupTransaction).toHaveBeenCalledWith(
+          7,
+          rentTransaction.id,
+          {
+            description: 'Aluguel',
+            amountCents: 200000,
+            splitMethodId: 2,
+            paymentUrl: 'https://imobiliaria.com.br/portal',
+          },
+          'FOLLOWING',
+        ),
+      )
+    })
+  })
+
   describe('recurrence range', () => {
     const openRange = async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Recorrência de Aluguel: 1 de 12' }))

@@ -55,6 +55,7 @@ export const makeLine = (
   categoryId,
   description: null,
   dueDay: null,
+  paymentUrl: null,
   paymentMethod: null,
   cells: cells.map(([month, plannedCents, realizedCents = null], i) => ({
     month,
@@ -135,6 +136,7 @@ export const makeStatementItem = (
   description: 'Aluguel',
   month: '2026-10',
   dueDay: null,
+  paymentUrl: null,
   shareCents: 100000,
   totalCents: 200000,
   paid: false,

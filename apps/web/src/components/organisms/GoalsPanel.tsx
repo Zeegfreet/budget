@@ -1,4 +1,5 @@
-import { TargetIcon } from 'lucide-react'
+import { PiggyBankIcon, TargetIcon } from 'lucide-react'
+import { MoneyText } from '@/components/atoms'
 import { EmptyState, GoalMeter } from '@/components/molecules'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,9 +14,12 @@ interface GoalsPanelProps {
   onEditGoals: () => void
 }
 
-/** Goals of the expense types as a share of the income: current month and whole period. */
+/**
+ * Goals of the expense types as a share of the income, current month and
+ * whole period, plus what is left to save or invest ("Sobra / Aporte").
+ */
 export function GoalsPanel({ overview, monthLabel, periodLabel, onEditGoals }: GoalsPanelProps) {
-  const { goals, totalGoalPercent, month, period } = overview
+  const { goals, totalGoalPercent, month, period, leftover } = overview
   const editButton = (
     <Button variant="outline" size="sm" onClick={onEditGoals}>
       <TargetIcon aria-hidden />
@@ -42,7 +46,8 @@ export function GoalsPanel({ overview, monthLabel, periodLabel, onEditGoals }: G
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {/* As many columns as fit, stretched so the row is always full */}
+            <ul className="grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-4">
               {goals.map((goal) => (
                 <li
                   key={goal.id}
@@ -57,6 +62,21 @@ export function GoalsPanel({ overview, monthLabel, periodLabel, onEditGoals }: G
                   <GoalMeter label="Período" usage={goal.period} goalPercent={goal.goalPercent} />
                 </li>
               ))}
+              <li
+                aria-label="Sobra / Aporte"
+                className="flex flex-col gap-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3"
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5 font-medium">
+                    <PiggyBankIcon aria-hidden className="size-4 shrink-0 self-center text-primary" />
+                    <span className="truncate">Sobra / Aporte</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">Meta mín. {leftover.targetPercent}%</span>
+                </div>
+                <GoalMeter label="Mês atual" usage={leftover.month} goalPercent={leftover.targetPercent} mode="min" />
+                <GoalMeter label="Período" usage={leftover.period} goalPercent={leftover.targetPercent} mode="min" />
+                <p className="text-xs text-muted-foreground">O que sobra das receitas para guardar ou investir.</p>
+              </li>
             </ul>
             <p className="text-sm text-muted-foreground">
               Metas somadas: <span className="font-medium text-foreground">{totalGoalPercent}%</span> das receitas ·
@@ -67,7 +87,8 @@ export function GoalsPanel({ overview, monthLabel, periodLabel, onEditGoals }: G
               · no período:{' '}
               <span className="font-medium text-foreground">
                 {period.permille === null ? 'sem receitas' : formatPermille(period.permille)}
-              </span>
+              </span>{' '}
+              · sobra no mês: <MoneyText cents={leftover.month.spentCents} className="font-medium text-foreground" />
             </p>
           </div>
         )}

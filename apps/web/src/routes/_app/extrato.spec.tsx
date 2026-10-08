@@ -509,6 +509,96 @@ describe('Statement route (/extrato)', () => {
     })
   })
 
+  describe('payment link', () => {
+    const bill = 'https://www.banco.com.br/boleto/123'
+
+    it('launches with a link to the bill, adding https:// when missing', async () => {
+      await openStatement()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Nova despesa' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: 'Categoria' }), 'Lazer')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '40')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Link de pagamento (opcional)' }), 'www.banco.com.br/boleto/123')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      await waitFor(() =>
+        expect(createMock).toHaveBeenCalledWith({
+          categoryId: 3,
+          description: null,
+          plannedCents: 4000,
+          month: '2026-10',
+          paymentUrl: bill,
+        }),
+      )
+    })
+
+    it('rejects an invalid link before calling the API, and shows the API’s refusal', async () => {
+      await openStatement()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Nova despesa' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: 'Categoria' }), 'Lazer')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '40')
+      const link = within(dialog).getByRole('textbox', { name: 'Link de pagamento (opcional)' })
+      await userEvent.type(link, 'boleto do mês')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      expect(await within(dialog).findByText(/Informe um link válido/)).toBeInTheDocument()
+      expect(link).toHaveAttribute('aria-invalid', 'true')
+      expect(createMock).not.toHaveBeenCalled()
+
+      createMock.mockRejectedValueOnce(new ApiError(400, ['paymentUrl must be an http(s) URL']))
+      await userEvent.clear(link)
+      await userEvent.type(link, 'https://banco.com.br/x')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Informe um link válido/)
+    })
+
+    it('opens the bill from the row in a new tab', async () => {
+      stubTransactionsApi([{ ...octoberTransactions[1], paymentUrl: bill }, octoberTransactions[0]])
+      await openStatement()
+
+      const link = await within(await screen.findByRole('listitem', { name: 'Aluguel' })).findByRole('link', {
+        name: 'Abrir link de pagamento: Aluguel',
+      })
+      expect(link).toHaveAttribute('href', bill)
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(within(row('Salário')).queryByRole('link', { name: /Abrir link de pagamento/ })).not.toBeInTheDocument()
+    })
+
+    it('edits the link, sending it only when it changes, and clears it', async () => {
+      stubTransactionsApi([{ ...octoberTransactions[0], paymentUrl: bill }, octoberTransactions[2]])
+      await openStatement()
+
+      await rowAction('Salário', 'Editar')
+      let form = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      const link = within(form).getByRole('textbox', { name: 'Link de pagamento (opcional)' })
+      expect(link).toHaveValue(bill)
+      await userEvent.click(within(form).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() =>
+        expect(updateMock).toHaveBeenCalledWith(
+          1,
+          { categoryId: 4, description: null, plannedCents: 500000 },
+          'ONE',
+        ),
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+      await rowAction('Salário', 'Editar')
+      form = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      await userEvent.clear(within(form).getByRole('textbox', { name: 'Link de pagamento (opcional)' }))
+      await userEvent.click(within(form).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() =>
+        expect(updateMock).toHaveBeenLastCalledWith(
+          1,
+          { categoryId: 4, description: null, plannedCents: 500000, paymentUrl: null },
+          'ONE',
+        ),
+      )
+    })
+  })
+
   describe('recurrence range', () => {
     const openRange = async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Recorrência de Aluguel: 1 de 12' }))

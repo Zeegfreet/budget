@@ -27,6 +27,8 @@ export interface Transaction {
   dueDay: number | null
   /** The launch's own due day (what the form edits) */
   ownDueDay: number | null
+  /** Link to the bill (boleto) or the portal where it is paid (http/https) */
+  paymentUrl: string | null
 }
 
 export interface TransactionInput {
@@ -39,11 +41,16 @@ export interface TransactionInput {
   repeatMonths?: number
   /** Day of the month it is due (1–31), in every occurrence */
   dueDay?: number | null
+  /** Link to the bill (boleto) or the portal where it is paid (http/https) */
+  paymentUrl?: string | null
   /** Expenses only; its due day overrides the launch's */
   paymentMethodId?: number | null
 }
 
-/** Fields to change; `null` clears the description, the due day or the payment method */
+/** Fields to change; `null` clears the description, the due day, the link or the payment method */
 export type TransactionPatch = Partial<
-  Pick<TransactionInput, 'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'paymentMethodId'>
+  Pick<
+    TransactionInput,
+    'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'paymentUrl' | 'paymentMethodId'
+  >
 >

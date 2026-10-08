@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeCategory, makeGroup, makeLine } from '@/test/budget'
-import { buildGoalsOverview, formatPermille, goalUsage } from './goals'
+import { buildGoalsOverview, formatPermille, goalUsage, leftoverUsage } from './goals'
 import { buildBudgetTable } from './rows'
 
 describe('goalUsage', () => {
@@ -20,6 +20,29 @@ describe('goalUsage', () => {
   it('has no share without income: spending is over, nothing is ok', () => {
     expect(goalUsage(100, 0, 50)).toEqual({ spentCents: 100, incomeCents: 0, permille: null, status: 'over' })
     expect(goalUsage(0, 0, 50)).toMatchObject({ permille: null, status: 'ok' })
+  })
+})
+
+describe('leftoverUsage', () => {
+  it('is ok at or above the minimum and warns below it', () => {
+    expect(leftoverUsage(100000, 500000, 20)).toMatchObject({ spentCents: 100000, permille: 200, status: 'ok' })
+    expect(leftoverUsage(150000, 500000, 20)).toMatchObject({ permille: 300, status: 'ok' })
+    expect(leftoverUsage(99999, 500000, 20)).toMatchObject({ permille: 200, status: 'warning' })
+    expect(leftoverUsage(0, 500000, 20)).toMatchObject({ permille: 0, status: 'warning' })
+  })
+
+  it('is over when the expenses pass the income', () => {
+    expect(leftoverUsage(-50000, 500000, 20)).toMatchObject({ permille: -100, status: 'over' })
+    expect(leftoverUsage(-1, 500000, 0)).toMatchObject({ status: 'over' })
+  })
+
+  it('with a zero minimum, any leftover is ok', () => {
+    expect(leftoverUsage(0, 500000, 0).status).toBe('ok')
+  })
+
+  it('has no share without income', () => {
+    expect(leftoverUsage(0, 0, 20)).toEqual({ spentCents: 0, incomeCents: 0, permille: null, status: 'ok' })
+    expect(leftoverUsage(-100, 0, 20)).toMatchObject({ permille: null, status: 'over' })
   })
 })
 
@@ -84,6 +107,28 @@ describe('buildGoalsOverview', () => {
     expect(overview.totalGoalPercent).toBe(80)
     expect(overview.month).toMatchObject({ spentCents: 350000, permille: 700, status: 'ok' })
     expect(overview.period).toMatchObject({ spentCents: 550000, permille: 550, status: 'ok' })
+  })
+
+  it('compares what is left after every expense with the share no goal takes', () => {
+    // 5.000 − 3.500 in October; 10.000 − 5.500 in the period (the inactive type had nothing)
+    expect(overview.leftover.targetPercent).toBe(20)
+    expect(overview.leftover.month).toMatchObject({ spentCents: 150000, permille: 300, status: 'ok' })
+    expect(overview.leftover.period).toMatchObject({ spentCents: 450000, permille: 450, status: 'ok' })
+  })
+
+  it('keeps nothing as the minimum when the goals take the whole income', () => {
+    const full = buildGoalsOverview(
+      buildBudgetTable(
+        groups.map((g) => (g.id === 2 ? { ...g, goalPercent: 60 } : g)),
+        lines,
+        ['2026-10', '2026-11'],
+        { line: (id, m) => values[`${id}:${m}`] ?? 0, groupShare: () => 0 },
+        0,
+      ),
+    )
+    expect(full.totalGoalPercent).toBe(110)
+    expect(full.leftover.targetPercent).toBe(0)
+    expect(full.leftover.month.status).toBe('ok')
   })
 })
 

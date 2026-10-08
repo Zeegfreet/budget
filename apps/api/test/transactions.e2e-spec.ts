@@ -23,6 +23,7 @@ interface Transaction {
   } | null;
   dueDay: number | null;
   ownDueDay: number | null;
+  paymentUrl: string | null;
   category: {
     id: number;
     name: string;
@@ -127,6 +128,7 @@ describe('Transactions (e2e)', () => {
           paymentMethod: null,
           dueDay: null,
           ownDueDay: null,
+          paymentUrl: null,
           category: {
             id: ids.leisure,
             name: 'Lazer',
@@ -522,6 +524,119 @@ describe('Transactions (e2e)', () => {
           .expect(400);
       },
     );
+  });
+
+  describe('payment link', () => {
+    const BILL = 'https://www.banco.com.br/boleto/123?via=2';
+    const PORTAL = 'https://portal.energia.com.br/pagar';
+
+    it('repeats the link in the series, edits it with FOLLOWING and clears it with null', async () => {
+      const series = (
+        await create(ana, {
+          categoryId: ids.housing,
+          month: '2026-10',
+          plannedCents: 1000,
+          paymentUrl: `  ${BILL} `,
+          repeatMonths: 3,
+        }).expect(201)
+      ).body as Transaction[];
+      expect(series.map((t) => t.paymentUrl)).toEqual([BILL, BILL, BILL]);
+
+      const edited = await ana
+        .patch(`/budget/transactions/${series[1].id}`)
+        .send({ paymentUrl: PORTAL, scope: 'FOLLOWING' })
+        .expect(200);
+      expect(edited.body).toMatchObject({ paymentUrl: PORTAL });
+      await ana
+        .patch(`/budget/transactions/${series[2].id}`)
+        .send({ paymentUrl: null })
+        .expect(200);
+      // Other fields leave it alone
+      await ana
+        .patch(`/budget/transactions/${series[0].id}`)
+        .send({ description: 'Luz' })
+        .expect(200);
+
+      expect((await month(ana, '2026-10'))[0]).toMatchObject({
+        description: 'Luz',
+        paymentUrl: BILL,
+      });
+      expect((await month(ana, '2026-11'))[0].paymentUrl).toBe(PORTAL);
+      expect((await month(ana, '2026-12'))[0].paymentUrl).toBeNull();
+    });
+
+    it('starts without a link and treats a blank one as none', async () => {
+      const [plain] = (
+        await create(ana, {
+          categoryId: ids.leisure,
+          month: '2026-10',
+          plannedCents: 4500,
+        }).expect(201)
+      ).body as Transaction[];
+      expect(plain.paymentUrl).toBeNull();
+
+      const [blank] = (
+        await create(ana, {
+          categoryId: ids.leisure,
+          month: '2026-10',
+          plannedCents: 4500,
+          paymentUrl: '   ',
+        }).expect(201)
+      ).body as Transaction[];
+      expect(blank.paymentUrl).toBeNull();
+    });
+
+    it('copies it to the copies made by the series range and the grid', async () => {
+      const [single] = (
+        await create(ana, {
+          categoryId: ids.housing,
+          month: '2026-10',
+          plannedCents: 1000,
+          paymentUrl: BILL,
+        }).expect(201)
+      ).body as Transaction[];
+
+      const extended = await ana
+        .put(`/budget/transactions/${single.id}/series`)
+        .send({ untilMonth: '2026-11' })
+        .expect(200);
+      expect((extended.body as Transaction[]).map((t) => t.paymentUrl)).toEqual(
+        [BILL, BILL],
+      );
+
+      await ana
+        .put('/budget/lines')
+        .send({
+          cells: [{ anchorId: single.id, month: '2026-12', amountCents: 1500 }],
+        })
+        .expect(204);
+      expect((await month(ana, '2026-12'))[0].paymentUrl).toBe(BILL);
+      const lines = await ana
+        .get('/budget/lines?from=2026-10&to=2026-12')
+        .expect(200);
+      expect(lines.body[0]).toMatchObject({ paymentUrl: BILL });
+    });
+
+    it.each([
+      ['a text that is not a link', 'boleto do mês'],
+      ['a link without protocol', 'www.banco.com.br/boleto'],
+      ['a javascript: link', 'javascript:alert(1)'],
+      ['an ftp link', 'ftp://banco.com.br/boleto'],
+      ['a number', 123],
+      ['a link too long', `https://banco.com.br/${'a'.repeat(2000)}`],
+    ])('rejects %s with 400', async (_case, paymentUrl) => {
+      await create(ana, {
+        categoryId: ids.housing,
+        month: '2026-10',
+        plannedCents: 1000,
+        paymentUrl,
+      }).expect(400);
+      const [rent] = await rentSeries();
+      await ana
+        .patch(`/budget/transactions/${rent.id}`)
+        .send({ paymentUrl })
+        .expect(400);
+    });
   });
 
   describe('series range', () => {

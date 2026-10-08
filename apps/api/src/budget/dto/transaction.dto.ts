@@ -17,6 +17,7 @@ import {
   MAX_DESCRIPTION_LENGTH,
   trimToNull,
 } from './category.dto.js';
+import { IsPaymentUrl } from './payment-url.js';
 import { MAX_AMOUNT_CENTS } from './save-lines.dto.js';
 
 /** Which occurrences of a recurring transaction a change applies to. */
@@ -78,6 +79,9 @@ export class CreateTransactionDto {
   @Max(31)
   dueDay?: number | null;
 
+  @IsPaymentUrl()
+  paymentUrl?: string | null;
+
   @ApiPropertyOptional({
     example: 2,
     nullable: true,
@@ -122,6 +126,9 @@ export class UpdateTransactionDto {
   @Min(1)
   @Max(31)
   dueDay?: number | null;
+
+  @IsPaymentUrl()
+  paymentUrl?: string | null;
 
   @ApiPropertyOptional({
     example: 2,
@@ -285,4 +292,12 @@ export class TransactionDto {
     description: 'The launch’s own due day (what the form edits)',
   })
   ownDueDay: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'https://www.exemplo.com.br/boleto/123',
+    description: 'Link to the bill or payment portal',
+  })
+  paymentUrl: string | null;
 }

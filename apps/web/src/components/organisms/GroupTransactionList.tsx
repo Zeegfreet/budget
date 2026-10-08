@@ -1,5 +1,5 @@
 import { CheckIcon, CircleCheckIcon, PencilIcon, Trash2Icon, Undo2Icon } from 'lucide-react'
-import { DueDayBadge, MoneyText } from '@/components/atoms'
+import { DueDayBadge, MoneyText, PaymentLinkButton } from '@/components/atoms'
 import { RowActions, SeriesBadge, type RowAction } from '@/components/molecules'
 import { Badge } from '@/components/ui/badge'
 import type { EntryKind } from '@/features/budget/types'
@@ -109,6 +109,7 @@ function GroupTransactionRow({
               ))}
             </p>
           </div>
+          {t.paymentUrl && <PaymentLinkButton href={t.paymentUrl} title={t.description} className="-mx-2" />}
           <div className="flex shrink-0 flex-col items-end gap-0.5">
             <MoneyText cents={t.amountCents} className="font-medium" />
             {t.paidBy ? (

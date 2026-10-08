@@ -76,6 +76,8 @@ export interface BudgetLine {
   description: string | null
   /** The launch's own due day */
   dueDay: number | null
+  /** Link to the bill (boleto) or the portal where it is paid (http/https) */
+  paymentUrl: string | null
   /** Its due day overrides the launch's */
   paymentMethod: { id: number; name: string; dueDay: number | null } | null
   /** Months with a transaction */
@@ -116,6 +118,8 @@ export interface GroupStatementItem {
   month: Month
   /** Effective due day: for expenses, the linked payment method's, or else the transaction's */
   dueDay: number | null
+  /** The group transaction's link to the bill or payment portal */
+  paymentUrl: string | null
   shareCents: number
   /** The whole transaction's amount */
   totalCents: number
