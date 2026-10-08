@@ -11,6 +11,12 @@ export default defineConfig({
     fileParallelism: false,
     env: {
       JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET ?? 'e2e-test-secret',
+      // OAuth: fake credentials (test/oauth.e2e-spec.ts mocks the providers)
+      WEB_URL: 'http://web.test',
+      GITHUB_CLIENT_ID: 'github-test-id',
+      GITHUB_CLIENT_SECRET: 'github-test-secret',
+      GOOGLE_CLIENT_ID: 'google-test-id',
+      GOOGLE_CLIENT_SECRET: 'google-test-secret',
     },
   },
 });

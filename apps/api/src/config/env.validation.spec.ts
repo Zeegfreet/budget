@@ -13,6 +13,10 @@ describe('validateEnv', () => {
       JWT_ACCESS_TTL_SECONDS: '900',
       REFRESH_TOKEN_TTL_DAYS: '7',
       COOKIE_SECURE: 'false',
+      GITHUB_CLIENT_ID: 'gh-id',
+      GITHUB_CLIENT_SECRET: 'gh-secret',
+      WEB_URL: 'https://budget.app',
+      OAUTH_CALLBACK_BASE_URL: 'https://budget.app/api',
     };
     expect(validateEnv(env)).toEqual(env);
   });
@@ -27,7 +31,19 @@ describe('validateEnv', () => {
     ['JWT_ACCESS_TTL_SECONDS', '15m'],
     ['REFRESH_TOKEN_TTL_DAYS', '0'],
     ['COOKIE_SECURE', 'yes'],
+    ['WEB_URL', 'budget.app'],
+    ['OAUTH_CALLBACK_BASE_URL', 'ftp://budget.app'],
   ])('rejects %s=%s', (key, value) => {
     expect(() => validateEnv({ ...valid, [key]: value })).toThrow(key);
+  });
+
+  it.each([
+    [{ GITHUB_CLIENT_ID: 'id' }, 'GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET'],
+    [
+      { GOOGLE_CLIENT_SECRET: 's' },
+      'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET',
+    ],
+  ])('requires both OAuth credentials of a provider (%o)', (extra, message) => {
+    expect(() => validateEnv({ ...valid, ...extra })).toThrow(message);
   });
 });

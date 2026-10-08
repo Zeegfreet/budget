@@ -6,14 +6,16 @@ import { cn } from '@/lib/utils'
 
 type OAuthButtonProps = Omit<React.ComponentProps<'a'>, 'href'> & {
   provider: OAuthProviderOption
+  /** Where to go after signing in */
+  redirect?: string
 }
 
 /** Full-width link that starts the OAuth flow for one provider. */
-export function OAuthButton({ provider, className, ...props }: OAuthButtonProps) {
+export function OAuthButton({ provider, redirect, className, ...props }: OAuthButtonProps) {
   return (
     <Button asChild variant="outline" size="lg" className={cn('h-10 w-full', className)}>
       <a
-        href={getOAuthLoginUrl(provider.id)}
+        href={getOAuthLoginUrl(provider.id, { redirect })}
         title={provider.hint}
         {...props}
       >

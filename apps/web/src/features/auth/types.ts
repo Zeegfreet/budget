@@ -12,6 +12,10 @@ export interface AuthUser {
   id: number
   email: string
   name: string
+  /** Signed up with GitHub/Google and must still fill in birth date and address */
+  needsProfile: boolean
+  /** `false` when the account only signs in with GitHub/Google */
+  hasPassword: boolean
 }
 
 export interface LoginInput {

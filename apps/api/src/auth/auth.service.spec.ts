@@ -23,13 +23,14 @@ const dto: RegisterDto = {
   state: 'SP',
 };
 const authUser = { id: 1, email: 'ana@example.com', name: 'Ana Souza' };
+const sessionUser = { ...authUser, needsProfile: false, hasPassword: true };
 
 describe('AuthService', () => {
   const users = {
     create: vi.fn(),
     claimPending: vi.fn(),
     findByEmail: vi.fn(),
-    findById: vi.fn(),
+    findSessionUser: vi.fn(),
     findCredentialsById: vi.fn(),
     updatePasswordHash: vi.fn(),
   };
@@ -50,6 +51,7 @@ describe('AuthService', () => {
     vi.clearAllMocks();
     jwt.signAsync.mockResolvedValue('access');
     sessions.create.mockResolvedValue('refresh');
+    users.findSessionUser.mockResolvedValue(sessionUser);
   });
 
   describe('register', () => {
@@ -59,7 +61,7 @@ describe('AuthService', () => {
       const result = await service.register(dto, { ip: '::1' });
 
       expect(result).toEqual({
-        user: authUser,
+        user: sessionUser,
         tokens: { accessToken: 'access', refreshToken: 'refresh' },
       });
       const data = users.create.mock.calls[0][0];
@@ -101,7 +103,7 @@ describe('AuthService', () => {
 
       const result = await service.register(dto);
 
-      expect(result.user).toEqual(authUser);
+      expect(result.user).toEqual(sessionUser);
       const [email, data] = users.claimPending.mock.calls[0];
       expect(email).toBe('ana@example.com');
       expect(data).toMatchObject({
@@ -203,10 +205,10 @@ describe('AuthService', () => {
         userId: 1,
         refreshToken: 'refresh-2',
       });
-      users.findById.mockResolvedValue(authUser);
+      users.findSessionUser.mockResolvedValue(sessionUser);
 
       await expect(service.refresh('refresh-1')).resolves.toEqual({
-        user: authUser,
+        user: sessionUser,
         tokens: { accessToken: 'access', refreshToken: 'refresh-2' },
       });
       expect(sessions.rotate).toHaveBeenCalledWith('refresh-1');
@@ -217,7 +219,7 @@ describe('AuthService', () => {
         userId: 1,
         refreshToken: 'refresh-2',
       });
-      users.findById.mockResolvedValue(null);
+      users.findSessionUser.mockResolvedValue(null);
 
       await expect(service.refresh('refresh-1')).rejects.toBeInstanceOf(
         UnauthorizedException,
@@ -225,15 +227,24 @@ describe('AuthService', () => {
     });
   });
 
+  it('signIn refuses a user that is gone or still pre-registered', async () => {
+    users.findSessionUser.mockResolvedValue(null);
+
+    await expect(service.signIn(authUser)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(sessions.create).not.toHaveBeenCalled();
+  });
+
   describe('me', () => {
     it('returns the user', async () => {
-      users.findById.mockResolvedValue(authUser);
+      users.findSessionUser.mockResolvedValue(sessionUser);
 
-      await expect(service.me(1)).resolves.toEqual(authUser);
+      await expect(service.me(1)).resolves.toEqual(sessionUser);
     });
 
     it('fails for a deleted user', async () => {
-      users.findById.mockResolvedValue(null);
+      users.findSessionUser.mockResolvedValue(null);
 
       await expect(service.me(1)).rejects.toBeInstanceOf(UnauthorizedException);
     });
@@ -267,7 +278,7 @@ describe('AuthService', () => {
       const result = await service.changePassword(1, change, { ip: '::1' });
 
       expect(result).toEqual({
-        user: authUser,
+        user: sessionUser,
         tokens: { accessToken: 'access', refreshToken: 'refresh' },
       });
       const [id, hash] = users.updatePasswordHash.mock.calls[0];

@@ -19,11 +19,17 @@ export function useUpdateProfile() {
     mutationFn: (patch: ProfilePatch) => updateProfile(patch),
     onSuccess: async (profile) => {
       queryClient.setQueryData(profileQueries.me().queryKey, profile)
-      queryClient.setQueryData<AuthUser>(authQueries.me().queryKey, {
-        id: profile.id,
-        email: profile.email,
-        name: profile.name,
-      })
+      // A saved birth date also completes a GitHub/Google sign-up
+      queryClient.setQueryData<AuthUser>(
+        authQueries.me().queryKey,
+        (user) =>
+          user && {
+            ...user,
+            email: profile.email,
+            name: profile.name,
+            needsProfile: !profile.birthDate,
+          },
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: groupQueries.all() }),
         queryClient.invalidateQueries({ queryKey: invitationQueries.received().queryKey }),

@@ -23,7 +23,7 @@ export function SignupCard({ redirect }: SignupCardProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <SignupForm redirect={redirect} />
-        <OAuthOptions />
+        <OAuthOptions redirect={redirect} />
         <p className="text-center text-sm text-muted-foreground">
           Já tem conta?{' '}
           <Link

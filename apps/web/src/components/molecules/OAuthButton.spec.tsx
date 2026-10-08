@@ -7,8 +7,17 @@ describe('OAuthButton', () => {
     const { container } = render(<OAuthButton provider={{ id: 'github', label: 'GitHub' }} />)
 
     const link = screen.getByRole('link', { name: 'Continuar com GitHub' })
-    expect(link).toHaveAttribute('href', '/api/auth/github')
+    expect(link).toHaveAttribute('href', '/api/auth/oauth/github')
     expect(container.querySelector('svg[data-provider="github"]')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('carries where to go after signing in', () => {
+    render(<OAuthButton provider={{ id: 'github', label: 'GitHub' }} redirect="/grupos" />)
+
+    expect(screen.getByRole('link', { name: 'Continuar com GitHub' })).toHaveAttribute(
+      'href',
+      '/api/auth/oauth/github?redirect=%2Fgrupos',
+    )
   })
 
   it('exposes the provider hint to assistive tech', () => {

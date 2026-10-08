@@ -16,6 +16,7 @@ import {
 import type { CategoryGroup } from '@/features/budget/types'
 import { ApiError } from '@/lib/api/client'
 import { budgetGroups, makeCategory, makeGroup, stubBudgetApi } from '@/test/budget'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -64,7 +65,7 @@ describe('Dashboard: managing types and categories', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    vi.mocked(fetchMe).mockResolvedValue(makeAuthUser())
     stubBudgetApi()
   })
 

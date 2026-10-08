@@ -8,6 +8,9 @@ import { AUTH_CONFIG, authConfigFactory } from './auth.config.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { OAUTH_CONFIG, oauthConfigFactory } from './oauth/oauth.config.js';
+import { OAuthController } from './oauth/oauth.controller.js';
+import { OAuthService } from './oauth/oauth.service.js';
 import { SessionService } from './session.service.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { LocalStrategy } from './strategies/local.strategy.js';
@@ -28,14 +31,20 @@ import { LocalStrategy } from './strategies/local.strategy.js';
       },
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, OAuthController],
   providers: [
     {
       provide: AUTH_CONFIG,
       inject: [ConfigService],
       useFactory: authConfigFactory,
     },
+    {
+      provide: OAUTH_CONFIG,
+      inject: [ConfigService],
+      useFactory: oauthConfigFactory,
+    },
     AuthService,
+    OAuthService,
     SessionService,
     LocalStrategy,
     JwtStrategy,

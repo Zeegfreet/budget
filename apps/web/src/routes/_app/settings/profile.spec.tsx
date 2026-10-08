@@ -6,6 +6,7 @@ import { fetchMe } from '@/features/auth/api'
 import { fetchProfile, updateProfile } from '@/features/profile/api'
 import type { Profile } from '@/features/profile/types'
 import { ApiError } from '@/lib/api/client'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -47,7 +48,7 @@ async function replace(label: string, value: string) {
 describe('Editar perfil route (/settings/profile)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    fetchMeMock.mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    fetchMeMock.mockResolvedValue(makeAuthUser())
     fetchProfileMock.mockResolvedValue(profile)
     updateProfileMock.mockImplementation(async (patch) => ({ ...profile, ...patch }))
   })

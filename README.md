@@ -24,6 +24,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 ## Principais recursos
 
 - **Isolamento total por usuário (multi-tenant)**: cada usuário vê e altera apenas as próprias finanças. O dono dos dados vem sempre do contexto de autenticação, nunca do corpo da requisição. Acesso a dados de outro usuário retorna `404`, para não revelar que o recurso existe.
+- **Login com e-mail/senha, GitHub ou Google**: no primeiro acesso por GitHub/Google a conta é criada (ou vinculada pelo e-mail verificado) e o usuário completa o cadastro com nascimento e endereço.
 - **Receitas e despesas pessoais**: valores guardados em centavos (inteiros), sem ponto flutuante, para que totais e divisões fiquem exatos.
 - **Grupos de finanças**: um usuário cria um grupo com receitas e despesas próprias (ex.: aluguel). Só os membros enxergam os dados do grupo.
 - **Convites**: um membro convida outro usuário, que só ganha acesso depois de aceitar. Quem ainda não tem conta é **pré-cadastrado** com um apelido e já entra no grupo; ao se cadastrar com o mesmo e-mail, assume o lugar. Quem sai ou é removido do grupo perde o acesso.
@@ -40,7 +41,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
 | Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta, card centralizado): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
 | Alterar senha | ✅ | ✅ | Tela `/settings/password` (menu da conta): senha atual, nova senha e repetição. A API confere a senha atual, grava a nova e encerra as outras sessões. Veja [Alterar senha](#alterar-senha) |
-| Login com GitHub e Google (OAuth) | ⏳ | 🚧 | Web já tem os botões; a API ainda não implementa `/auth/github` e `/auth/google` |
+| Login com GitHub e Google (OAuth) | ✅ | ✅ | Authorization Code + PKCE, vínculo automático por e-mail verificado e tela **Completar cadastro** no primeiro acesso |
 | Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`), com coluna de total do período. Veja [Dashboard](#dashboard) |
 | Categorias de receitas e despesas | ✅ | ✅ | Tipos e categorias padrão criados no primeiro acesso; criar, editar, inativar/reativar e excluir pela própria tabela do Dashboard ou pelo menu **Categorias** do Extrato |
 | Metas por tipo de despesa | ✅ | ✅ | Meta em % das receitas por tipo de despesa, com termômetro do mês atual e do período acima dos cards |
@@ -157,13 +158,17 @@ As páginas internas exigem sessão: quem não está autenticado é redirecionad
 | api | `COOKIE_SECURE` | `true` se `NODE_ENV=production` | Flag `Secure` dos cookies (só HTTPS) |
 | api | `TRUST_PROXY` | — | Valor do `trust proxy` do Express (ex.: `1` atrás de um proxy reverso), para o rate limit enxergar o IP real |
 | api | `PORT` | `3000` | Porta HTTP da API |
+| api | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | — | Credenciais do OAuth App do GitHub. Sempre as duas juntas; sem elas o botão do GitHub volta ao login com aviso |
+| api | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Credenciais do cliente OAuth do Google. Sempre as duas juntas |
+| api | `WEB_URL` | `http://localhost:5173` | Endereço do web, para onde o callback do OAuth redireciona |
+| api | `OAUTH_CALLBACK_BASE_URL` | `${WEB_URL}/api` | Endereço da API **como o navegador a vê** (mesmo site do web, para os cookies de sessão chegarem ao web). O callback é `<base>/auth/oauth/<github\|google>/callback` |
 | web | `VITE_API_URL` | `/api` | URL base da API, embutida no bundle no momento do build |
 
 A API valida as variáveis no boot e não sobe se faltar alguma obrigatória. Modelo em [apps/api/.env.example](apps/api/.env.example).
 
 ## Autenticação
 
-Entrada por **e-mail + senha** e **cadastro** em `/signup`. Os botões de **GitHub** e **Google** já existem no web, mas o OAuth ainda não está implementado na API.
+Entrada por **e-mail + senha**, **cadastro** em `/signup` ou **GitHub/Google** (veja [Login com GitHub e Google](#login-com-github-e-google)).
 
 ### Rotas da API
 
@@ -176,7 +181,7 @@ Entrada por **e-mail + senha** e **cadastro** em `/signup`. Os botões de **GitH
 | `POST` | `/auth/logout` | — | `204`, revogando a sessão e apagando os cookies (idempotente) |
 | `POST` | `/auth/password` | `{ currentPassword, newPassword }` | `200` com o usuário e cookies novos. Veja [Alterar senha](#alterar-senha) |
 
-O usuário retornado é sempre `{ id, email, name }`: hash de senha e demais dados nunca saem da API.
+O usuário retornado é sempre `{ id, email, name, needsProfile, hasPassword }`: hash de senha e demais dados nunca saem da API. `needsProfile` indica uma conta criada pelo GitHub/Google que ainda não informou nascimento e endereço; `hasPassword` é `false` para quem só entra pelo GitHub/Google.
 
 ### Como a sessão funciona
 
@@ -205,6 +210,26 @@ Cadastro (`/signup`):
 - A ViaCEP usa um cliente HTTP próprio, sem o cookie de sessão da aplicação.
 - Formato enviado: `birthDate` em `YYYY-MM-DD`, `cep` só com os 8 dígitos e `state` com a sigla da UF (ex.: `SP`).
 
+### Login com GitHub e Google
+
+| Método | Rota | Resposta |
+| --- | --- | --- |
+| `GET` | `/auth/oauth/github` ou `/auth/oauth/google` (`?redirect=<caminho>` opcional) | `302` para a tela de consentimento do provedor, guardando o fluxo no cookie `oauth_state` (`HttpOnly`, `SameSite=Lax`, `Path=/auth`, 10 min). Provedor sem credenciais: `302` para `/login?error=oauth_unavailable`. Provedor desconhecido: `404` |
+| `GET` | `/auth/oauth/<provider>/callback` | Chamada pelo provedor. Sucesso: abre a sessão (mesmos cookies do login) e faz `302` para `WEB_URL` + o `redirect` guardado. Falha: `302` para `/login?error=<código>` (mantendo o `redirect`) |
+
+- **Authorization Code + PKCE (S256)** e `state` aleatório, conferidos contra o cookie do navegador que começou o fluxo. O cookie é apagado no callback, então o mesmo retorno não serve duas vezes. A troca do código e a leitura da conta são feitas pela API (o segredo do cliente nunca vai ao navegador).
+- **Quem entra**: a conta vinculada (`OAuthAccount`, pelo id estável do provedor, mesmo que o e-mail mude lá) → senão, o **e-mail verificado** pelo provedor: uma conta com senha recebe o vínculo (as duas formas de entrar continuam valendo) e um **pré-cadastro** de convite é assumido (mesmo `id`, grupos mantidos, o nome do provedor substitui o apelido) → senão, uma conta nova só com nome e e-mail. Sem e-mail verificado (GitHub: o primário verificado, ou outro verificado; Google: `email_verified`) não há vínculo nem conta nova.
+- **Códigos de erro** (traduzidos na tela de login): `access_denied` (consentimento cancelado), `oauth_state` (fluxo expirado, adulterado ou de outro navegador), `oauth_email` (sem e-mail verificado), `oauth_failed` (falha no provedor), `oauth_unavailable` (provedor não configurado).
+- **Completar cadastro**: no primeiro acesso pelo GitHub/Google faltam nascimento e endereço (`needsProfile: true`). O layout interno (`_app`) leva o usuário para `/completar-cadastro?redirect=<página>`, que mostra o e-mail, o nome vindo do provedor (editável), a data de nascimento e o CEP (ViaCEP), com as mesmas regras do cadastro, e salva com `PATCH /users/me`. Depois segue para a página pedida. A tela também tem **Sair**.
+- Uma conta só com GitHub/Google **não tem senha**: o login por e-mail/senha responde `401`, `POST /auth/password` responde `404` e a tela **Alterar senha** explica isso em vez de mostrar o formulário.
+- O `?redirect=` é saneado na API e no web (só caminhos internos; `//site.com` vira `/`).
+
+#### Configurando os provedores
+
+- **GitHub**: em *Settings → Developer settings → OAuth Apps → New OAuth App*, use *Homepage URL* `http://localhost:5173` e *Authorization callback URL* `http://localhost:5173/api/auth/oauth/github/callback`. Copie o *Client ID* e gere um *Client secret*.
+- **Google**: no [Google Cloud Console](https://console.cloud.google.com/apis/credentials), configure a tela de consentimento (escopos `openid`, `email`, `profile`) e crie um *ID do cliente OAuth* do tipo **Aplicativo da Web** com o URI de redirecionamento `http://localhost:5173/api/auth/oauth/google/callback`.
+- Preencha `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` e `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` em `apps/api/.env` e reinicie a API. Em produção, cadastre os callbacks com o domínio real (ex.: `https://budget.exemplo.com/api/auth/oauth/github/callback`).
+
 ### Perfil
 
 | Método | Rota | Corpo | Resposta |
@@ -227,7 +252,7 @@ Não existe rota para ler ou alterar outro usuário: o perfil é sempre o do tok
 
 ### Proxy reverso e cookies
 
-A API define o cookie de refresh com `Path=/auth`. Atrás de um proxy que publica a API sob `/api`, o navegador enxerga `/api/auth/refresh`, então o proxy precisa reescrever o path do cookie (o Vite já faz isso em dev; no Nginx, `proxy_cookie_path /auth /api/auth;`). Se o web for servido de outra origem (`VITE_API_URL` absoluto), será preciso habilitar CORS com `credentials: true` e origem explícita, nunca `*`.
+A API define o cookie de refresh (e o `oauth_state` do login com GitHub/Google) com `Path=/auth`. Atrás de um proxy que publica a API sob `/api`, o navegador enxerga `/api/auth/refresh`, então o proxy precisa reescrever o path do cookie (o Vite já faz isso em dev; no Nginx, `proxy_cookie_path /auth /api/auth;`). Se o web for servido de outra origem (`VITE_API_URL` absoluto), será preciso habilitar CORS com `credentials: true` e origem explícita, nunca `*`.
 
 ## Dashboard
 
@@ -452,6 +477,7 @@ pnpm test                                                      # unitários
 DATABASE_URL=file:./test.db pnpm prisma migrate deploy --config prisma7.config.ts
 DATABASE_URL=file:./test.db pnpm test:e2e                      # e2e em banco isolado (nunca o dev.db)
 # Os e2e usam JWT_ACCESS_SECRET=e2e-test-secret se a variável não estiver definida
+# e credenciais OAuth falsas (vitest.config.e2e.ts); GitHub e Google são simulados com um mock de fetch
 
 # Web
 cd apps/web
@@ -495,6 +521,10 @@ export JWT_ACCESS_SECRET="<valor longo e aleatório>" # trocar invalida todas as
 export NODE_ENV=production                           # cookies com Secure
 export TRUST_PROXY=1                                 # atrás do Nginx: rate limit por IP real
 export PORT=3000
+export WEB_URL="https://budget.exemplo.com"          # destino do callback do OAuth
+# export OAUTH_CALLBACK_BASE_URL=...                 # padrão: $WEB_URL/api (a API atrás do Nginx)
+export GITHUB_CLIENT_ID="..." GITHUB_CLIENT_SECRET="..."   # opcionais, sempre em pares
+export GOOGLE_CLIENT_ID="..." GOOGLE_CLIENT_SECRET="..."
 pnpm prisma migrate deploy --config prisma7.config.ts  # aplica migrations pendentes (rode a cada deploy)
 pnpm start:prod                                        # node dist/main
 ```
@@ -535,5 +565,6 @@ server {
 - [ ] Credenciais reais do `@nestjs/observe` em `app.module.ts` (hoje estão com placeholders), de preferência lidas de variáveis de ambiente
 - [ ] HTTPS no proxy reverso (obrigatório para o cookie de sessão `Secure`)
 - [ ] `JWT_ACCESS_SECRET` forte e fora do repositório; `NODE_ENV=production` e `TRUST_PROXY` definidos
-- [ ] `proxy_cookie_path /auth /api/auth;` no Nginx (senão o refresh não recebe o cookie)
+- [ ] `proxy_cookie_path /auth /api/auth;` no Nginx (senão o refresh e o callback do OAuth não recebem os cookies)
+- [ ] `WEB_URL` com o domínio real e os callbacks `https://<domínio>/api/auth/oauth/{github,google}/callback` cadastrados no GitHub e no Google; segredos OAuth fora do repositório
 - [ ] Avaliar se o Swagger (`/docs`) deve ficar exposto em produção

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as CompletarCadastroRouteImport } from './routes/completar-cadastro'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
@@ -23,6 +24,11 @@ import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/p
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompletarCadastroRoute = CompletarCadastroRouteImport.update({
+  id: '/completar-cadastro',
+  path: '/completar-cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -80,6 +86,7 @@ const AppSettingsProfileRoute = AppSettingsProfileRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/completar-cadastro': typeof CompletarCadastroRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/extrato': typeof AppExtratoRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/meios-de-pagamento/': typeof AppMeiosDePagamentoIndexRoute
 }
 export interface FileRoutesByTo {
+  '/completar-cadastro': typeof CompletarCadastroRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/extrato': typeof AppExtratoRoute
@@ -105,6 +113,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/completar-cadastro': typeof CompletarCadastroRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/_app/extrato': typeof AppExtratoRoute
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/completar-cadastro'
     | '/login'
     | '/signup'
     | '/extrato'
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/meios-de-pagamento/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/completar-cadastro'
     | '/login'
     | '/signup'
     | '/extrato'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/completar-cadastro'
     | '/login'
     | '/signup'
     | '/_app/extrato'
@@ -158,6 +170,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CompletarCadastroRoute: typeof CompletarCadastroRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
 }
@@ -169,6 +182,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/completar-cadastro': {
+      id: '/completar-cadastro'
+      path: '/completar-cadastro'
+      fullPath: '/completar-cadastro'
+      preLoaderRoute: typeof CompletarCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -270,6 +290,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CompletarCadastroRoute: CompletarCadastroRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
 }

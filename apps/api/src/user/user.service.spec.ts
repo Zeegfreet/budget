@@ -110,21 +110,44 @@ describe('UserService', () => {
     });
   });
 
-  it('finds the public view by id', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      id: 1,
-      email: 'a@b.c',
-      name: 'A',
+  describe('findSessionUser', () => {
+    const row = { id: 1, email: 'a@b.c', name: 'A' };
+
+    it('flags a complete account with a password', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        ...row,
+        birthDate: new Date('1990-05-20T00:00:00.000Z'),
+        passwordHash: 'hash',
+      });
+
+      await expect(service.findSessionUser(1)).resolves.toEqual({
+        ...row,
+        needsProfile: false,
+        hasPassword: true,
+      });
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: 1, pending: false },
+        select: { ...authUserSelect, birthDate: true, passwordHash: true },
+      });
     });
 
-    await expect(service.findById(1)).resolves.toEqual({
-      id: 1,
-      email: 'a@b.c',
-      name: 'A',
+    it('flags an OAuth account without profile or password', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        ...row,
+        birthDate: null,
+        passwordHash: null,
+      });
+
+      await expect(service.findSessionUser(1)).resolves.toEqual({
+        ...row,
+        needsProfile: true,
+        hasPassword: false,
+      });
     });
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { id: 1 },
-      select: authUserSelect,
+
+    it('returns null for an unknown id or a pre-registration', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      await expect(service.findSessionUser(1)).resolves.toBeNull();
     });
   });
 

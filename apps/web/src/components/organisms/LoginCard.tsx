@@ -27,7 +27,7 @@ export function LoginCard({ error, redirect }: LoginCardProps) {
       <CardContent className="flex flex-col gap-6">
         {error && <FormAlert>{error}</FormAlert>}
         <LoginForm redirect={redirect} />
-        <OAuthOptions />
+        <OAuthOptions redirect={redirect} />
         <p className="text-center text-sm text-muted-foreground">
           Não tem conta?{' '}
           <Link

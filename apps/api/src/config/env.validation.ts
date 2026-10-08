@@ -4,6 +4,20 @@ const positiveIntegers = [
   'REFRESH_TOKEN_TTL_DAYS',
 ] as const;
 const booleans = ['COOKIE_SECURE'] as const;
+/** OAuth credentials: optional, but each provider needs both or neither */
+const pairs = [
+  ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+  ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+] as const;
+const urls = ['WEB_URL', 'OAUTH_CALLBACK_BASE_URL'] as const;
+
+const isHttpUrl = (value: string) => {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+};
 
 /** Fails fast on boot when the environment is missing or malformed. */
 export function validateEnv(env: Record<string, unknown>) {
@@ -26,6 +40,20 @@ export function validateEnv(env: Record<string, unknown>) {
     const value = env[key];
     if (value !== undefined && value !== 'true' && value !== 'false') {
       errors.push(`${key} must be "true" or "false"`);
+    }
+  }
+  for (const [id, secret] of pairs) {
+    if (Boolean(env[id]) !== Boolean(env[secret])) {
+      errors.push(`${id} and ${secret} must be set together`);
+    }
+  }
+  for (const key of urls) {
+    const value = env[key];
+    if (
+      value !== undefined &&
+      !(typeof value === 'string' && isHttpUrl(value))
+    ) {
+      errors.push(`${key} must be an http(s) URL`);
     }
   }
 

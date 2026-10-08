@@ -11,6 +11,17 @@ export const authUserSelect = {
   name: true,
 } satisfies Prisma.UserSelect;
 
+/**
+ * The signed-in user as the auth endpoints return it: the public view plus
+ * what the web needs to route them (finish the sign-up, hide the password form).
+ */
+export interface SessionUser extends AuthUser {
+  /** Created by GitHub/Google sign-in and still without birth date/address */
+  needsProfile: boolean;
+  /** `false` for an account that only signs in with GitHub/Google */
+  hasPassword: boolean;
+}
+
 /** Sign-up data the user can see and edit (`/users/me`); dates as `YYYY-MM-DD`. */
 export interface Profile extends AuthUser {
   birthDate: string;
@@ -110,11 +121,19 @@ export class UserService {
     });
   }
 
-  async findById(id: number): Promise<AuthUser | null> {
-    return this.prisma.user.findUnique({
-      where: { id },
-      select: authUserSelect,
+  /** `null` for an unknown id or a pre-registration (which can't sign in). */
+  async findSessionUser(id: number): Promise<SessionUser | null> {
+    const row = await this.prisma.user.findFirst({
+      where: { id, pending: false },
+      select: { ...authUserSelect, birthDate: true, passwordHash: true },
     });
+    if (!row) return null;
+    const { birthDate, passwordHash, ...user } = row;
+    return {
+      ...user,
+      needsProfile: birthDate === null,
+      hasPassword: passwordHash !== null,
+    };
   }
 
   /**

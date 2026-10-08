@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { changePassword, fetchMe } from '@/features/auth/api'
 import { ApiError } from '@/lib/api/client'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({
@@ -14,7 +15,7 @@ vi.mock('@/features/auth/api', () => ({
 
 const fetchMeMock = vi.mocked(fetchMe)
 const changePasswordMock = vi.mocked(changePassword)
-const user = { id: 1, name: 'Ana Souza', email: 'ana@example.com' }
+const user = makeAuthUser()
 
 const field = (label: string) => screen.getByLabelText(label)
 const submit = () => userEvent.click(screen.getByRole('button', { name: 'Alterar senha' }))
@@ -123,5 +124,13 @@ describe('Alterar senha route (/settings/password)', () => {
     expect(router.state.location.pathname).toBe('/login')
     expect(router.state.location.search).toEqual({ redirect: '/settings/password' })
     expect(screen.queryByRole('heading', { name: 'Alterar senha' })).not.toBeInTheDocument()
+  })
+
+  it('explains that a GitHub/Google account has no password to change', async () => {
+    fetchMeMock.mockResolvedValue(makeAuthUser({ hasPassword: false }))
+    await open()
+
+    expect(screen.getByText('Sua conta não tem senha')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Senha atual')).not.toBeInTheDocument()
   })
 })

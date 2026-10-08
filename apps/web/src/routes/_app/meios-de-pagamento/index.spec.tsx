@@ -12,6 +12,7 @@ import {
 import { ApiError } from '@/lib/api/client'
 import { stubBudgetApi } from '@/test/budget'
 import { account, card, makePaymentMethod, makeSummary, stubPaymentMethodsApi } from '@/test/payment-methods'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -37,7 +38,7 @@ describe('Payment methods route (/meios-de-pagamento)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    vi.mocked(fetchMe).mockResolvedValue(makeAuthUser())
     stubBudgetApi()
     stubPaymentMethodsApi()
   })

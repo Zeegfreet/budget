@@ -6,6 +6,7 @@ import { fetchGroupStatements } from '@/features/budget/api'
 import { setGroupLink } from '@/features/groups/api'
 import { makeGroupStatement, makeStatementItem, stubBudgetApi } from '@/test/budget'
 import { stubGroupsApi } from '@/test/groups'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 import { stubTransactionsApi } from '@/test/transactions'
 
@@ -27,7 +28,7 @@ describe('Statement route (/extrato) with finance groups', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    vi.mocked(fetchMe).mockResolvedValue(makeAuthUser())
     stubBudgetApi({ groupStatements: [makeGroupStatement()] })
     stubTransactionsApi()
     stubGroupsApi()

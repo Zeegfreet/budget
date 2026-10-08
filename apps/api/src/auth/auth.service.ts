@@ -9,7 +9,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { isUniqueViolation } from '../prisma/errors.js';
-import { type AuthUser, UserService } from '../user/user.service.js';
+import {
+  type AuthUser,
+  type SessionUser,
+  UserService,
+} from '../user/user.service.js';
 import type { AuthTokens } from './auth.cookies.js';
 import type { ChangePasswordDto } from './dto/change-password.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
@@ -18,7 +22,7 @@ import type { AccessTokenPayload } from './strategies/jwt.strategy.js';
 import { type SessionMeta, SessionService } from './session.service.js';
 
 export interface AuthResult {
-  user: AuthUser;
+  user: SessionUser;
   tokens: AuthTokens;
 }
 
@@ -118,14 +122,16 @@ export class AuthService {
 
   /** Issues a new access token and opens a refresh session. */
   async signIn(user: AuthUser, meta: SessionMeta = {}): Promise<AuthResult> {
+    const sessionUser = await this.users.findSessionUser(user.id);
+    if (!sessionUser) throw new UnauthorizedException();
     const accessToken = await this.signAccessToken(user.id);
     const refreshToken = await this.sessions.create(user.id, meta);
-    return { user, tokens: { accessToken, refreshToken } };
+    return { user: sessionUser, tokens: { accessToken, refreshToken } };
   }
 
   async refresh(refreshToken: unknown): Promise<AuthResult> {
     const session = await this.sessions.rotate(refreshToken);
-    const user = await this.users.findById(session.userId);
+    const user = await this.users.findSessionUser(session.userId);
     if (!user) throw new UnauthorizedException('Invalid refresh token');
     const accessToken = await this.signAccessToken(user.id);
     return {
@@ -134,8 +140,8 @@ export class AuthService {
     };
   }
 
-  async me(userId: number): Promise<AuthUser> {
-    const user = await this.users.findById(userId);
+  async me(userId: number): Promise<SessionUser> {
+    const user = await this.users.findSessionUser(userId);
     if (!user) throw new UnauthorizedException();
     return user;
   }

@@ -15,6 +15,7 @@ import {
 } from '@/features/groups/api'
 import { ApiError } from '@/lib/api/client'
 import { ana, bruno, makeGroup, makeMember, pendingInvitation, stubGroupsApi } from '@/test/groups'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -46,7 +47,7 @@ describe('Group members (/grupos/$groupId?tab=membros)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    vi.mocked(fetchMe).mockResolvedValue(makeAuthUser())
     stubGroupsApi()
   })
 

@@ -20,14 +20,16 @@ model User {
   /// Pre-registration created by a group invitation: can't sign in and has no
   /// password or profile until the person signs up with this e-mail
   pending             Boolean           @default(false)
-  /// `null` only while `pending`
+  /// `null` while `pending`, and for an account created by GitHub/Google
+  /// sign-in (until a password is set)
   passwordHash        String?
-  /// Calendar date, stored as midnight UTC; `null` only while `pending`
+  /// Calendar date, stored as midnight UTC; `null` while `pending`, and for an
+  /// account created by GitHub/Google sign-in until the profile is completed
   birthDate           DateTime?
-  /// 8 digits, no mask; `null` only while `pending`
+  /// 8 digits, no mask; `null` like `birthDate`
   cep                 String?
   city                String?
-  /// UF, e.g. `SP`; `null` only while `pending`
+  /// UF, e.g. `SP`; `null` like `birthDate`
   state               String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
@@ -44,6 +46,7 @@ model User {
   invitationsSent     GroupInvitation[] @relation("InvitationInviter")
   invitationsReceived GroupInvitation[] @relation("InvitationInvitee")
   paymentMethods      PaymentMethod[]
+  oauthAccounts       OAuthAccount[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -65,6 +68,27 @@ model Session {
   userAgent         String?
   ip                String?
 
+  @@index([userId])
+}
+
+enum OAuthProvider {
+  GITHUB
+  GOOGLE
+}
+
+/// A GitHub/Google identity linked to a user (sign-in finds the user by it)
+model OAuthAccount {
+  id                Int           @id @default(autoincrement())
+  provider          OAuthProvider
+  /// The provider's stable user id (GitHub numeric id, Google `sub`)
+  providerAccountId String
+  userId            Int
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Verified e-mail the provider reported when the account was linked
+  email             String
+  createdAt         DateTime      @default(now())
+
+  @@unique([provider, providerAccountId])
   @@index([userId])
 }
 

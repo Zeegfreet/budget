@@ -10,6 +10,7 @@ import {
 } from '@/features/auth/errors'
 import { ApiError } from '@/lib/api/client'
 import { stubBudgetApi } from '@/test/budget'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 // Signing in lands on the dashboard, which loads the budget
@@ -29,7 +30,7 @@ const fetchMeMock = vi.mocked(fetchMe)
 const registerMock = vi.mocked(register)
 const lookupCepMock = vi.mocked(lookupCep)
 
-const ana = { id: 1, name: 'Ana Souza', email: 'ana@example.com' }
+const ana = makeAuthUser()
 const saoPaulo = { cep: '01001000', city: 'São Paulo', state: 'SP' }
 
 const field = (label: string) => screen.getByLabelText(label)
@@ -96,7 +97,7 @@ describe('Sign-up route (/signup)', () => {
 
       expect(screen.getByRole('link', { name: 'Continuar com GitHub' })).toHaveAttribute(
         'href',
-        '/api/auth/github',
+        '/api/auth/oauth/github?redirect=%2Fgroups',
       )
       expect(screen.getByRole('link', { name: 'Continuar com Google (Gmail)' })).toBeInTheDocument()
 

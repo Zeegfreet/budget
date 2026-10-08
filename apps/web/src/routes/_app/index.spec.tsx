@@ -16,6 +16,7 @@ import { createTransaction, deleteTransaction, updateTransaction } from '@/featu
 import { ApiError } from '@/lib/api/client'
 import { budgetLines, budgetSummary, entriesOf, makeLine, stubBudgetApi } from '@/test/budget'
 import { stubPaymentMethodsApi } from '@/test/payment-methods'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 import { stubTransactionsApi } from '@/test/transactions'
 
@@ -94,7 +95,7 @@ describe('Dashboard route (/)', () => {
     vi.resetAllMocks()
     // Only the date: real timers keep user-event and Radix working
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    fetchMeMock.mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    fetchMeMock.mockResolvedValue(makeAuthUser())
     stubBudgetApi()
     stubTransactionsApi()
     stubPaymentMethodsApi()

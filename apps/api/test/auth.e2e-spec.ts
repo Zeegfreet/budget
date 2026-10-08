@@ -67,6 +67,8 @@ describe('Auth (e2e)', () => {
         id: expect.any(Number),
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
 
       const access = cookie(res, 'access_token');
@@ -101,6 +103,8 @@ describe('Auth (e2e)', () => {
       expect(me.body).toMatchObject({
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
     });
 
@@ -116,6 +120,8 @@ describe('Auth (e2e)', () => {
       expect(res.body).toMatchObject({
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
       const user = await prisma.user.findUniqueOrThrow({
         where: { id: res.body.id },
@@ -205,6 +211,8 @@ describe('Auth (e2e)', () => {
         id: expect.any(Number),
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
       expect(cookie(res, 'access_token')).toMatch(/HttpOnly/);
       expect(cookie(res, 'refresh_token')).toMatch(/HttpOnly/);
@@ -425,8 +433,11 @@ describe('Auth (e2e)', () => {
         id: res.body.id,
         email: 'ana@example.com',
         name: 'Ana Souza',
+        needsProfile: false,
+        hasPassword: true,
       });
-      expect(JSON.stringify(changed.body)).not.toMatch(/password/i);
+      expect(changed.body).not.toHaveProperty('passwordHash');
+      expect(JSON.stringify(changed.body)).not.toContain(change.newPassword);
       expect(cookie(changed, 'refresh_token')).toMatch(/Path=\/auth/);
       expect(cookieValue(changed, 'refresh_token')).not.toBe(oldRefresh);
       // This client stays signed in with the new cookies

@@ -3,6 +3,11 @@ import { ApiError } from '@/lib/api/client'
 /** Friendly messages for the `?error=` code the API sends back after a failed OAuth callback. */
 const loginErrorMessages: Record<string, string> = {
   access_denied: 'Você cancelou o login. Tente novamente quando quiser.',
+  oauth_unavailable: 'Este login ainda não está disponível. Entre com e-mail e senha.',
+  oauth_state: 'Sua tentativa de login expirou. Tente novamente.',
+  oauth_email:
+    'Sua conta do provedor não tem um e-mail verificado. Verifique o e-mail lá ou entre com e-mail e senha.',
+  oauth_failed: 'Não foi possível entrar com o provedor. Tente novamente.',
 }
 
 export const defaultLoginErrorMessage = 'Não foi possível entrar. Tente novamente.'

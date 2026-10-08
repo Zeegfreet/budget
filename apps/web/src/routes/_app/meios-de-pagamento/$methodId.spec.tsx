@@ -7,6 +7,7 @@ import { realizeTransaction } from '@/features/transactions/api'
 import { ApiError } from '@/lib/api/client'
 import { stubBudgetApi } from '@/test/budget'
 import { card, makeInvoice, stubPaymentMethodsApi } from '@/test/payment-methods'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 import { categories, makeTransaction, stubTransactionsApi } from '@/test/transactions'
 
@@ -28,7 +29,7 @@ describe('Invoice route (/meios-de-pagamento/:id)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    vi.mocked(fetchMe).mockResolvedValue(makeAuthUser())
     stubBudgetApi()
     stubTransactionsApi()
     stubPaymentMethodsApi()

@@ -31,6 +31,7 @@ export async function resetDatabase(app: INestApplication) {
   await prisma.category.deleteMany();
   await prisma.categoryGroup.deleteMany();
   await prisma.session.deleteMany();
+  await prisma.oAuthAccount.deleteMany();
   await prisma.user.deleteMany();
 }
 

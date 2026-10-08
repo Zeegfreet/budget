@@ -8,6 +8,7 @@ import { createTransaction, updateTransaction } from '@/features/transactions/ap
 import { ApiError } from '@/lib/api/client'
 import { makeGroupStatement, stubBudgetApi } from '@/test/budget'
 import { account, card, makePaymentMethod, makeSummary, stubPaymentMethodsApi } from '@/test/payment-methods'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 import { categories, makeTransaction, octoberTransactions, stubTransactionsApi } from '@/test/transactions'
 
@@ -39,7 +40,7 @@ describe('Payment methods in the statement (/extrato)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
-    vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
+    vi.mocked(fetchMe).mockResolvedValue(makeAuthUser())
     stubBudgetApi()
     stubTransactionsApi([...octoberTransactions, cinema])
     stubPaymentMethodsApi({

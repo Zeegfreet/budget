@@ -10,6 +10,7 @@ import {
 } from '@/features/auth/errors'
 import { ApiError } from '@/lib/api/client'
 import { stubBudgetApi } from '@/test/budget'
+import { makeAuthUser } from '@/test/auth'
 import { renderRoute } from '@/test/render'
 
 // Signing in lands on the dashboard, which loads the budget
@@ -19,7 +20,7 @@ vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout
 const fetchMeMock = vi.mocked(fetchMe)
 const loginMock = vi.mocked(login)
 
-const ana = { id: 1, name: 'Ana', email: 'ana@example.com' }
+const ana = makeAuthUser({ name: 'Ana' })
 
 async function fillAndSubmit(email: string, password: string) {
   if (email) await userEvent.type(screen.getByLabelText('E-mail'), email)
@@ -50,14 +51,23 @@ describe('Login route (/login)', () => {
 
       expect(screen.getByRole('link', { name: 'Continuar com GitHub' })).toHaveAttribute(
         'href',
-        '/api/auth/github',
+        '/api/auth/oauth/github',
       )
       expect(screen.getByRole('link', { name: 'Continuar com Google (Gmail)' })).toHaveAttribute(
         'href',
-        '/api/auth/google',
+        '/api/auth/oauth/google',
       )
       expect(screen.getAllByRole('link')).toHaveLength(3)
       expect(screen.queryByText(/Microsoft/)).not.toBeInTheDocument()
+    })
+
+    it('sends the OAuth sign-in back to where the user was going', async () => {
+      await renderRoute('/login?redirect=%2Fextrato%3Fmonth%3D2026-10')
+
+      expect(screen.getByRole('link', { name: 'Continuar com GitHub' })).toHaveAttribute(
+        'href',
+        '/api/auth/oauth/github?redirect=%2Fextrato%3Fmonth%3D2026-10',
+      )
     })
 
     it('links to the sign-up page, keeping ?redirect', async () => {
@@ -191,6 +201,17 @@ describe('Login route (/login)', () => {
       await renderRoute('/login?error=access_denied')
 
       expect(screen.getByRole('alert')).toHaveTextContent('Você cancelou o login')
+    })
+
+    it.each([
+      ['oauth_state', 'Sua tentativa de login expirou'],
+      ['oauth_email', 'não tem um e-mail verificado'],
+      ['oauth_unavailable', 'ainda não está disponível'],
+      ['oauth_failed', 'Não foi possível entrar com o provedor'],
+    ])('explains the OAuth error %s', async (code, message) => {
+      await renderRoute(`/login?error=${code}`)
+
+      expect(screen.getByRole('alert')).toHaveTextContent(message)
     })
 
     it('shows a generic message for unknown OAuth errors', async () => {
