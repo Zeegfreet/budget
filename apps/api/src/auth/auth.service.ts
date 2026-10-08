@@ -1,6 +1,9 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -8,6 +11,7 @@ import * as argon2 from 'argon2';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { type AuthUser, UserService } from '../user/user.service.js';
 import type { AuthTokens } from './auth.cookies.js';
+import type { ChangePasswordDto } from './dto/change-password.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import { MAX_PASSWORD_LENGTH } from './dto/register.dto.js';
 import type { AccessTokenPayload } from './strategies/jwt.strategy.js';
@@ -74,6 +78,42 @@ export class AuthService {
     const valid = await argon2.verify(hash, password).catch(() => false);
     if (!user || !usable || !valid) return null;
     return { id: user.id, email: user.email, name: user.name };
+  }
+
+  /**
+   * Checks the current password, stores the new one and ends every session
+   * of the user (other devices must sign in again), then opens a new one for
+   * this client. 403 (not 401, which the web treats as an expired session)
+   * on a wrong current password.
+   */
+  async changePassword(
+    userId: number,
+    { currentPassword, newPassword }: ChangePasswordDto,
+    meta: SessionMeta = {},
+  ): Promise<AuthResult> {
+    const user = await this.users.findCredentialsById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    const valid = await argon2
+      .verify(user.passwordHash, currentPassword)
+      .catch(() => false);
+    if (!valid) throw new ForbiddenException('Current password is incorrect');
+    if (newPassword === currentPassword) {
+      throw new BadRequestException(
+        'New password must differ from the current one',
+      );
+    }
+
+    const passwordHash = await argon2.hash(newPassword, {
+      type: argon2.argon2id,
+    });
+    if (!(await this.users.updatePasswordHash(userId, passwordHash))) {
+      throw new NotFoundException('User not found');
+    }
+    await this.sessions.revokeAllForUser(userId);
+    return this.signIn(
+      { id: user.id, email: user.email, name: user.name },
+      meta,
+    );
   }
 
   /** Issues a new access token and opens a refresh session. */

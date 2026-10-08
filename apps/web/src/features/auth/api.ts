@@ -1,5 +1,5 @@
 import { api } from '@/lib/api/client'
-import type { AuthUser, LoginInput, RegisterInput } from './types'
+import type { AuthUser, ChangePasswordInput, LoginInput, RegisterInput } from './types'
 
 // The session lives in an httpOnly cookie set by the API, so none of these
 // calls ever see or store a token.
@@ -22,4 +22,10 @@ export async function fetchMe(): Promise<AuthUser> {
 
 export async function logout(): Promise<void> {
   await api.post('/auth/logout')
+}
+
+/** Changes the password; the API ends the other sessions and renews this one's cookies. */
+export async function changePassword(input: ChangePasswordInput): Promise<AuthUser> {
+  const { data } = await api.post<AuthUser>('/auth/password', input)
+  return data
 }

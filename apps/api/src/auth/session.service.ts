@@ -121,6 +121,14 @@ export class SessionService {
     });
   }
 
+  /** Ends every open session of the user, e.g. after a password change. */
+  async revokeAllForUser(userId: number, now = new Date()): Promise<void> {
+    await this.prisma.session.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+  }
+
   private async revokeById(id: string, now: Date) {
     await this.prisma.session.updateMany({
       where: { id, revokedAt: null },

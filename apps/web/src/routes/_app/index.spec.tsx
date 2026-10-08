@@ -19,7 +19,12 @@ import { stubPaymentMethodsApi } from '@/test/payment-methods'
 import { renderRoute } from '@/test/render'
 import { stubTransactionsApi } from '@/test/transactions'
 
-vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
+vi.mock('@/features/auth/api', () => ({
+  fetchMe: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+  changePassword: vi.fn(),
+}))
 vi.mock('@/features/budget/api')
 vi.mock('@/features/transactions/api')
 vi.mock('@/features/payment-methods/api')

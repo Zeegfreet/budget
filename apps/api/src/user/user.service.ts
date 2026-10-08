@@ -117,6 +117,30 @@ export class UserService {
     });
   }
 
+  /**
+   * Public view plus the password hash, only to check the current password.
+   * `null` for an unknown id or a pre-registration (which has no password).
+   */
+  async findCredentialsById(
+    id: number,
+  ): Promise<(AuthUser & { passwordHash: string }) | null> {
+    const row = await this.prisma.user.findFirst({
+      where: { id, pending: false },
+      select: { ...authUserSelect, passwordHash: true },
+    });
+    if (!row?.passwordHash) return null;
+    return { ...row, passwordHash: row.passwordHash };
+  }
+
+  /** Replaces the password hash of a registered user; `false` if none matched. */
+  async updatePasswordHash(id: number, passwordHash: string): Promise<boolean> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { id, pending: false },
+      data: { passwordHash },
+    });
+    return count > 0;
+  }
+
   /** The user's profile; `null` for an unknown id or a pre-registration. */
   async findProfile(id: number): Promise<Profile | null> {
     const row = await this.prisma.user.findFirst({

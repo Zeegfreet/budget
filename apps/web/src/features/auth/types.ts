@@ -32,3 +32,9 @@ export interface RegisterInput {
   /** UF, e.g. `SP` */
   state: string
 }
+
+/** Body of `POST /auth/password`. */
+export interface ChangePasswordInput {
+  currentPassword: string
+  newPassword: string
+}

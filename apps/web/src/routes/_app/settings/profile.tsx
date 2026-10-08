@@ -12,7 +12,7 @@ function ProfilePage() {
   const { data: profile } = useSuspenseQuery(profileQueries.me())
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <h1 className="text-2xl font-semibold">Editar perfil</h1>
       <ProfileForm profile={profile} />
     </div>

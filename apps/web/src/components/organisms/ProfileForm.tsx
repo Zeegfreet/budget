@@ -53,7 +53,7 @@ export function ProfileForm({ profile }: { profile: Profile }) {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card>
       <CardHeader>
         <CardTitle>Dados pessoais</CardTitle>
         <CardDescription>Os mesmos dados informados no cadastro.</CardDescription>

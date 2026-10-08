@@ -128,6 +128,42 @@ describe('UserService', () => {
     });
   });
 
+  describe('password', () => {
+    it('reads the hash only of a registered user', async () => {
+      prisma.user.findFirst.mockResolvedValueOnce({
+        id: 1,
+        email: 'a@b.c',
+        name: 'A',
+        passwordHash: 'hash',
+      });
+      await expect(service.findCredentialsById(1)).resolves.toEqual({
+        id: 1,
+        email: 'a@b.c',
+        name: 'A',
+        passwordHash: 'hash',
+      });
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: 1, pending: false },
+        select: { ...authUserSelect, passwordHash: true },
+      });
+
+      prisma.user.findFirst.mockResolvedValueOnce(null);
+      await expect(service.findCredentialsById(2)).resolves.toBeNull();
+    });
+
+    it('updates the hash of a registered user', async () => {
+      prisma.user.updateMany.mockResolvedValueOnce({ count: 1 });
+      await expect(service.updatePasswordHash(1, 'new')).resolves.toBe(true);
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 1, pending: false },
+        data: { passwordHash: 'new' },
+      });
+
+      prisma.user.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.updatePasswordHash(9, 'new')).resolves.toBe(false);
+    });
+  });
+
   describe('profile', () => {
     const row = {
       id: 1,

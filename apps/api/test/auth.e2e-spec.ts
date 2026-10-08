@@ -404,6 +404,118 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  describe('POST /auth/password', () => {
+    const change = {
+      currentPassword: validBody.password,
+      newPassword: 'novaSenha456',
+    };
+    const login = (password: string, email = validBody.email) =>
+      http().post('/auth/login').send({ email, password });
+
+    it('changes the password and renews this session', async () => {
+      const { client, res } = await register();
+      const oldRefresh = cookieValue(res, 'refresh_token');
+
+      const changed = await client
+        .post('/auth/password')
+        .send(change)
+        .expect(200);
+
+      expect(changed.body).toEqual({
+        id: res.body.id,
+        email: 'ana@example.com',
+        name: 'Ana Souza',
+      });
+      expect(JSON.stringify(changed.body)).not.toMatch(/password/i);
+      expect(cookie(changed, 'refresh_token')).toMatch(/Path=\/auth/);
+      expect(cookieValue(changed, 'refresh_token')).not.toBe(oldRefresh);
+      // This client stays signed in with the new cookies
+      await client.get('/auth/me').expect(200);
+      await client.post('/auth/refresh').expect(200);
+
+      await login(validBody.password).expect(401);
+      await login(change.newPassword).expect(200);
+    });
+
+    it('signs out the other sessions of the user', async () => {
+      const { client } = await register();
+      const other = await login(validBody.password).expect(200);
+      const otherRefresh = cookieValue(other, 'refresh_token');
+
+      await client.post('/auth/password').send(change).expect(200);
+
+      await http()
+        .post('/auth/refresh')
+        .set('Cookie', `refresh_token=${otherRefresh}`)
+        .expect(401);
+    });
+
+    it('returns 403 for a wrong current password and keeps everything', async () => {
+      const { client, res } = await register();
+      const refresh = cookieValue(res, 'refresh_token');
+
+      const wrong = await client
+        .post('/auth/password')
+        .send({ ...change, currentPassword: 'errada123' })
+        .expect(403);
+
+      expect(wrong.body.message).toBe('Current password is incorrect');
+      await login(validBody.password).expect(200);
+      await http()
+        .post('/auth/refresh')
+        .set('Cookie', `refresh_token=${refresh}`)
+        .expect(200);
+    });
+
+    it('returns 400 when the new password equals the current one', async () => {
+      const { client } = await register();
+
+      const res = await client
+        .post('/auth/password')
+        .send({ ...change, newPassword: validBody.password })
+        .expect(400);
+
+      expect(res.body.message).toBe(
+        'New password must differ from the current one',
+      );
+    });
+
+    it.each([
+      ['no body', {}],
+      ['a short new password', { ...change, newPassword: 'curta' }],
+      ['an empty current password', { ...change, currentPassword: '' }],
+      ['a too long new password', { ...change, newPassword: 'a'.repeat(129) }],
+      ['a non-string field', { ...change, newPassword: 12345678 }],
+      ['an unknown field', { ...change, userId: 2 }],
+    ])('returns 400 for %s', async (_, body) => {
+      const { client } = await register();
+
+      await client.post('/auth/password').send(body).expect(400);
+      await login(validBody.password).expect(200);
+    });
+
+    it('requires a session', async () => {
+      await http().post('/auth/password').send(change).expect(401);
+    });
+
+    it("never changes another user's password", async () => {
+      const a = await register(validBody);
+      const b = await register(otherBody);
+
+      // The owner always comes from the session, never from the body
+      await a.client
+        .post('/auth/password')
+        .send({ ...change, userId: b.res.body.id })
+        .expect(400);
+      await a.client.post('/auth/password').send(change).expect(200);
+
+      await login(otherBody.password, otherBody.email).expect(200);
+      await login(change.newPassword, otherBody.email).expect(401);
+      await b.client.get('/auth/me').expect(200);
+      await b.client.post('/auth/refresh').expect(200);
+    });
+  });
+
   describe('POST /auth/logout', () => {
     it('revokes the session and clears both cookies', async () => {
       const { client, res } = await register();

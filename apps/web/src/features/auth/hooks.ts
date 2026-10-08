@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { logout } from './api'
+import { changePassword, logout } from './api'
+import { authQueries } from './queries'
 
 /** Ends the session and goes back to /login. */
 export function useSignOut() {
@@ -14,5 +15,15 @@ export function useSignOut() {
       queryClient.clear()
       await navigate({ to: '/login', replace: true })
     },
+  })
+}
+
+/** Changes the signed-in user's password; this session stays open with new cookies. */
+export function useChangePassword() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: changePassword,
+    onSuccess: (user) => queryClient.setQueryData(authQueries.me().queryKey, user),
   })
 }

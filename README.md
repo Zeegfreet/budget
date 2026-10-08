@@ -38,8 +38,8 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Pipeline de CI (lint, build, testes unitários e e2e) | ✅ | ✅ | |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
 | Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
-| Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
-| Alterar senha | ⏳ | 🚧 | Rota `/settings/password` criada como página "Em breve" |
+| Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta, card centralizado): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
+| Alterar senha | ✅ | ✅ | Tela `/settings/password` (menu da conta): senha atual, nova senha e repetição. A API confere a senha atual, grava a nova e encerra as outras sessões. Veja [Alterar senha](#alterar-senha) |
 | Login com GitHub e Google (OAuth) | ⏳ | 🚧 | Web já tem os botões; a API ainda não implementa `/auth/github` e `/auth/google` |
 | Dashboard (balanço + planejamento mensal) | ✅ | ✅ | Página inicial (`/`), com coluna de total do período. Veja [Dashboard](#dashboard) |
 | Categorias de receitas e despesas | ✅ | ✅ | Tipos e categorias padrão criados no primeiro acesso; criar, editar, inativar/reativar e excluir pela própria tabela do Dashboard ou pelo menu **Categorias** do Extrato |
@@ -174,6 +174,7 @@ Entrada por **e-mail + senha** e **cadastro** em `/signup`. Os botões de **GitH
 | `POST` | `/auth/refresh` | — (cookie `refresh_token`) | `200` com o usuário e cookies novos; `401` (e cookies apagados) se o refresh estiver ausente, inválido, expirado ou revogado |
 | `GET` | `/auth/me` | — | `200` com o usuário da sessão, ou `401` |
 | `POST` | `/auth/logout` | — | `204`, revogando a sessão e apagando os cookies (idempotente) |
+| `POST` | `/auth/password` | `{ currentPassword, newPassword }` | `200` com o usuário e cookies novos. Veja [Alterar senha](#alterar-senha) |
 
 O usuário retornado é sempre `{ id, email, name }`: hash de senha e demais dados nunca saem da API.
 
@@ -212,6 +213,17 @@ Cadastro (`/signup`):
 | `PATCH` | `/users/me` | `{ name?, birthDate?, cep?, city?, state? }` | `200` com o perfil atualizado. Mesmas regras do cadastro; o endereço vai em bloco (mandou um de `cep`/`city`/`state`, os três são obrigatórios). `400` em dados inválidos, `null` ou campos fora da lista (o **e-mail e a senha não mudam por aqui**) |
 
 Não existe rota para ler ou alterar outro usuário: o perfil é sempre o do token. No web, a tela **Editar perfil** (`/settings/profile`) mostra o e-mail desabilitado, envia só o que mudou e atualiza na hora o nome no menu lateral (e nos grupos). O CEP salvo não é consultado de novo; ao trocar o CEP, cidade e UF vêm da ViaCEP como no cadastro.
+
+### Alterar senha
+
+| Método | Rota | Corpo | Resposta |
+| --- | --- | --- | --- |
+| `POST` | `/auth/password` | `{ currentPassword, newPassword }` | `200` com `{ id, email, name }` e cookies de sessão novos; `400` em corpo inválido (nova senha fora de 8–128 caracteres, campos fora da lista) ou `New password must differ from the current one`; `401` sem sessão; `403` `Current password is incorrect`; `429` após 5 tentativas/min |
+
+- A conta é sempre a do token; não há como trocar a senha de outro usuário.
+- A nova senha é gravada com argon2id e **todas as sessões do usuário são revogadas**; a resposta abre uma nova sessão para quem fez a troca. Nos outros aparelhos o refresh deixa de funcionar e o token de acesso só vale até expirar (no máximo 15 min).
+- A senha atual errada responde `403` (e não `401`) para o cliente não confundir com sessão expirada e tentar um refresh.
+- No web, a tela **Alterar senha** (`/settings/password`) pede senha atual, nova senha e repetição da nova; valida no navegador (mín. 8 caracteres, repetição igual, diferente da atual), mostra "Senha atual incorreta." no próprio campo e limpa os campos após cada resposta da API.
 
 ### Proxy reverso e cookies
 

@@ -46,3 +46,33 @@ export function getRegisterErrorMessage(error: unknown) {
   }
   return defaultRegisterErrorMessage
 }
+
+export const wrongCurrentPasswordMessage = 'Senha atual incorreta.'
+export const samePasswordMessage = 'A nova senha deve ser diferente da atual.'
+export const invalidPasswordChangeMessage = 'Confira os dados informados.'
+export const defaultPasswordChangeErrorMessage = 'Não foi possível alterar a senha. Tente novamente.'
+
+export interface PasswordChangeError {
+  currentPassword?: string
+  newPassword?: string
+  /** Shown above the form */
+  form?: string
+}
+
+/** Where to show a failed password change: a field (wrong/same password) or the form. */
+export function getPasswordChangeError(error: unknown): PasswordChangeError {
+  if (error instanceof ApiError) {
+    if (error.status === 403) return { currentPassword: wrongCurrentPasswordMessage }
+    if (error.status === 400) {
+      if (error.messages.some((m) => /differ from the current/.test(m))) {
+        return { newPassword: samePasswordMessage }
+      }
+      return { form: invalidPasswordChangeMessage }
+    }
+    if (error.status === 429) return { form: tooManyAttemptsMessage }
+    if (error.status === 0 || error.status === 404 || error.status >= 500) {
+      return { form: serverUnavailableMessage }
+    }
+  }
+  return { form: defaultPasswordChangeErrorMessage }
+}

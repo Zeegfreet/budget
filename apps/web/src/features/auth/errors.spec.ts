@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { ApiError } from '@/lib/api/client'
 import {
   defaultLoginErrorMessage,
+  defaultPasswordChangeErrorMessage,
+  getPasswordChangeError,
+  invalidPasswordChangeMessage,
+  samePasswordMessage,
+  wrongCurrentPasswordMessage,
   defaultRegisterErrorMessage,
   emailTakenMessage,
   getCredentialsErrorMessage,
@@ -63,5 +68,29 @@ describe('getRegisterErrorMessage', () => {
 
   it('uses the generic message for non-API errors', () => {
     expect(getRegisterErrorMessage(new Error('x'))).toBe(defaultRegisterErrorMessage)
+  })
+})
+
+describe('getPasswordChangeError', () => {
+  it('puts a wrong current password on its field', () => {
+    expect(getPasswordChangeError(new ApiError(403, ['Current password is incorrect']))).toEqual({
+      currentPassword: wrongCurrentPasswordMessage,
+    })
+  })
+
+  it('puts a repeated password on the new password field', () => {
+    expect(
+      getPasswordChangeError(new ApiError(400, ['New password must differ from the current one'])),
+    ).toEqual({ newPassword: samePasswordMessage })
+  })
+
+  it.each([
+    [400, invalidPasswordChangeMessage],
+    [429, tooManyAttemptsMessage],
+    [0, serverUnavailableMessage],
+    [503, serverUnavailableMessage],
+    [418, defaultPasswordChangeErrorMessage],
+  ])('shows %i above the form', (status, message) => {
+    expect(getPasswordChangeError(new ApiError(status, ['x']))).toEqual({ form: message })
   })
 })

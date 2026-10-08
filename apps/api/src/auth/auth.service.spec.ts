@@ -1,4 +1,10 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { Prisma } from '../prisma/generated/client.js';
@@ -24,8 +30,15 @@ describe('AuthService', () => {
     claimPending: vi.fn(),
     findByEmail: vi.fn(),
     findById: vi.fn(),
+    findCredentialsById: vi.fn(),
+    updatePasswordHash: vi.fn(),
   };
-  const sessions = { create: vi.fn(), rotate: vi.fn(), revoke: vi.fn() };
+  const sessions = {
+    create: vi.fn(),
+    rotate: vi.fn(),
+    revoke: vi.fn(),
+    revokeAllForUser: vi.fn(),
+  };
   const jwt = { signAsync: vi.fn() };
   const service = new AuthService(
     users as unknown as UserService,
@@ -230,5 +243,65 @@ describe('AuthService', () => {
     await service.logout('refresh');
 
     expect(sessions.revoke).toHaveBeenCalledWith('refresh');
+  });
+  describe('changePassword', () => {
+    let passwordHash: string;
+    const change = {
+      currentPassword: 'segredo123',
+      newPassword: 'novaSenha456',
+    };
+
+    beforeAll(async () => {
+      passwordHash = await argon2.hash('segredo123', { type: argon2.argon2id });
+    });
+
+    beforeEach(() => {
+      users.findCredentialsById.mockResolvedValue({
+        ...authUser,
+        passwordHash,
+      });
+      users.updatePasswordHash.mockResolvedValue(true);
+    });
+
+    it('stores the new hash, ends every session and opens a new one', async () => {
+      const result = await service.changePassword(1, change, { ip: '::1' });
+
+      expect(result).toEqual({
+        user: authUser,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      });
+      const [id, hash] = users.updatePasswordHash.mock.calls[0];
+      expect(id).toBe(1);
+      await expect(argon2.verify(hash, 'novaSenha456')).resolves.toBe(true);
+      expect(sessions.revokeAllForUser).toHaveBeenCalledWith(1);
+      expect(sessions.create).toHaveBeenCalledWith(1, { ip: '::1' });
+      expect(
+        sessions.revokeAllForUser.mock.invocationCallOrder[0],
+      ).toBeLessThan(sessions.create.mock.invocationCallOrder[0]);
+    });
+
+    it('rejects a wrong current password with 403', async () => {
+      await expect(
+        service.changePassword(1, { ...change, currentPassword: 'errada123' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(users.updatePasswordHash).not.toHaveBeenCalled();
+      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects a new password equal to the current one with 400', async () => {
+      await expect(
+        service.changePassword(1, { ...change, newPassword: 'segredo123' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(users.updatePasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('is 404 for an unknown user or a pre-registration', async () => {
+      users.findCredentialsById.mockResolvedValue(null);
+
+      await expect(service.changePassword(9, change)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(sessions.revokeAllForUser).not.toHaveBeenCalled();
+    });
   });
 });

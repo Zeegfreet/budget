@@ -112,13 +112,20 @@ export function validateRegister(values: RegisterValues, today = new Date()): Re
   if (!values.email) errors.email = 'Informe seu e-mail.'
   else if (!EMAIL_PATTERN.test(values.email)) errors.email = 'Informe um e-mail válido.'
 
-  if (!values.password) errors.password = 'Crie uma senha.'
-  else if (values.password.length < MIN_PASSWORD_LENGTH) {
+  Object.assign(errors, validateNewPassword(values.password, values.passwordConfirmation))
+  return errors
+}
+
+/** New password + confirmation, shared by the sign-up and the password change. */
+export function validateNewPassword(password: string, passwordConfirmation: string) {
+  const errors: { password?: string; passwordConfirmation?: string } = {}
+  if (!password) errors.password = 'Crie uma senha.'
+  else if (password.length < MIN_PASSWORD_LENGTH) {
     errors.password = `Use pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`
   }
 
-  if (!values.passwordConfirmation) errors.passwordConfirmation = 'Confirme sua senha.'
-  else if (values.password !== values.passwordConfirmation) {
+  if (!passwordConfirmation) errors.passwordConfirmation = 'Confirme sua senha.'
+  else if (password !== passwordConfirmation) {
     errors.passwordConfirmation = 'As senhas não coincidem.'
   }
   return errors

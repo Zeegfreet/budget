@@ -22,6 +22,7 @@ describe('AuthController', () => {
     refresh: vi.fn(),
     me: vi.fn(),
     logout: vi.fn(),
+    changePassword: vi.fn(),
   };
   const controller = new AuthController(
     authService as unknown as AuthService,
@@ -129,5 +130,18 @@ describe('AuthController', () => {
 
     expect(authService.logout).toHaveBeenCalledWith('token');
     expectClearedCookies();
+  });
+  it('changePassword sets the new session cookies and returns the user', async () => {
+    authService.changePassword.mockResolvedValue(result);
+    const dto = { currentPassword: 'a', newPassword: 'b' } as never;
+
+    await expect(
+      controller.changePassword({ id: 1 }, dto, req(), res),
+    ).resolves.toEqual(authUser);
+    expect(authService.changePassword).toHaveBeenCalledWith(1, dto, {
+      userAgent: 'agent',
+      ip: '::1',
+    });
+    expectSessionCookies();
   });
 });

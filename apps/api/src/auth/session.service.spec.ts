@@ -193,4 +193,14 @@ describe('SessionService', () => {
       expect(prisma.session.updateMany).not.toHaveBeenCalled();
     });
   });
+  describe('revokeAllForUser', () => {
+    it('revokes every open session of the user', async () => {
+      await service.revokeAllForUser(1, now);
+
+      expect(prisma.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 1, revokedAt: null },
+        data: { revokedAt: now },
+      });
+    });
+  });
 });

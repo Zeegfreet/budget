@@ -4,6 +4,7 @@ export { BudgetDialogs, type BudgetDialog, type DialogCategory, type DialogGroup
 export { BudgetLineDialogs, type LineDialog } from './BudgetLineDialogs'
 export { BudgetGrid, type GridAction } from './BudgetGrid'
 export { CategoryManager, type CategoryAction } from './CategoryManager'
+export { ChangePasswordForm } from './ChangePasswordForm'
 export { GoalsPanel } from './GoalsPanel'
 export { GroupBalancePanel } from './GroupBalancePanel'
 export { GroupDialogs, type GroupDialog } from './GroupDialogs'

@@ -11,10 +11,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
   ApiCookieAuth,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -36,6 +39,7 @@ import {
 } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { AuthUserDto } from './dto/auth-user.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
@@ -124,6 +128,35 @@ export class AuthController {
   @ApiUnauthorizedResponse()
   me(@CurrentUser() user: JwtUser): Promise<AuthUserDto> {
     return this.authService.me(user.id);
+  }
+
+  /**
+   * Changes the signed-in user's password. Every session of the user is
+   * revoked and this client gets new cookies; other devices keep only their
+   * access token until it expires.
+   */
+  @ApiCookieAuth()
+  @Throttle(CREDENTIALS_THROTTLE)
+  @HttpCode(HttpStatus.OK)
+  @Post('password')
+  @ApiOkResponse({ type: AuthUserDto })
+  @ApiBadRequestResponse({
+    description: 'Invalid body, or the new password equals the current one',
+  })
+  @ApiUnauthorizedResponse()
+  @ApiForbiddenResponse({ description: 'Current password is incorrect' })
+  @ApiNotFoundResponse()
+  @ApiTooManyRequestsResponse()
+  async changePassword(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: ChangePasswordDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthUserDto> {
+    return this.open(
+      res,
+      await this.authService.changePassword(user.id, dto, sessionMeta(req)),
+    );
   }
 
   /** Idempotent: works with an expired access token or no session at all. */
