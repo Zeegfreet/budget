@@ -20,7 +20,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 import { AUTH_CONFIG, type AuthConfig } from '../auth.config.js';
-import { REFRESH_COOKIE_PATH, setAuthCookies } from '../auth.cookies.js';
+import { setAuthCookies } from '../auth.cookies.js';
 import { AuthService } from '../auth.service.js';
 import { Public } from '../decorators/public.decorator.js';
 import { OAUTH_CONFIG, type OAuthConfig } from './oauth.config.js';
@@ -148,14 +148,14 @@ export class OAuthController {
     res.redirect(`${this.config.webUrl}/login?${params}`);
   }
 
-  /** Same scope as the refresh cookie: `/auth` (the dev proxy maps it to `/api/auth`). */
+  /** Same scope as the refresh cookie (`/auth`; the dev proxy maps it to `/api/auth`). */
   private stateCookieOptions(): CookieOptions {
     return {
       httpOnly: true,
       // Lax: still sent on the top-level redirect back from the provider
       sameSite: 'lax',
       secure: this.authConfig.cookieSecure,
-      path: REFRESH_COOKIE_PATH,
+      path: this.authConfig.refreshCookiePath,
     };
   }
 }

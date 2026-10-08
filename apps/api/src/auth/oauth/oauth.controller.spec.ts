@@ -12,6 +12,7 @@ const authConfig: AuthConfig = {
   accessTtlSeconds: 900,
   refreshTtlDays: 7,
   cookieSecure: true,
+  refreshCookiePath: '/auth',
 };
 const config: OAuthConfig = {
   webUrl: 'http://web',

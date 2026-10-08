@@ -64,6 +64,18 @@ export function validateEnv(env: Record<string, unknown>) {
       errors.push(`${id} and ${secret} must be set together`);
     }
   }
+  // Single Docker image: the API under /<API_PREFIX>, the web build on the rest
+  const prefix = env.API_PREFIX;
+  if (
+    prefix !== undefined &&
+    !(typeof prefix === 'string' && /^[a-z0-9-]+$/.test(prefix))
+  ) {
+    errors.push('API_PREFIX must be a path segment like "api" (no slashes)');
+  }
+  if (env.WEB_DIST_DIR !== undefined && !prefix) {
+    // Without a prefix the web routes would clash with the API's
+    errors.push('WEB_DIST_DIR requires API_PREFIX');
+  }
   for (const key of urls) {
     const value = env[key];
     if (

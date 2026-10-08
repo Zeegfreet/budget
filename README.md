@@ -57,7 +57,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando uma categoria pessoal a um grupo, a sua parte já rateada entra no grid, nos cards e no extrato. Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
-| Docker / deploy em containers | ⏳ | ⏳ | O `docker-compose.yml` sobe só o PostgreSQL de desenvolvimento; Dockerfiles da API e do web são o próximo passo, veja [Deploy](#deploy) |
+| Docker / deploy em containers | ✅ | ✅ | Imagem única [`zeegfreet/budget`](https://hub.docker.com/r/zeegfreet/budget) (amd64 + arm64): a API sob `/api` serve também o build do web e aplica as migrations ao subir. Build com `scripts/docker-build.sh`, publicação no Docker Hub por tag `v*` e exemplo com Traefik + Let's Encrypt em `docker-compose.prod.yml`. Veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 
@@ -90,7 +90,8 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 
 - Monorepo **pnpm workspaces** (`pnpm@12`)
 - **Node.js 24**
-- **GitHub Actions** para CI
+- **GitHub Actions** para CI e publicação da imagem
+- **Docker** (imagem única multi-arch no Docker Hub) e **Traefik** como proxy de borda em produção
 
 ## Estrutura do repositório
 
@@ -108,8 +109,13 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 │           ├── hooks/       # hooks compartilhados (ex.: useIsMobile)
 │           ├── lib/         # cliente Axios, QueryClient, dinheiro, itens do menu lateral
 │           └── routes/      # páginas (TanStack Router file-based)
+├── docker/                  # init.sql do Postgres de dev e entrypoint.sh da imagem
+├── scripts/docker-build.sh  # build (e push) da imagem Docker
+├── Dockerfile               # imagem única (API + web)
+├── docker-compose.yml       # PostgreSQL de desenvolvimento
+├── docker-compose.prod.yml  # exemplo de produção (Traefik + app + PostgreSQL)
 ├── plans/                   # planos de implementação
-└── .github/workflows/ci.yml # pipeline de CI
+└── .github/workflows/       # ci.yml (CI) e docker.yml (publicação da imagem)
 ```
 
 ## Rodando localmente
@@ -191,6 +197,9 @@ e abra http://localhost:8025.
 | api | `ACTIVATION_TOKEN_TTL_HOURS` | `72` | Validade do link de ativação |
 | api | `PASSWORD_RESET_TOKEN_TTL_MINUTES` | `60` | Validade do link de redefinição de senha |
 | api | `OAUTH_CALLBACK_BASE_URL` | `${WEB_URL}/api` | Endereço da API **como o navegador a vê** (mesmo site do web, para os cookies de sessão chegarem ao web). O callback é `<base>/auth/oauth/<github\|google>/callback` |
+| api | `API_PREFIX` | — (`api` na imagem) | Prefixo global das rotas (ex.: `api` → `/api/auth/login`, Swagger em `/api/docs`). Também muda o path do cookie de refresh para `/<prefixo>/auth`. Sem ele (dev e testes), as rotas ficam na raiz e o proxy do Vite tira o `/api` |
+| api | `WEB_DIST_DIR` | — (`/app/web` na imagem) | Diretório do build do web, servido pela API em todos os caminhos fora do prefixo (SPA com fallback para `index.html`). Exige `API_PREFIX` |
+| api | `SKIP_MIGRATIONS` | `false` | Só na imagem Docker: `true` não roda `prisma migrate deploy` ao iniciar o container |
 | web | `VITE_API_URL` | `/api` | URL base da API, embutida no bundle no momento do build |
 
 A API valida as variáveis no boot e não sobe se faltar alguma obrigatória. Modelo em [apps/api/.env.example](apps/api/.env.example).
@@ -319,7 +328,7 @@ Não existe rota para ler ou alterar outro usuário: o perfil é sempre o do tok
 
 ### Proxy reverso e cookies
 
-A API define o cookie de refresh (e o `oauth_state` do login com GitHub/Google) com `Path=/auth`. Atrás de um proxy que publica a API sob `/api`, o navegador enxerga `/api/auth/refresh`, então o proxy precisa reescrever o path do cookie (o Vite já faz isso em dev; no Nginx, `proxy_cookie_path /auth /api/auth;`). Se o web for servido de outra origem (`VITE_API_URL` absoluto), será preciso habilitar CORS com `credentials: true` e origem explícita, nunca `*`.
+A API define o cookie de refresh (e o `oauth_state` do login com GitHub/Google) com `Path=/auth`, ou `Path=/<API_PREFIX>/auth` quando roda com prefixo (caso da imagem Docker, que já responde em `/api` e não depende de reescrita no proxy). Sem prefixo, atrás de um proxy que publica a API sob `/api`, o navegador enxerga `/api/auth/refresh`, então o proxy precisa reescrever o path do cookie (o Vite já faz isso em dev; no Nginx, `proxy_cookie_path /auth /api/auth;`). Se o web for servido de outra origem (`VITE_API_URL` absoluto), será preciso habilitar CORS com `credentials: true` e origem explícita, nunca `*`.
 
 ## Dashboard
 
@@ -563,85 +572,80 @@ O workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) roda em todo pus
 
 - **api**: instala dependências → `prisma generate` → lint → build → testes unitários → `prisma migrate deploy` no banco `budget_test` de um serviço PostgreSQL 17 do job → testes e2e (com `JWT_ACCESS_SECRET` de teste definido no workflow)
 - **web**: instala dependências → gera a árvore de rotas → lint → testes → build
+- **docker**: build da imagem (`linux/amd64`, sem push), para o `Dockerfile` não quebrar sem ninguém ver
 
-Ainda não há etapa de deploy automático. Ela entra junto com os arquivos Docker.
+O workflow [.github/workflows/docker.yml](.github/workflows/docker.yml) publica a imagem no Docker Hub ao criar uma tag `v*` (ou manualmente, em **Actions → Docker → Run workflow**): build multi-arch (`linux/amd64` e `linux/arm64`) com as tags `1.2.3`, `1.2`, `latest` e `sha-<commit>`. Ele precisa dos secrets do repositório **`DOCKERHUB_USERNAME`** (`zeegfreet`) e **`DOCKERHUB_TOKEN`** (token criado em Docker Hub → Account settings → Personal access tokens, com permissão de escrita).
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0   # dispara a publicação de zeegfreet/budget:1.0.0, :1.0 e :latest
+```
 
 ## Deploy
 
-> **Status:** os arquivos Docker (`Dockerfile` da API e do web, `docker-compose.yml`) ainda não existem. Esta seção descreve o deploy manual atual e será substituída pelo fluxo com containers quando eles forem criados.
-
-### Visão geral da arquitetura de produção
+### Visão geral
 
 ```
-navegador ──► proxy reverso (ex.: Nginx)
-               ├── /        → arquivos estáticos do web (apps/web/dist)
-               └── /api/*   → API NestJS :3000 (removendo o prefixo /api)
-                               └── PostgreSQL
+navegador ──► Traefik (HTTPS, Let's Encrypt)
+               └── tudo → container zeegfreet/budget :3000
+                           ├── /api/*  → API NestJS (prefixo global, Swagger em /api/docs)
+                           └── /*      → build do web (SPA, fallback para index.html)
+                                         └── PostgreSQL
 ```
 
-A API ainda **não tem CORS habilitado nem prefixo global**. Por isso, em produção o frontend e a API devem ficar sob o mesmo domínio, com um proxy reverso que remove o `/api`, igual ao proxy do Vite em desenvolvimento.
+A imagem é **única**: a API roda com `API_PREFIX=api` e serve o build do web (`WEB_DIST_DIR=/app/web`) em todos os outros caminhos. Como web e API ficam na mesma origem e o cookie de refresh já sai com `Path=/api/auth`, o proxy de borda (Traefik) só termina o TLS e encaminha tudo para a porta 3000, sem reescrever caminhos nem cookies. Ao iniciar, o container roda `prisma migrate deploy` (desligue com `SKIP_MIGRATIONS=true`) e depois `node dist/main.js`; o `HEALTHCHECK` consulta `GET /api`.
 
-### API
+A imagem é baseada em `node:24-bookworm-slim`, roda como o usuário `node` e já define `NODE_ENV=production` (cookies `Secure` e `SMTP_HOST` obrigatório), `PORT=3000`, `API_PREFIX=api` e `WEB_DIST_DIR=/app/web`. O `prisma` (CLI) é dependência de produção da API por causa das migrations no start.
+
+### Build da imagem
+
+[scripts/docker-build.sh](scripts/docker-build.sh):
 
 ```bash
-pnpm install --frozen-lockfile
-cd apps/api
-pnpm prisma generate --config prisma7.config.ts
-pnpm build
+./scripts/docker-build.sh                # build local (plataforma da máquina), tag = git describe
+./scripts/docker-build.sh dev            # build local com a tag zeegfreet/budget:dev
 
-export DATABASE_URL="postgresql://budget:<senha>@db.exemplo.com:5432/budget"   # ?sslmode=require se o servidor exigir TLS
-export JWT_ACCESS_SECRET="<valor longo e aleatório>" # trocar invalida todas as sessões de acesso
-export NODE_ENV=production                           # cookies com Secure
-export TRUST_PROXY=1                                 # atrás do Nginx: rate limit por IP real
-export PORT=3000
-export WEB_URL="https://budget.exemplo.com"          # destino do callback do OAuth
-# export OAUTH_CALLBACK_BASE_URL=...                 # padrão: $WEB_URL/api (a API atrás do Nginx)
-export GITHUB_CLIENT_ID="..." GITHUB_CLIENT_SECRET="..."   # opcionais, sempre em pares
-export GOOGLE_CLIENT_ID="..." GOOGLE_CLIENT_SECRET="..."
-export SMTP_HOST="smtp.exemplo.com" SMTP_PORT=587       # obrigatório em produção (links de ativação)
-export SMTP_USER="..." SMTP_PASS="..."                 # se o servidor exigir autenticação
-export MAIL_FROM="Budget <no-reply@budget.exemplo.com>"
-pnpm prisma migrate deploy --config prisma7.config.ts  # aplica migrations pendentes (rode a cada deploy)
-pnpm start:prod                                        # node dist/main
+docker login                             # uma vez, com o usuário zeegfreet
+./scripts/docker-build.sh 1.0.0 --push   # amd64 + arm64, publica :1.0.0 e :latest
 ```
 
-### Web
+Sem `--push`, a imagem é carregada no Docker local (só a plataforma da máquina, pois imagens multi-plataforma não podem ser carregadas). Com `--push`, o script cria (uma vez) o builder `budget-builder` do buildx e publica as duas arquiteturas. `IMAGE` e `PLATFORMS` sobrescrevem os padrões. Na prática, prefira publicar pela tag `v*` (workflow acima).
+
+Para testar a imagem localmente contra o Postgres do `docker compose` e o Mailpit:
 
 ```bash
-cd apps/web
-pnpm build            # gera apps/web/dist
+docker run --rm -p 3000:3000 \
+  -e DATABASE_URL=postgresql://budget:budget@host.docker.internal:5432/budget \
+  -e JWT_ACCESS_SECRET=dev-secret \
+  -e SMTP_HOST=host.docker.internal -e SMTP_PORT=1025 \
+  -e COOKIE_SECURE=false -e WEB_URL=http://localhost:3000 \
+  zeegfreet/budget:dev
+# http://localhost:3000 (web) e http://localhost:3000/api/docs (Swagger)
 ```
 
-Sirva `apps/web/dist` como site estático. Como é uma SPA, configure o fallback para `index.html` (no Nginx: `try_files $uri /index.html;`).
+### Produção com Traefik
 
-### Exemplo de Nginx
+[docker-compose.prod.yml](docker-compose.prod.yml) é um exemplo completo: Traefik v3 (HTTP → HTTPS e certificado Let's Encrypt), a imagem `zeegfreet/budget` e um PostgreSQL 17 com volume. No servidor (com o DNS do domínio apontando para ele e as portas 80/443 abertas):
 
-```nginx
-server {
-  listen 80;
-  root /srv/budget/web;            # conteúdo de apps/web/dist
-
-  location /api/ {
-    proxy_pass http://127.0.0.1:3000/;   # a barra final remove o prefixo /api
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_cookie_path /auth /api/auth;   # o cookie de refresh vem com Path=/auth
-  }
-
-  location / {
-    try_files $uri /index.html;
-  }
-}
+```bash
+cp .env.prod.example .env.prod     # preencha DOMAIN, ACME_EMAIL, senhas, JWT_ACCESS_SECRET, SMTP...
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
+
+O compose define `TRUST_PROXY=1` e `WEB_URL=https://$DOMAIN`. Para atualizar, troque `BUDGET_TAG` (ou use `latest`) e rode `docker compose -f docker-compose.prod.yml --env-file .env.prod pull app && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`. Se o Traefik já existir no servidor, aproveite só o serviço `app` e as labels `traefik.http.routers.budget.*` (ajustando o nome do entrypoint e do certresolver).
+
+### Sem Docker
+
+Também é possível rodar sem a imagem: `prisma generate`, `pnpm build` nos dois apps e, na API, `prisma migrate deploy` e `node dist/main.js` com `API_PREFIX=api` e `WEB_DIST_DIR` apontando para `apps/web/dist` (mesmo esquema da imagem). Com um proxy que tire o `/api` (sem `API_PREFIX`), lembre de reescrever o path do cookie, veja [Proxy reverso e cookies](#proxy-reverso-e-cookies).
 
 ### Checklist de produção
 
 - [ ] `DATABASE_URL` apontando para um PostgreSQL de produção (gerenciado ou com volume persistente), com backup (`pg_dump` agendado ou o backup do serviço) e usuário com senha forte
-- [ ] `prisma migrate deploy` executado a cada deploy, antes de iniciar a API
+- [ ] Migrations: rodam no start do container; com várias réplicas, deixe só uma rodar (ou `SKIP_MIGRATIONS=true` e um job separado)
 - [ ] Credenciais reais do `@nestjs/observe` em `app.module.ts` (hoje estão com placeholders), de preferência lidas de variáveis de ambiente
-- [ ] HTTPS no proxy reverso (obrigatório para o cookie de sessão `Secure`)
-- [ ] `JWT_ACCESS_SECRET` forte e fora do repositório; `NODE_ENV=production` e `TRUST_PROXY` definidos
-- [ ] `proxy_cookie_path /auth /api/auth;` no Nginx (senão o refresh e o callback do OAuth não recebem os cookies)
+- [ ] HTTPS no Traefik (obrigatório para o cookie de sessão `Secure`)
+- [ ] `JWT_ACCESS_SECRET` forte e fora do repositório (`.env.prod` nunca vai para o Git); `TRUST_PROXY` definido
 - [ ] `WEB_URL` com o domínio real e os callbacks `https://<domínio>/api/auth/oauth/{github,google}/callback` cadastrados no GitHub e no Google; segredos OAuth fora do repositório
-- [ ] SMTP configurado (`SMTP_HOST`, credenciais, `MAIL_FROM` de um domínio com SPF/DKIM) e `WEB_URL` com o domínio real, pois os links dos e-mails usam ele
-- [ ] Avaliar se o Swagger (`/docs`) deve ficar exposto em produção
+- [ ] SMTP configurado (`SMTP_HOST`, credenciais, `MAIL_FROM` de um domínio com SPF/DKIM), pois os links dos e-mails usam `WEB_URL`
+- [ ] Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` cadastrados no GitHub para a publicação por tag
+- [ ] Avaliar se o Swagger (`/api/docs`) deve ficar exposto em produção

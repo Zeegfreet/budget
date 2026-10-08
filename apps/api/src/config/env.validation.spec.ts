@@ -27,6 +27,8 @@ describe('validateEnv', () => {
       SMTP_PASS: 'smtp-secret',
       ACTIVATION_TOKEN_TTL_HOURS: '48',
       PASSWORD_RESET_TOKEN_TTL_MINUTES: '30',
+      API_PREFIX: 'api',
+      WEB_DIST_DIR: '/app/web',
     };
     expect(validateEnv(env)).toEqual(env);
   });
@@ -61,6 +63,8 @@ describe('validateEnv', () => {
     ['SMTP_SECURE', '1'],
     ['ACTIVATION_TOKEN_TTL_HOURS', '-1'],
     ['PASSWORD_RESET_TOKEN_TTL_MINUTES', '0'],
+    ['API_PREFIX', '/api'],
+    ['API_PREFIX', 'api/v1'],
   ])('rejects %s=%s', (key, value) => {
     expect(() => validateEnv({ ...valid, [key]: value })).toThrow(key);
   });
@@ -74,6 +78,12 @@ describe('validateEnv', () => {
     [{ SMTP_USER: 'budget' }, 'SMTP_USER and SMTP_PASS'],
   ])('requires both credentials of a pair (%o)', (extra, message) => {
     expect(() => validateEnv({ ...valid, ...extra })).toThrow(message);
+  });
+
+  it('requires API_PREFIX to serve the web build', () => {
+    expect(() => validateEnv({ ...valid, WEB_DIST_DIR: '/app/web' })).toThrow(
+      'WEB_DIST_DIR requires API_PREFIX',
+    );
   });
 
   it('requires SMTP_HOST in production', () => {

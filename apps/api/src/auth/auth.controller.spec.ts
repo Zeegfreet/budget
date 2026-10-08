@@ -8,6 +8,7 @@ const config: AuthConfig = {
   accessTtlSeconds: 900,
   refreshTtlDays: 7,
   cookieSecure: true,
+  refreshCookiePath: '/auth',
 };
 const authUser = { id: 1, email: 'ana@example.com', name: 'Ana Souza' };
 const result = {

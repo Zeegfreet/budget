@@ -1,0 +1,21 @@
+# Only what the image build needs (see Dockerfile)
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+.claude
+**/.claude
+**/.agents
+**/.windsurf
+**/.tanstack
+apps/api/src/prisma/generated
+plans
+docker-compose*.yml
+*.md
+**/*.log
+.DS_Store

@@ -32,6 +32,7 @@ describe('JwtStrategy', () => {
     accessTtlSeconds: 900,
     refreshTtlDays: 7,
     cookieSecure: false,
+    refreshCookiePath: '/auth',
   });
 
   it('maps the token subject to the principal', () => {

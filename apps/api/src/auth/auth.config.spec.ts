@@ -19,6 +19,7 @@ describe('authConfigFactory', () => {
       accessTtlSeconds: 900,
       refreshTtlDays: 7,
       cookieSecure: false,
+      refreshCookiePath: '/auth',
     });
   });
 
@@ -29,6 +30,13 @@ describe('authConfigFactory', () => {
       authConfigFactory(configService({ ...prod, COOKIE_SECURE: 'false' }))
         .cookieSecure,
     ).toBe(false);
+  });
+
+  it('scopes the refresh cookie under the API prefix', () => {
+    const config = authConfigFactory(
+      configService({ JWT_ACCESS_SECRET: 's', API_PREFIX: 'api' }),
+    );
+    expect(config.refreshCookiePath).toBe('/api/auth');
   });
 
   it('reads custom TTLs', () => {

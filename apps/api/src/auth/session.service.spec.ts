@@ -13,6 +13,7 @@ const config: AuthConfig = {
   accessTtlSeconds: 900,
   refreshTtlDays: 7,
   cookieSecure: false,
+  refreshCookiePath: '/auth',
 };
 
 const SESSION_ID = '0b6b7c1e-6a0e-4f37-9a39-3e2b1c9d8a10';
