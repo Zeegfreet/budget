@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { GroupTransactionService } from './group-transaction.service.js';
 
@@ -18,6 +22,7 @@ describe('GroupTransactionService', () => {
     groupTransaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
@@ -205,5 +210,91 @@ describe('GroupTransactionService', () => {
     expect(balance.transfers).toEqual([
       { fromMemberId: 2, toMemberId: 1, amountCents: 500 },
     ]);
+  });
+
+  describe('setSeriesEnd', () => {
+    const shares = [
+      { memberId: 1, amountCents: 500 },
+      { memberId: 2, amountCents: 500 },
+    ];
+
+    beforeEach(() => {
+      prisma.groupTransaction.findUniqueOrThrow.mockResolvedValue({
+        ...row(6),
+        splitMethodId: 3,
+        shares,
+      });
+    });
+
+    it('extends the series with unpaid copies of the last occurrence', async () => {
+      prisma.groupTransaction.findFirst.mockResolvedValue(
+        row(5, { seriesId: 's1' }),
+      );
+      prisma.groupTransaction.findMany.mockResolvedValueOnce([
+        { id: 5, month: '2026-10', paidByMemberId: 1 },
+        { id: 6, month: '2026-11', paidByMemberId: null },
+      ]);
+
+      await service.setSeriesEnd(7, 5, 5, '2026-12');
+
+      expect(prisma.groupTransaction.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ where: { groupId: 5, seriesId: 's1' } }),
+      );
+      expect(prisma.groupTransaction.create).toHaveBeenCalledWith({
+        data: {
+          groupId: 5,
+          kind: 'EXPENSE',
+          description: 'Aluguel',
+          month: '2026-12',
+          amountCents: 1000,
+          splitMethodId: 3,
+          createdById: 7,
+          seriesId: 's1',
+          shares: { create: shares },
+        },
+      });
+    });
+
+    it('shortens the series deleting the unpaid occurrences after the end', async () => {
+      prisma.groupTransaction.findFirst.mockResolvedValue(
+        row(5, { seriesId: 's1' }),
+      );
+      prisma.groupTransaction.findMany.mockResolvedValueOnce([
+        { id: 5, month: '2026-10', paidByMemberId: null },
+        { id: 6, month: '2026-11', paidByMemberId: null },
+      ]);
+
+      await service.setSeriesEnd(7, 5, 5, '2026-10');
+
+      expect(prisma.groupTransaction.deleteMany).toHaveBeenCalledWith({
+        where: { groupId: 5, id: { in: [6] } },
+      });
+      expect(prisma.groupTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it('fails with 409 when a paid occurrence falls after the end', async () => {
+      prisma.groupTransaction.findFirst.mockResolvedValue(
+        row(5, { seriesId: 's1' }),
+      );
+      prisma.groupTransaction.findMany.mockResolvedValueOnce([
+        { id: 5, month: '2026-10', paidByMemberId: null },
+        { id: 6, month: '2026-11', paidByMemberId: 2 },
+      ]);
+
+      await expect(service.setSeriesEnd(7, 5, 5, '2026-10')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.groupTransaction.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a non-member', async () => {
+      prisma.groupMember.findFirst.mockResolvedValue(null);
+
+      await expect(service.setSeriesEnd(7, 5, 5, '2026-12')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.groupTransaction.findFirst).not.toHaveBeenCalled();
+    });
   });
 });

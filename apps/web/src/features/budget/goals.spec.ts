@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeCategory, makeGroup } from '@/test/budget'
+import { makeCategory, makeGroup, makeLine } from '@/test/budget'
 import { buildGoalsOverview, formatPermille, goalUsage } from './goals'
 import { buildBudgetTable } from './rows'
 
@@ -61,7 +61,15 @@ describe('buildGoalsOverview', () => {
     '5:2026-10': 500000,
     '5:2026-11': 500000,
   }
-  const table = buildBudgetTable(groups, ['2026-10', '2026-11'], (id, m) => values[`${id}:${m}`] ?? 0, 0)
+  // One launch row per category, with the category's id
+  const lines = [1, 2, 4, 5].map((id) => makeLine(id, id, []))
+  const table = buildBudgetTable(
+    groups,
+    lines,
+    ['2026-10', '2026-11'],
+    { line: (id, m) => values[`${id}:${m}`] ?? 0, groupShare: () => 0 },
+    0,
+  )
   const overview = buildGoalsOverview(table)
 
   it('lists the active expense types with a goal, for the month and the period', () => {

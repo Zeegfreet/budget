@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { CircleCheckIcon, CreditCardIcon, PencilIcon, RepeatIcon, Trash2Icon } from 'lucide-react'
+import { CircleCheckIcon, CreditCardIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 import { MoneyText } from '@/components/atoms'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -7,10 +7,12 @@ import { transactionTitle } from '@/features/transactions/statement'
 import type { Transaction } from '@/features/transactions/types'
 import { cn } from '@/lib/utils'
 import { RowActions, type RowAction } from './RowActions'
+import { SeriesBadge } from './SeriesBadge'
 
 /** What the user asked to do with a transaction; the page handles it. */
 export type TransactionRowAction = {
-  type: 'toggle-realized' | 'realize' | 'edit' | 'delete'
+  /** `series` opens the range of its recurrence (extend or shorten it) */
+  type: 'toggle-realized' | 'realize' | 'edit' | 'delete' | 'series'
   transaction: Transaction
 }
 
@@ -61,12 +63,7 @@ export function TransactionRow({
           <div className="min-w-0 flex-1 pl-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className={cn('truncate', realized && 'text-muted-foreground')}>{title}</span>
-              {t.series && (
-                <Badge variant="secondary" className="shrink-0" title="Lançamento recorrente">
-                  <RepeatIcon aria-hidden />
-                  {t.series.index}/{t.series.count}
-                </Badge>
-              )}
+              {t.series && <SeriesBadge series={t.series} title={title} onClick={action('series')} />}
               {showPaymentMethod && t.paymentMethod && (
                 <Badge variant="outline" className="shrink-0" asChild>
                   <Link

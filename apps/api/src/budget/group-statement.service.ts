@@ -7,11 +7,11 @@ import type {
   GroupStatementItemDto,
 } from './dto/group-statement.dto.js';
 import { linkedCategoryId } from './group-shares.js';
+import { seriesPositions } from './series.js';
 
 const categorySelect = {
   id: true,
   name: true,
-  dueDay: true,
   active: true,
   group: { select: { id: true, name: true, kind: true, active: true } },
 } satisfies Prisma.CategorySelect;
@@ -162,30 +162,12 @@ export class GroupStatementService {
 
   /** Position of each occurrence in its series (e.g. 3 of 12), by series and id. */
   private async seriesPositions(seriesIds: string[]) {
-    const positions = new Map<
-      string,
-      Map<number, { index: number; count: number }>
-    >();
-    if (seriesIds.length === 0) return positions;
-    const occurrences = await this.prisma.groupTransaction.findMany({
-      where: { seriesId: { in: [...new Set(seriesIds)] } },
-      orderBy: [{ month: 'asc' }, { id: 'asc' }],
-      select: { id: true, seriesId: true },
-    });
-    const idsBySeries = new Map<string, number[]>();
-    for (const o of occurrences) {
-      idsBySeries.set(o.seriesId!, [
-        ...(idsBySeries.get(o.seriesId!) ?? []),
-        o.id,
-      ]);
-    }
-    for (const [seriesId, ids] of idsBySeries) {
-      if (ids.length < 2) continue;
-      positions.set(
-        seriesId,
-        new Map(ids.map((id, i) => [id, { index: i + 1, count: ids.length }])),
-      );
-    }
-    return positions;
+    if (seriesIds.length === 0) return seriesPositions([]);
+    return seriesPositions(
+      await this.prisma.groupTransaction.findMany({
+        where: { seriesId: { in: [...new Set(seriesIds)] } },
+        select: { id: true, seriesId: true, month: true },
+      }),
+    );
   }
 }

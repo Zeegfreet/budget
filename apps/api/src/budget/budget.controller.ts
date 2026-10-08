@@ -23,13 +23,14 @@ import {
 } from '../auth/decorators/current-user.decorator.js';
 import { BudgetService } from './budget.service.js';
 import {
+  BudgetLineDto,
   BudgetSummaryDto,
   CategoryGroupDto,
   MonthlyEntryDto,
 } from './dto/budget-responses.dto.js';
 import { InitialBalanceDto } from './dto/initial-balance.dto.js';
 import { MonthRangeQueryDto } from './dto/month-range-query.dto.js';
-import { SaveEntriesDto } from './dto/save-entries.dto.js';
+import { SaveLinesDto } from './dto/save-lines.dto.js';
 import { SummaryQueryDto } from './dto/summary-query.dto.js';
 
 @ApiTags('budget')
@@ -55,17 +56,29 @@ export class BudgetController {
     return this.budgetService.entries(user.id, from, to);
   }
 
-  @Put('entries')
+  @Get('lines')
+  @ApiOkResponse({ type: [BudgetLineDto] })
+  @ApiBadRequestResponse()
+  lines(
+    @CurrentUser() user: JwtUser,
+    @Query() { from, to }: MonthRangeQueryDto,
+  ): Promise<BudgetLineDto[]> {
+    return this.budgetService.lines(user.id, from, to);
+  }
+
+  @Put('lines')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()
   @ApiBadRequestResponse()
-  @ApiNotFoundResponse({ description: 'A category is not the user’s' })
-  @ApiConflictResponse({ description: 'A cell has several transactions' })
-  saveEntries(
+  @ApiNotFoundResponse({ description: 'A launch is not the user’s' })
+  @ApiConflictResponse({
+    description: 'The row has several transactions in the month',
+  })
+  saveLines(
     @CurrentUser() user: JwtUser,
-    @Body() { entries }: SaveEntriesDto,
+    @Body() { cells }: SaveLinesDto,
   ): Promise<void> {
-    return this.budgetService.saveEntries(user.id, entries);
+    return this.budgetService.saveLines(user.id, cells);
   }
 
   @Get('summary')

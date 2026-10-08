@@ -22,7 +22,8 @@ interface Transaction {
   realizedCents: number | null;
   dueDay: number | null;
   paymentMethod: PaymentMethodBody | null;
-  category: { id: number; dueDay: number | null };
+  ownDueDay: number | null;
+  category: { id: number };
 }
 
 interface Invoice {
@@ -172,11 +173,11 @@ describe('Payment methods (e2e)', () => {
   describe('transactions', () => {
     it('uses the method’s due day and keeps it in the whole series', async () => {
       const moradia = await category(ana, 'Moradia');
-      await ana.patch(`/budget/categories/${moradia}`).send({ dueDay: 5 });
 
       const res = await createTransaction(ana, {
         categoryId: moradia,
         plannedCents: 10000,
+        dueDay: 5,
         repeatMonths: 3,
         paymentMethodId: card.id,
       }).expect(201);
@@ -184,11 +185,11 @@ describe('Payment methods (e2e)', () => {
       expect(created.every((t) => t.paymentMethod?.id === card.id)).toBe(true);
       expect(created[0]).toMatchObject({
         dueDay: 12,
-        category: { dueDay: 5 },
+        ownDueDay: 5,
         paymentMethod: { name: 'Cartão Americanas', dueDay: 12 },
       });
 
-      // Removing it from this and the following ones goes back to the category's day
+      // Removing it from this and the following ones goes back to the launch's day
       const [, second] = created;
       const updated = await ana
         .patch(`/budget/transactions/${second.id}`)

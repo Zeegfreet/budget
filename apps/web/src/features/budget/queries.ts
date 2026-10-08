@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query'
-import { fetchCategories, fetchEntries, fetchGroupStatements, fetchSummary } from './api'
+import { fetchCategories, fetchEntries, fetchGroupStatements, fetchLines, fetchSummary } from './api'
 import type { Month } from './types'
 
 export const budgetQueries = {
@@ -14,6 +14,11 @@ export const budgetQueries = {
     queryOptions({
       queryKey: [...budgetQueries.all(), 'entries', { from, to }],
       queryFn: () => fetchEntries(from, to),
+    }),
+  lines: (from: Month, to: Month) =>
+    queryOptions({
+      queryKey: [...budgetQueries.all(), 'lines', { from, to }],
+      queryFn: () => fetchLines(from, to),
     }),
   summary: (month: Month) =>
     queryOptions({

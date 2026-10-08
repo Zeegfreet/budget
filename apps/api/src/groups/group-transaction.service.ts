@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { RecurrenceScope } from '../budget/dto/transaction.dto.js';
 import { addMonths } from '../budget/month.js';
+import { planSeriesEnd, seriesPositions } from '../budget/series.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -174,6 +175,75 @@ export class GroupTransactionService {
     });
   }
 
+  /**
+   * Moves the series' last month to `untilMonth`: later months get copies of
+   * the last occurrence kept (pending, same shares), or the unpaid occurrences
+   * after it go. A single transaction becomes a series when extended.
+   */
+  async setSeriesEnd(
+    userId: number,
+    groupId: number,
+    id: number,
+    untilMonth: string,
+  ): Promise<GroupTransactionDto[]> {
+    await assertMember(this.prisma, userId, groupId);
+    const current = await this.find(groupId, id);
+    const occurrences = current.seriesId
+      ? await this.prisma.groupTransaction.findMany({
+          where: { groupId, seriesId: current.seriesId },
+          select: { id: true, month: true, paidByMemberId: true },
+        })
+      : [{ id, month: current.month, paidByMemberId: current.paidBy?.id }];
+    const plan = planSeriesEnd(
+      occurrences.map((o) => ({
+        id: o.id,
+        month: o.month,
+        settled: o.paidByMemberId != null,
+      })),
+      untilMonth,
+    );
+    const template = await this.prisma.groupTransaction.findUniqueOrThrow({
+      where: { id: plan.templateId },
+      include: { shares: { select: { memberId: true, amountCents: true } } },
+    });
+    const seriesId =
+      current.seriesId ?? (plan.addMonths.length > 0 ? randomUUID() : null);
+    await this.prisma.$transaction([
+      ...(seriesId && !current.seriesId
+        ? [
+            this.prisma.groupTransaction.update({
+              where: { id },
+              data: { seriesId },
+            }),
+          ]
+        : []),
+      this.prisma.groupTransaction.deleteMany({
+        where: { groupId, id: { in: plan.removeIds } },
+      }),
+      ...plan.addMonths.map((month) =>
+        this.prisma.groupTransaction.create({
+          data: {
+            groupId,
+            kind: template.kind,
+            description: template.description,
+            month,
+            amountCents: template.amountCents,
+            splitMethodId: template.splitMethodId,
+            createdById: userId,
+            seriesId,
+            shares: { create: template.shares },
+          },
+        }),
+      ),
+    ]);
+    const rows = await this.prisma.groupTransaction.findMany({
+      where: seriesId ? { groupId, seriesId } : { groupId, id },
+      orderBy: [{ month: 'asc' }, { id: 'asc' }],
+      select: groupTransactionSelect,
+    });
+    return this.present(groupId, rows);
+  }
+
   /** Records who paid (or received) it; `null` makes it pending again. */
   async setPayment(
     userId: number,
@@ -302,37 +372,24 @@ export class GroupTransactionService {
     const seriesIds = [
       ...new Set(rows.flatMap((r) => (r.seriesId ? [r.seriesId] : []))),
     ];
-    const occurrences =
+    const positions = seriesPositions(
       seriesIds.length === 0
         ? []
         : await this.prisma.groupTransaction.findMany({
             where: { groupId, seriesId: { in: seriesIds } },
-            orderBy: [{ month: 'asc' }, { id: 'asc' }],
-            select: { id: true, seriesId: true },
-          });
-    const idsBySeries = new Map<string, number[]>();
-    for (const o of occurrences) {
-      idsBySeries.set(o.seriesId!, [
-        ...(idsBySeries.get(o.seriesId!) ?? []),
-        o.id,
-      ]);
-    }
+            select: { id: true, seriesId: true, month: true },
+          }),
+    );
 
-    return rows.map(({ seriesId, paidBy, shares, ...row }) => {
-      const ids = seriesId ? idsBySeries.get(seriesId) : undefined;
-      return {
-        ...row,
-        paidBy: paidBy ? { memberId: paidBy.id, name: paidBy.user.name } : null,
-        series:
-          ids && ids.length > 1
-            ? { index: ids.indexOf(row.id) + 1, count: ids.length }
-            : null,
-        shares: shares.map((s) => ({
-          memberId: s.member.id,
-          name: s.member.user.name,
-          amountCents: s.amountCents,
-        })),
-      };
-    });
+    return rows.map(({ seriesId, paidBy, shares, ...row }) => ({
+      ...row,
+      paidBy: paidBy ? { memberId: paidBy.id, name: paidBy.user.name } : null,
+      series: (seriesId && positions.get(seriesId)?.get(row.id)) || null,
+      shares: shares.map((s) => ({
+        memberId: s.member.id,
+        name: s.member.user.name,
+        amountCents: s.amountCents,
+      })),
+    }));
   }
 }

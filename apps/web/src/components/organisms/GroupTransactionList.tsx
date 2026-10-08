@@ -1,13 +1,14 @@
-import { CircleCheckIcon, PencilIcon, RepeatIcon, Trash2Icon, Undo2Icon } from 'lucide-react'
+import { CircleCheckIcon, PencilIcon, Trash2Icon, Undo2Icon } from 'lucide-react'
 import { MoneyText } from '@/components/atoms'
-import { RowActions, type RowAction } from '@/components/molecules'
+import { RowActions, SeriesBadge, type RowAction } from '@/components/molecules'
 import { Badge } from '@/components/ui/badge'
 import type { EntryKind } from '@/features/budget/types'
 import type { GroupTransaction } from '@/features/groups/types'
 
 /** What the user asked to do with a group transaction; the page handles it. */
 export interface GroupTransactionAction {
-  type: 'edit' | 'pay' | 'unpay' | 'delete'
+  /** `series` opens the range of its recurrence (extend or shorten it) */
+  type: 'edit' | 'pay' | 'unpay' | 'delete' | 'series'
   transaction: GroupTransaction
 }
 
@@ -85,12 +86,7 @@ function GroupTransactionRow({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate">{t.description}</span>
-              {t.series && (
-                <Badge variant="secondary" className="shrink-0" title="Lançamento recorrente">
-                  <RepeatIcon aria-hidden />
-                  {t.series.index}/{t.series.count}
-                </Badge>
-              )}
+              {t.series && <SeriesBadge series={t.series} title={t.description} onClick={action('series')} />}
             </div>
             <p className="text-xs text-muted-foreground">
               <span className="font-medium">{t.splitMethod?.name ?? 'Regra excluída'}</span>

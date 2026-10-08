@@ -8,7 +8,6 @@ import {
   IsString,
   Length,
   Max,
-  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -82,26 +81,9 @@ export class CreateCategoryDto {
   @IsString()
   @Length(1, MAX_NAME_LENGTH)
   name: string;
-
-  @ApiPropertyOptional({
-    example: 'Apartamento do centro',
-    maxLength: MAX_DESCRIPTION_LENGTH,
-  })
-  @IsOptional()
-  @Transform(trimToNull)
-  @IsString()
-  @MaxLength(MAX_DESCRIPTION_LENGTH)
-  description?: string | null;
-
-  @ApiPropertyOptional({ example: 10, description: 'Due day of the month' })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(31)
-  dueDay?: number | null;
 }
 
-/** Body of `PATCH /budget/categories/:id`. `null` clears an optional field. */
+/** Body of `PATCH /budget/categories/:id`. */
 export class UpdateCategoryDto {
   @ApiPropertyOptional({ example: 'Aluguel' })
   @IsPresent()
@@ -109,20 +91,6 @@ export class UpdateCategoryDto {
   @IsString()
   @Length(1, MAX_NAME_LENGTH)
   name?: string;
-
-  @ApiPropertyOptional({ example: 'Apartamento do centro', nullable: true })
-  @IsOptional()
-  @Transform(trimToNull)
-  @IsString()
-  @MaxLength(MAX_DESCRIPTION_LENGTH)
-  description?: string | null;
-
-  @ApiPropertyOptional({ example: 10, nullable: true })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(31)
-  dueDay?: number | null;
 
   @ApiPropertyOptional({
     description: 'false hides the category (keeps values)',

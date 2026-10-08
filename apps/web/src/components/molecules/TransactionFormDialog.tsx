@@ -17,6 +17,7 @@ import type { CategoryGroup, EntryKind, Month } from '@/features/budget/types'
 import { selectableMethods } from '@/features/payment-methods/labels'
 import type { PaymentMethod } from '@/features/payment-methods/types'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
+import { parseWhole } from '@/lib/numbers'
 import { FormField } from './FormField'
 import { PaymentMethodSelect } from './PaymentMethodSelect'
 
@@ -30,6 +31,8 @@ export interface TransactionFormValues {
   plannedCents: number
   /** 1 when not recurring */
   repeatMonths: number
+  /** Day of the month it is due (1–31) */
+  dueDay: number | null
   /** Expenses only; always `null` for incomes */
   paymentMethodId: number | null
 }
@@ -46,6 +49,10 @@ interface TransactionFormDialogProps {
   paymentMethods?: PaymentMethod[]
   /** Editing: the current values, and no recurrence fields */
   initial?: Omit<TransactionFormValues, 'repeatMonths'>
+  /** Creating: the category chosen up front */
+  defaultCategoryId?: number
+  /** Overrides the dialog's description */
+  note?: string
   /** Rejects to show `errorMessage(error)` */
   onSubmit: (values: TransactionFormValues) => Promise<void>
   errorMessage: (error: unknown) => string
@@ -65,7 +72,7 @@ export function TransactionFormDialog({ open, onOpenChange, ...props }: Transact
   )
 }
 
-type Errors = Partial<Record<'categoryId' | 'description' | 'plannedCents' | 'repeatMonths', string>>
+type Errors = Partial<Record<'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'repeatMonths', string>>
 
 function TransactionForm({
   kind,
@@ -73,6 +80,8 @@ function TransactionForm({
   month,
   paymentMethods = [],
   initial,
+  defaultCategoryId,
+  note: dialogNote,
   onSubmit,
   errorMessage,
   onDone,
@@ -83,9 +92,10 @@ function TransactionForm({
     .map((g) => ({ ...g, categories: g.categories.filter((c) => c.active) }))
     .filter((g) => g.categories.length > 0)
 
-  const [categoryId, setCategoryId] = useState(initial?.categoryId.toString() ?? '')
+  const [categoryId, setCategoryId] = useState((initial?.categoryId ?? defaultCategoryId)?.toString() ?? '')
   const [note, setNote] = useState(initial?.description ?? '')
   const [amount, setAmount] = useState(initial ? formatAmount(initial.plannedCents) : '')
+  const [dueDay, setDueDay] = useState(initial?.dueDay?.toString() ?? '')
   const [repeat, setRepeat] = useState(false)
   const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
   const currentMethodId = initial?.paymentMethodId ?? null
@@ -103,12 +113,14 @@ function TransactionForm({
     event.preventDefault()
     const plannedCents = parseMoneyInput(amount)
     const description = note.trim() || null
+    const day = parseWhole(dueDay, 1, 31)
     const next: Errors = {}
     if (!categoryId) next.categoryId = 'Escolha a categoria.'
     if (plannedCents === null || plannedCents <= 0) next.plannedCents = 'Informe um valor maior que zero.'
     if ((description?.length ?? 0) > MAX_TRANSACTION_DESCRIPTION_LENGTH) {
       next.description = `Use até ${MAX_TRANSACTION_DESCRIPTION_LENGTH} caracteres.`
     }
+    if (day === undefined) next.dueDay = 'Informe um dia entre 1 e 31.'
     if (repeat && !validTimes) next.repeatMonths = `Informe de 2 a ${MAX_REPEAT_MONTHS} meses.`
     setErrors(next)
     if (Object.keys(next).length > 0) return
@@ -121,6 +133,7 @@ function TransactionForm({
         description,
         plannedCents: plannedCents!,
         repeatMonths: repeat ? times : 1,
+        dueDay: day!,
         paymentMethodId: kind === 'EXPENSE' ? paymentMethodId : null,
       })
       onDone()
@@ -136,8 +149,7 @@ function TransactionForm({
       <DialogHeader>
         <DialogTitle>{editing ? 'Editar lançamento' : `Nova ${KIND_LABEL[kind]}`}</DialogTitle>
         <DialogDescription>
-          {editing ? 'Lançamento de ' : 'Lançamento previsto para '}
-          {formatMonthLong(month)}.
+          {dialogNote ?? `${editing ? 'Lançamento de ' : 'Lançamento previsto para '}${formatMonthLong(month)}.`}
         </DialogDescription>
       </DialogHeader>
 
@@ -165,7 +177,7 @@ function TransactionForm({
           ))}
         </NativeSelect>
         {options.length === 0 && (
-          <FieldDescription>Nenhuma categoria ativa. Crie uma no Dashboard.</FieldDescription>
+          <FieldDescription>Nenhuma categoria ativa. Crie uma pelo menu Categorias.</FieldDescription>
         )}
         {errors.categoryId && <FieldError>{errors.categoryId}</FieldError>}
       </Field>
@@ -191,6 +203,21 @@ function TransactionForm({
         />
         {errors.plannedCents && <FieldError>{errors.plannedCents}</FieldError>}
       </Field>
+
+      <FormField
+        label="Dia de vencimento (opcional)"
+        description={
+          paymentMethodId !== null
+            ? 'O vencimento do meio de pagamento tem prioridade.'
+            : 'Dia do mês em que vence, de 1 a 31.'
+        }
+        placeholder="Ex.: 10"
+        inputMode="numeric"
+        value={dueDay}
+        onChange={(e) => setDueDay(e.target.value)}
+        error={errors.dueDay}
+        className="w-24"
+      />
 
       {showMethods && (
         <PaymentMethodSelect

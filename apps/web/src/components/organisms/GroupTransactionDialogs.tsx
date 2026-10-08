@@ -4,10 +4,11 @@ import {
   GroupTransactionFormDialog,
   PaymentDialog,
   RecurrenceScopeDialog,
+  SeriesRangeDialog,
   type GroupTransactionFormValues,
 } from '@/components/molecules'
 import type { EntryKind, Month } from '@/features/budget/types'
-import { groupErrorMessage } from '@/features/groups/errors'
+import { groupErrorMessage, groupSeriesErrorMessage } from '@/features/groups/errors'
 import type { useGroupTransactionActions } from '@/features/groups/hooks'
 import { hasFollowing } from '@/features/groups/series'
 import type {
@@ -20,7 +21,7 @@ import type {
 /** The dialog open for the group's transactions, if any */
 export type GroupTransactionDialog =
   | { type: 'create'; kind: EntryKind }
-  | { type: 'edit' | 'pay' | 'delete'; transaction: GroupTransaction }
+  | { type: 'edit' | 'pay' | 'delete' | 'series'; transaction: GroupTransaction }
   /** Asks whether a change to a recurring transaction also applies to the later ones */
   | { type: 'update-scope'; transaction: GroupTransaction; patch: GroupTransactionPatch }
   | { type: 'delete-scope'; transaction: GroupTransaction }
@@ -37,7 +38,7 @@ interface GroupTransactionDialogsProps {
 
 const message = (fallback: string) => (error: unknown) => groupErrorMessage(error, fallback)
 
-/** Create, edit, pay and delete dialogs of a group's transactions. */
+/** Create, edit, pay, delete and recurrence range dialogs of a group's transactions. */
 export function GroupTransactionDialogs({
   dialog,
   onDialogChange,
@@ -133,6 +134,15 @@ export function GroupTransactionDialogs({
         confirmLabel="Excluir"
         onConfirm={() => actions.remove(transaction!.id, 'ONE')}
         errorMessage={message('Não foi possível excluir.')}
+      />
+      <SeriesRangeDialog
+        open={dialog?.type === 'series'}
+        onOpenChange={close}
+        title={transaction?.description ?? ''}
+        series={transaction?.series ?? null}
+        settledLabel="pagos"
+        onSubmit={(untilMonth) => actions.setSeriesEnd(transaction!.id, untilMonth)}
+        errorMessage={groupSeriesErrorMessage}
       />
       <RecurrenceScopeDialog
         open={dialog?.type === 'update-scope'}

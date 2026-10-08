@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { TransactionService } from './transaction.service.js';
 
@@ -10,6 +14,7 @@ describe('TransactionService', () => {
     transaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -34,11 +39,11 @@ describe('TransactionService', () => {
     plannedCents: 1000,
     realizedCents: null,
     seriesId: null,
+    dueDay: null,
     paymentMethod: null,
     category: {
       id: 1,
       name: 'Moradia',
-      dueDay: null,
       active: true,
       position: 0,
       group: group(),
@@ -65,9 +70,7 @@ describe('TransactionService', () => {
   describe('list', () => {
     it('lists the user’s month by due day, then the grid order, without internal fields', async () => {
       const withDay = (id: number, dueDay: number | null, position = 0) =>
-        row(id, {
-          category: { ...row(id).category, id, dueDay, position },
-        });
+        row(id, { dueDay, category: { ...row(id).category, id, position } });
       prisma.transaction.findMany.mockResolvedValueOnce([
         withDay(1, null),
         withDay(2, 20),
@@ -90,10 +93,10 @@ describe('TransactionService', () => {
         series: null,
         paymentMethod: null,
         dueDay: 5,
+        ownDueDay: 5,
         category: {
           id: 4,
           name: 'Moradia',
-          dueDay: 5,
           active: true,
           group: {
             id: 10,
@@ -105,7 +108,7 @@ describe('TransactionService', () => {
       });
     });
 
-    it('uses the payment method’s due day over the category’s', async () => {
+    it('uses the payment method’s due day over the launch’s own', async () => {
       const card = {
         id: 2,
         name: 'Cartão',
@@ -114,7 +117,7 @@ describe('TransactionService', () => {
         active: true,
       };
       const withDay = (id: number, dueDay: number | null) =>
-        row(id, { category: { ...row(id).category, id, dueDay } });
+        row(id, { dueDay });
       prisma.transaction.findMany.mockResolvedValueOnce([
         { ...withDay(1, 5), paymentMethod: card },
         withDay(2, 10),
@@ -135,14 +138,19 @@ describe('TransactionService', () => {
       prisma.transaction.findMany
         .mockResolvedValueOnce([row(12, { seriesId: 's1' })])
         .mockResolvedValueOnce([
-          { id: 11, seriesId: 's1' },
-          { id: 12, seriesId: 's1' },
-          { id: 13, seriesId: 's1' },
+          { id: 13, seriesId: 's1', month: '2026-12' },
+          { id: 11, seriesId: 's1', month: '2026-10' },
+          { id: 12, seriesId: 's1', month: '2026-11' },
         ]);
 
       const [transaction] = await service.list(7, '2026-11');
 
-      expect(transaction.series).toEqual({ index: 2, count: 3 });
+      expect(transaction.series).toEqual({
+        index: 2,
+        count: 3,
+        firstMonth: '2026-10',
+        lastMonth: '2026-12',
+      });
       expect(prisma.transaction.findMany).toHaveBeenLastCalledWith(
         expect.objectContaining({
           where: { userId: 7, seriesId: { in: ['s1'] } },
@@ -160,6 +168,7 @@ describe('TransactionService', () => {
         categoryId: 1,
         month: '2026-10',
         plannedCents: 1000,
+        dueDay: 10,
       });
 
       const ops = prisma.$transaction.mock.calls[0][0];
@@ -171,6 +180,7 @@ describe('TransactionService', () => {
         description: null,
         plannedCents: 1000,
         seriesId: null,
+        dueDay: 10,
         paymentMethodId: null,
       });
     });
@@ -294,7 +304,11 @@ describe('TransactionService', () => {
       );
       prisma.$transaction.mockResolvedValue([row(5)]);
 
-      await service.update(7, 5, { plannedCents: 2000, scope: 'FOLLOWING' });
+      await service.update(7, 5, {
+        plannedCents: 2000,
+        dueDay: null,
+        scope: 'FOLLOWING',
+      });
 
       const ops = prisma.$transaction.mock.calls[0][0];
       expect(ops[1].updateMany).toEqual({
@@ -309,6 +323,7 @@ describe('TransactionService', () => {
           categoryId: undefined,
           description: undefined,
           plannedCents: 2000,
+          dueDay: null,
           paymentMethodId: undefined,
         },
       });
@@ -469,6 +484,121 @@ describe('TransactionService', () => {
         NotFoundException,
       );
       expect(prisma.transaction.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setSeriesEnd', () => {
+    const template = {
+      id: 6,
+      categoryId: 1,
+      description: 'Netflix',
+      plannedCents: 1000,
+      dueDay: 5,
+      paymentMethodId: null,
+      category: active,
+    };
+
+    beforeEach(() => {
+      prisma.transaction.findUniqueOrThrow.mockResolvedValue(template);
+      prisma.$transaction.mockResolvedValue([]);
+    });
+
+    it('extends the series with copies of its last occurrence', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(
+        row(5, { seriesId: 's1' }),
+      );
+      prisma.transaction.findMany.mockResolvedValueOnce([
+        { id: 5, month: '2026-10', realizedCents: 900 },
+        { id: 6, month: '2026-11', realizedCents: null },
+      ]);
+
+      await service.setSeriesEnd(7, 5, '2027-01');
+
+      expect(prisma.transaction.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ where: { userId: 7, seriesId: 's1' } }),
+      );
+      const [remove, ...creates] = prisma.$transaction.mock.calls[0][0];
+      expect(remove.deleteMany.where).toEqual({ userId: 7, id: { in: [] } });
+      expect(
+        creates.map((c: { create: { data: object } }) => c.create.data),
+      ).toEqual(
+        ['2026-12', '2027-01'].map((month) => ({
+          userId: 7,
+          categoryId: 1,
+          month,
+          description: 'Netflix',
+          plannedCents: 1000,
+          seriesId: 's1',
+          dueDay: 5,
+          paymentMethodId: null,
+        })),
+      );
+    });
+
+    it('turns a plain launch into a series', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(row(5));
+
+      await service.setSeriesEnd(7, 5, '2026-11');
+
+      const [join, , create] = prisma.$transaction.mock.calls[0][0];
+      const { seriesId } = join.update.data;
+      expect(seriesId).toEqual(expect.any(String));
+      expect(join.update.where).toEqual({ id: 5 });
+      expect(create.create.data).toMatchObject({ month: '2026-11', seriesId });
+    });
+
+    it('shortens the series deleting the pending occurrences after the end', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(
+        row(5, { seriesId: 's1' }),
+      );
+      prisma.transaction.findMany.mockResolvedValueOnce([
+        { id: 5, month: '2026-10', realizedCents: null },
+        { id: 6, month: '2026-11', realizedCents: null },
+        { id: 7, month: '2026-12', realizedCents: null },
+      ]);
+
+      await service.setSeriesEnd(7, 5, '2026-10');
+
+      expect(prisma.$transaction.mock.calls[0][0]).toEqual([
+        { deleteMany: { where: { userId: 7, id: { in: [6, 7] } } } },
+      ]);
+    });
+
+    it('fails with 409 when a realized occurrence falls after the end', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(
+        row(5, { seriesId: 's1' }),
+      );
+      prisma.transaction.findMany.mockResolvedValueOnce([
+        { id: 5, month: '2026-10', realizedCents: null },
+        { id: 6, month: '2026-11', realizedCents: 900 },
+      ]);
+
+      await expect(service.setSeriesEnd(7, 5, '2026-10')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('fails with 400 extending into an inactive category', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(row(5));
+      prisma.transaction.findUniqueOrThrow.mockResolvedValue({
+        ...template,
+        category: { active: false, group: { active: true } },
+      });
+
+      await expect(service.setSeriesEnd(7, 5, '2026-12')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for another user’s transaction', async () => {
+      prisma.transaction.findFirst.mockResolvedValue(null);
+
+      await expect(service.setSeriesEnd(7, 5, '2026-12')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

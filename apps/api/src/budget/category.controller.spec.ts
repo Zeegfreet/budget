@@ -26,7 +26,7 @@ describe('CategoryController', () => {
     await controller.updateGroup(user, 3, { active: false });
     await controller.deleteGroup(user, 3);
     await controller.createCategory(user, 3, { name: 'Cinema' });
-    await controller.updateCategory(user, 11, { dueDay: null });
+    await controller.updateCategory(user, 11, { active: false });
     await controller.deleteCategory(user, 11);
 
     expect(service.createGroup).toHaveBeenCalledWith(7, {
@@ -39,7 +39,7 @@ describe('CategoryController', () => {
       name: 'Cinema',
     });
     expect(service.updateCategory).toHaveBeenCalledWith(7, 11, {
-      dueDay: null,
+      active: false,
     });
     expect(service.deleteCategory).toHaveBeenCalledWith(7, 11);
   });

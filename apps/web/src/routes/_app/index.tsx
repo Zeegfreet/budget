@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { BudgetGridToolbar, EmptyState, GroupLinkDialog } from '@/components/molecules'
@@ -7,28 +7,30 @@ import {
   BalanceSummary,
   BudgetDialogs,
   BudgetGrid,
+  BudgetLineDialogs,
   GoalsPanel,
   GroupStatementsCard,
   SaveBar,
   type BudgetDialog,
   type GridAction,
+  type LineDialog,
 } from '@/components/organisms'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { authQueries } from '@/features/auth/queries'
-import { saveEntries, updateInitialBalance } from '@/features/budget/api'
-import { categoryErrorMessage } from '@/features/budget/errors'
+import { saveLines, updateInitialBalance } from '@/features/budget/api'
 import { buildGoalsOverview } from '@/features/budget/goals'
-import { useBudgetDraft, useCategoryActions, useUnsavedChangesGuard } from '@/features/budget/hooks'
+import { useBudgetDraft, useCategoryActions, useCategoryToggle, useUnsavedChangesGuard } from '@/features/budget/hooks'
 import { currentMonth, endOfYear, formatMonthLabel, formatMonthLong, monthWindow } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
-import { buildBudgetTable } from '@/features/budget/rows'
+import { buildBudgetTable, lineTarget } from '@/features/budget/rows'
 import type { GroupStatement } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import { useGroupActions } from '@/features/groups/hooks'
 import { statementLink } from '@/features/groups/link'
-import { ApiError } from '@/lib/api/client'
 import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
+import { useTransactionActions } from '@/features/transactions/hooks'
+import { ApiError } from '@/lib/api/client'
 
 /** The grid shows the current month and the 11 after it */
 const WINDOW_MONTHS = 12
@@ -36,9 +38,11 @@ const WINDOW_MONTHS = 12
 export const Route = createFileRoute('/_app/')({
   loader: async ({ context: { queryClient } }) => {
     const months = monthWindow(currentMonth(), WINDOW_MONTHS)
+    const [from, to] = [months[0], months[months.length - 1]]
     await Promise.all([
       queryClient.ensureQueryData(budgetQueries.categories()),
-      queryClient.ensureQueryData(budgetQueries.entries(months[0], months[months.length - 1])),
+      queryClient.ensureQueryData(budgetQueries.entries(from, to)),
+      queryClient.ensureQueryData(budgetQueries.lines(from, to)),
       queryClient.ensureQueryData(budgetQueries.summary(months[0])),
       queryClient.ensureQueryData(budgetQueries.groupStatements(months[0])),
     ])
@@ -54,60 +58,69 @@ function DashboardPage() {
   const queryClient = useQueryClient()
   const { data: user } = useQuery(authQueries.me())
   const { data: groups } = useSuspenseQuery(budgetQueries.categories())
-  const { data: entries } = useSuspenseQuery(
-    budgetQueries.entries(months[0], months[months.length - 1]),
-  )
+  const [from, to] = [months[0], months[months.length - 1]]
+  const { data: entries } = useSuspenseQuery(budgetQueries.entries(from, to))
+  const { data: lines } = useSuspenseQuery(budgetQueries.lines(from, to))
   const { data: summary } = useSuspenseQuery(budgetQueries.summary(month))
   const { data: groupStatements } = useSuspenseQuery(budgetQueries.groupStatements(month))
 
-  const draft = useBudgetDraft(entries)
+  const draft = useBudgetDraft(lines, entries)
   const dirty = draft.changes.length > 0
   useUnsavedChangesGuard(dirty)
 
-  const table = buildBudgetTable(groups, months, draft.value, summary.openingBalanceCents)
+  const table = buildBudgetTable(
+    groups,
+    lines,
+    months,
+    { line: draft.value, groupShare: draft.groupShare },
+    summary.openingBalanceCents,
+  )
   const goals = buildGoalsOverview(table)
   // The cards use the effective amounts (realized ones count) plus the unsaved
   // grid edits of the current month, so they react while typing
-  const saved = buildBudgetTable(groups, [month], draft.savedValue, 0)
+  const saved = buildBudgetTable(groups, lines, [month], { line: draft.savedValue, groupShare: draft.groupShare }, 0)
   const incomes = summary.incomeCents + table.incomes[0] - saved.incomes[0]
   const expenses = summary.expenseCents + table.expenses[0] - saved.expenses[0]
 
   const [showInactive, setShowInactive] = useState(false)
   const [dialog, setDialog] = useState<BudgetDialog>(null)
+  const [lineDialog, setLineDialog] = useState<LineDialog>(null)
+  const navigate = useNavigate()
+  const transactionActions = useTransactionActions()
+  const launchMethods = usePaymentMethodOptions(month, lineDialog !== null && lineDialog.type !== 'delete-line')
   const [linking, setLinking] = useState<GroupStatement | null>(null)
   const linkMethods = usePaymentMethodOptions(month, linking !== null)
   const groupActions = useGroupActions()
-  const actions = useCategoryActions((categoryIds) => draft.dispatch({ type: 'forget', categoryIds }))
+  // Rows of categories that can no longer take values lose their unsaved edits
+  const actions = useCategoryActions((categoryIds) =>
+    draft.dispatch({
+      type: 'forget',
+      anchorIds: lines.filter((l) => categoryIds.includes(l.categoryId)).map((l) => l.anchorId),
+    }),
+  )
 
-  async function toggleActive(run: () => Promise<void>, active: boolean, name: string) {
-    try {
-      await run()
-      toast.success(active ? `${name} reativado(a)` : `${name} inativado(a)`)
-    } catch (error) {
-      toast.error(categoryErrorMessage(error, 'Não foi possível alterar.'))
-    }
-  }
+  const { toggleGroup, toggleCategory } = useCategoryToggle(actions)
 
   function handleGridAction(action: GridAction) {
     switch (action.type) {
-      case 'toggle-group': {
-        const { group } = action
-        const active = !group.active
-        const ids = group.categories.map((c) => c.id)
-        return toggleActive(() => actions.updateGroup(group.id, { active }, ids), active, group.name)
-      }
-      case 'toggle-category': {
-        const { category } = action
-        const active = !category.active
-        return toggleActive(() => actions.updateCategory(category.id, { active }), active, category.name)
-      }
+      case 'toggle-group':
+        return toggleGroup(action.group)
+      case 'toggle-category':
+        return toggleCategory(action.category)
+      case 'create-line':
+        return setLineDialog({ type: 'create-line', categoryId: action.category.id, kind: action.kind })
+      case 'edit-line':
+      case 'delete-line':
+        return setLineDialog(action)
+      case 'open-line':
+        return navigate({ to: '/extrato', search: { month: lineTarget(action.line.line).month } })
       default:
         setDialog(action)
     }
   }
 
   const save = useMutation({
-    mutationFn: () => saveEntries(draft.changes),
+    mutationFn: () => saveLines(draft.changes),
     onSuccess: async () => {
       // Drop the edits only once the saved values are back, so cells don't flicker
       await queryClient.invalidateQueries({ queryKey: budgetQueries.all() })
@@ -155,10 +168,11 @@ function DashboardPage() {
         <CardHeader className="pb-4">
           <CardTitle>Planejamento mensal</CardTitle>
           <CardDescription>
-            Clique em um valor previsto para editar. Use o menu da célula (ou o botão direito) para
-            replicar para os meses seguintes. Passe o mouse sobre um tipo ou categoria para editar,
-            inativar ou excluir. Valores sublinhados somam vários lançamentos ou incluem sua parte em
-            grupos e são vistos no Extrato. As alterações nos valores só valem depois de salvar.
+            Expanda uma categoria para ver os lançamentos dela e clique em um valor previsto para
+            editar; cada linha é um lançamento (recorrente ou avulso) e aparece também no Extrato. Use o
+            menu da célula (ou o botão direito) para replicar para os meses seguintes, e o menu de cada
+            linha para criar, editar, inativar ou excluir. As alterações nos valores só valem depois de
+            salvar.
           </CardDescription>
           <CardAction>
             <BudgetGridToolbar
@@ -175,18 +189,14 @@ function DashboardPage() {
             showInactive={showInactive}
             onAction={handleGridAction}
             isChanged={draft.isChanged}
-            isLocked={draft.isLocked}
-            hasGroupShare={draft.hasGroupShare}
-            onChange={(categoryId, m, amountCents) =>
-              draft.dispatch({ type: 'set', categoryId, month: m, amountCents })
-            }
-            onFill={(categoryId, from, scope) => {
-              const until = scope === 'year' ? endOfYear(from) : months[months.length - 1]
+            onChange={(anchorId, m, amountCents) => draft.dispatch({ type: 'set', anchorId, month: m, amountCents })}
+            onFill={(anchorId, start, scope) => {
+              const until = scope === 'year' ? endOfYear(start) : to
               draft.dispatch({
                 type: 'fill',
-                categoryId,
-                months: months.filter((m) => m > from && m <= until && !draft.isLocked(categoryId, m)),
-                amountCents: draft.value(categoryId, from),
+                anchorId,
+                months: months.filter((m) => m > start && m <= until),
+                amountCents: draft.value(anchorId, start),
               })
             }}
           />
@@ -217,6 +227,15 @@ function DashboardPage() {
         goalTargets={groups
           .filter((g) => g.kind === 'EXPENSE' && g.active)
           .map(({ id, name, goalPercent }) => ({ id, name, goalPercent }))}
+      />
+
+      <BudgetLineDialogs
+        dialog={lineDialog}
+        onClose={() => setLineDialog(null)}
+        month={month}
+        groups={groups}
+        paymentMethods={launchMethods}
+        actions={transactionActions}
       />
 
       <GroupLinkDialog

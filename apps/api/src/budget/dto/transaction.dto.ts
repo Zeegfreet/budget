@@ -17,7 +17,7 @@ import {
   MAX_DESCRIPTION_LENGTH,
   trimToNull,
 } from './category.dto.js';
-import { MAX_AMOUNT_CENTS } from './save-entries.dto.js';
+import { MAX_AMOUNT_CENTS } from './save-lines.dto.js';
 
 /** Which occurrences of a recurring transaction a change applies to. */
 export const RECURRENCE_SCOPES = ['ONE', 'FOLLOWING'] as const;
@@ -69,10 +69,20 @@ export class CreateTransactionDto {
   repeatMonths?: number;
 
   @ApiPropertyOptional({
+    example: 10,
+    description: 'Due day of the month (1–31), repeated in every occurrence',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  dueDay?: number | null;
+
+  @ApiPropertyOptional({
     example: 2,
     nullable: true,
     description:
-      'Own active payment method (expenses only); its due day overrides the category’s',
+      'Own active payment method (expenses only); its due day overrides the launch’s',
   })
   @IsOptional()
   @IsInt()
@@ -80,7 +90,7 @@ export class CreateTransactionDto {
   paymentMethodId?: number | null;
 }
 
-/** Body of `PATCH /budget/transactions/:id`. `null` clears the description. */
+/** Body of `PATCH /budget/transactions/:id`. `null` clears an optional field. */
 export class UpdateTransactionDto {
   @ApiPropertyOptional({ example: 1 })
   @IsPresent()
@@ -101,6 +111,17 @@ export class UpdateTransactionDto {
   @Min(1)
   @Max(MAX_AMOUNT_CENTS)
   plannedCents?: number;
+
+  @ApiPropertyOptional({
+    example: 10,
+    nullable: true,
+    description: 'Due day of the month (1–31); `null` removes it',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  dueDay?: number | null;
 
   @ApiPropertyOptional({
     example: 2,
@@ -136,6 +157,17 @@ export class RecurrenceScopeQueryDto {
   scope?: RecurrenceScope;
 }
 
+/** Body of `PUT /budget/transactions/:id/series` (and of the group's). */
+export class SeriesEndDto {
+  @ApiProperty({
+    example: '2027-09',
+    description:
+      'New last month: later months are created (copies of the last occurrence) or their pending occurrences deleted',
+  })
+  @Matches(MONTH_PATTERN, { message: 'untilMonth must be a month as YYYY-MM' })
+  untilMonth: string;
+}
+
 /** Body of `PUT /budget/transactions/:id/realization`. */
 export class RealizationDto {
   @ApiProperty({
@@ -169,9 +201,6 @@ export class TransactionCategoryDto {
   @ApiProperty({ example: 'Moradia' })
   name: string;
 
-  @ApiProperty({ type: Number, nullable: true, example: 10 })
-  dueDay: number | null;
-
   @ApiProperty()
   active: boolean;
 
@@ -202,6 +231,12 @@ export class SeriesPositionDto {
 
   @ApiProperty({ example: 12, description: 'Occurrences in the series' })
   count: number;
+
+  @ApiProperty({ example: '2026-10', description: 'Month of the first one' })
+  firstMonth: string;
+
+  @ApiProperty({ example: '2027-09', description: 'Month of the last one' })
+  lastMonth: string;
 }
 
 export class TransactionDto {
@@ -239,7 +274,15 @@ export class TransactionDto {
     nullable: true,
     example: 12,
     description:
-      'Effective due day: the payment method’s, or else the category’s',
+      'Effective due day: the payment method’s, or else the launch’s own',
   })
   dueDay: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 10,
+    description: 'The launch’s own due day (what the form edits)',
+  })
+  ownDueDay: number | null;
 }

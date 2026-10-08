@@ -13,16 +13,6 @@ export class CategoryDto {
 
   @ApiProperty({ description: 'Inactive categories keep their values' })
   active: boolean;
-
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    example: 'Apartamento do centro',
-  })
-  description: string | null;
-
-  @ApiProperty({ type: Number, nullable: true, example: 10 })
-  dueDay: number | null;
 }
 
 export class CategoryGroupDto {
@@ -65,16 +55,78 @@ export class MonthlyEntryDto {
 
   @ApiProperty({
     example: 1,
-    description: 'Transactions in the cell; with more than one it is read-only',
+    description: 'Transactions in the cell',
   })
   count: number;
 
   @ApiProperty({
     example: 75000,
     description:
-      'The user’s shares of group transactions linked to the category (not in `amountCents`); the cell is read-only when > 0',
+      'The user’s shares of group transactions linked to the category (not in `amountCents`)',
   })
   groupCents: number;
+}
+
+export class LinePaymentMethodDto {
+  @ApiProperty({ example: 2 })
+  id: number;
+
+  @ApiProperty({ example: 'Cartão Americanas' })
+  name: string;
+
+  @ApiProperty({ type: Number, nullable: true, example: 12 })
+  dueDay: number | null;
+}
+
+export class LineCellValueDto {
+  @ApiProperty({ example: '2026-10' })
+  month: string;
+
+  @ApiProperty({ example: 12 })
+  transactionId: number;
+
+  @ApiProperty({ example: 5590 })
+  plannedCents: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: '`null` while pending',
+  })
+  realizedCents: number | null;
+}
+
+/** A launch row of the grid: one recurring series, or one plain launch. */
+export class BudgetLineDto {
+  @ApiProperty({
+    example: 12,
+    description:
+      'Lowest transaction id of the line in the range; identifies it when saving',
+  })
+  anchorId: number;
+
+  @ApiProperty({ example: 3 })
+  categoryId: number;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Netflix' })
+  description: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 5,
+    description: 'The launch’s own due day',
+  })
+  dueDay: number | null;
+
+  @ApiProperty({ type: LinePaymentMethodDto, nullable: true })
+  paymentMethod: LinePaymentMethodDto | null;
+
+  @ApiProperty({
+    type: [LineCellValueDto],
+    description: 'Months with a transaction',
+  })
+  cells: LineCellValueDto[];
 }
 
 export class BudgetSummaryDto {

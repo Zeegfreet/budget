@@ -9,10 +9,6 @@ export interface Category {
   position: number
   /** Inactive categories are hidden and read-only; their values still count */
   active: boolean
-  /** Short note, e.g. "Apartamento do centro" */
-  description: string | null
-  /** Day of the month the bill is due (1–31) */
-  dueDay: number | null
 }
 
 /** A category "type", e.g. Despesas Básicas or Salário */
@@ -38,29 +34,59 @@ export type GroupPatch = Partial<Pick<CategoryGroup, 'name' | 'active' | 'goalPe
 
 export interface CategoryInput {
   name: string
-  description?: string | null
-  dueDay?: number | null
 }
 
-/** Fields to change; `null` clears description or due day */
-export type CategoryPatch = Partial<Pick<Category, 'name' | 'active' | 'description' | 'dueDay'>>
+/** Fields to change */
+export type CategoryPatch = Partial<Pick<Category, 'name' | 'active'>>
 
-/** A grid cell: the planned amount of a category in a month */
+/** A category's month: the sum of its transactions plus the user's group shares */
 export interface MonthlyEntry {
   categoryId: number
   month: Month
   /** Integer cents, never negative; the sign comes from the kind. Sum of the cell's transactions. */
   amountCents: number
-  /**
-   * Transactions behind the cell (responses only). With more than one the cell
-   * is read-only in the grid and edited in the statement.
-   */
-  count?: number
-  /**
-   * The user's shares of linked groups in the category (responses only, not
-   * part of `amountCents`). With any, the cell is read-only in the grid.
-   */
-  groupCents?: number
+  /** Transactions behind the cell */
+  count: number
+  /** The user's shares of linked groups in the category (not part of `amountCents`, read-only) */
+  groupCents: number
+}
+
+/** Where an occurrence sits in its recurring series (e.g. 3 of 12, Oct/2026 to Sep/2027) */
+export interface SeriesPosition {
+  index: number
+  count: number
+  firstMonth: Month
+  lastMonth: Month
+}
+
+/** One month of a launch row: the transaction there */
+export interface LineCell {
+  month: Month
+  transactionId: number
+  plannedCents: number
+  /** `null` while pending */
+  realizedCents: number | null
+}
+
+/** A launch row of the grid: one recurring series, or one plain launch (`GET /budget/lines`) */
+export interface BudgetLine {
+  /** A transaction of the row; identifies it when saving */
+  anchorId: number
+  categoryId: number
+  description: string | null
+  /** The launch's own due day */
+  dueDay: number | null
+  /** Its due day overrides the launch's */
+  paymentMethod: { id: number; name: string; dueDay: number | null } | null
+  /** Months with a transaction */
+  cells: LineCell[]
+}
+
+/** A row's planned amount in a month (`PUT /budget/lines`); 0 deletes that month's transaction */
+export interface LineCellChange {
+  anchorId: number
+  month: Month
+  amountCents: number
 }
 
 export interface BudgetSummary {
@@ -77,7 +103,6 @@ export interface BudgetSummary {
 export interface ShareCategory {
   id: number
   name: string
-  dueDay: number | null
   active: boolean
   group: { id: number; name: string; kind: EntryKind; active: boolean }
 }
@@ -95,7 +120,7 @@ export interface GroupStatementItem {
   /** Someone paid (or received) it */
   paid: boolean
   paidByName: string | null
-  series: { index: number; count: number } | null
+  series: SeriesPosition | null
   /** Where it counts in the budget (the group's link for its kind); `null` = not counted */
   category: ShareCategory | null
 }

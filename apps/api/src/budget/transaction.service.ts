@@ -15,6 +15,7 @@ import type {
   UpdateTransactionDto,
 } from './dto/transaction.dto.js';
 import { addMonths } from './month.js';
+import { planSeriesEnd, seriesPositions } from './series.js';
 
 const transactionSelect = {
   id: true,
@@ -23,6 +24,7 @@ const transactionSelect = {
   plannedCents: true,
   realizedCents: true,
   seriesId: true,
+  dueDay: true,
   paymentMethod: {
     select: { id: true, name: true, type: true, dueDay: true, active: true },
   },
@@ -30,7 +32,6 @@ const transactionSelect = {
     select: {
       id: true,
       name: true,
-      dueDay: true,
       active: true,
       position: true,
       group: {
@@ -50,9 +51,9 @@ type TransactionRow = Prisma.TransactionGetPayload<{
   select: typeof transactionSelect;
 }>;
 
-/** The payment method's due day, or else the category's ("régua normal"). */
+/** The payment method's due day, or else the launch's own. */
 const effectiveDueDay = (t: TransactionRow) =>
-  t.paymentMethod?.dueDay ?? t.category.dueDay;
+  t.paymentMethod?.dueDay ?? t.dueDay;
 
 /** Due day first (none last), then the grid's order. */
 function byStatementOrder(a: TransactionRow, b: TransactionRow): number {
@@ -105,6 +106,7 @@ export class TransactionService {
       description,
       plannedCents,
       repeatMonths = 1,
+      dueDay = null,
       paymentMethodId = null,
     }: CreateTransactionDto,
   ): Promise<TransactionDto[]> {
@@ -124,6 +126,7 @@ export class TransactionService {
             description: description ?? null,
             plannedCents,
             seriesId,
+            dueDay,
             paymentMethodId,
           },
           select: transactionSelect,
@@ -145,6 +148,7 @@ export class TransactionService {
       categoryId,
       description,
       plannedCents,
+      dueDay,
       paymentMethodId,
     }: UpdateTransactionDto,
   ): Promise<TransactionDto> {
@@ -170,8 +174,14 @@ export class TransactionService {
         await assertUsablePaymentMethod(this.prisma, userId, methodId);
       }
     }
-    // `undefined` leaves a field as is, `null` clears the description/method
-    const data = { categoryId, description, plannedCents, paymentMethodId };
+    // `undefined` leaves a field as is, `null` clears an optional one
+    const data = {
+      categoryId,
+      description,
+      plannedCents,
+      dueDay,
+      paymentMethodId,
+    };
     const [updated] = await this.prisma.$transaction([
       this.prisma.transaction.update({
         where: { id },
@@ -198,6 +208,83 @@ export class TransactionService {
         this.prisma.transaction.deleteMany({ where }),
       ),
     ]);
+  }
+
+  /**
+   * Moves the series' last month to `untilMonth`: later months get copies of
+   * the last occurrence kept (pending), or the pending occurrences after it go.
+   * A plain launch becomes a series when extended.
+   */
+  async setSeriesEnd(
+    userId: number,
+    id: number,
+    untilMonth: string,
+  ): Promise<TransactionDto[]> {
+    const current = await this.find(userId, id);
+    const occurrences = current.seriesId
+      ? await this.prisma.transaction.findMany({
+          where: { userId, seriesId: current.seriesId },
+          select: { id: true, month: true, realizedCents: true },
+        })
+      : [current];
+    const plan = planSeriesEnd(
+      occurrences.map((o) => ({
+        id: o.id,
+        month: o.month,
+        settled: o.realizedCents !== null,
+      })),
+      untilMonth,
+    );
+    const template = await this.prisma.transaction.findUniqueOrThrow({
+      where: { id: plan.templateId },
+      include: {
+        category: {
+          select: { active: true, group: { select: { active: true } } },
+        },
+      },
+    });
+    const { category } = template;
+    if (
+      plan.addMonths.length > 0 &&
+      !(category.active && category.group.active)
+    ) {
+      throw new BadRequestException('Category is inactive');
+    }
+    const seriesId =
+      current.seriesId ?? (plan.addMonths.length > 0 ? randomUUID() : null);
+    await this.prisma.$transaction([
+      ...(seriesId && !current.seriesId
+        ? [
+            this.prisma.transaction.update({
+              where: { id },
+              data: { seriesId },
+            }),
+          ]
+        : []),
+      this.prisma.transaction.deleteMany({
+        where: { userId, id: { in: plan.removeIds } },
+      }),
+      ...plan.addMonths.map((month) =>
+        this.prisma.transaction.create({
+          data: {
+            userId,
+            categoryId: template.categoryId,
+            month,
+            description: template.description,
+            plannedCents: template.plannedCents,
+            seriesId,
+            dueDay: template.dueDay,
+            paymentMethodId: template.paymentMethodId,
+          },
+        }),
+      ),
+    ]);
+    const rows = await this.prisma.transaction.findMany({
+      where: seriesId ? { userId, seriesId } : { userId, id },
+      orderBy: [{ month: 'asc' }, { id: 'asc' }],
+      select: transactionSelect,
+    });
+    return this.present(userId, rows);
   }
 
   /** Marks as realized with the amount actually paid or received; `null` undoes it. */
@@ -261,34 +348,24 @@ export class TransactionService {
     const seriesIds = [
       ...new Set(rows.flatMap((r) => (r.seriesId ? [r.seriesId] : []))),
     ];
-    const members =
+    const positions = seriesPositions(
       seriesIds.length === 0
         ? []
         : await this.prisma.transaction.findMany({
             where: { userId, seriesId: { in: seriesIds } },
-            orderBy: [{ month: 'asc' }, { id: 'asc' }],
-            select: { id: true, seriesId: true },
-          });
-    const idsBySeries = new Map<string, number[]>();
-    for (const m of members) {
-      idsBySeries.set(m.seriesId!, [
-        ...(idsBySeries.get(m.seriesId!) ?? []),
-        m.id,
-      ]);
-    }
+            select: { id: true, seriesId: true, month: true },
+          }),
+    );
 
     return rows.map((full) => {
-      const { seriesId, category, ...row } = full;
-      const ids = seriesId ? idsBySeries.get(seriesId) : undefined;
+      const { seriesId, category, dueDay, ...row } = full;
       const { position: _position, group, ...categoryFields } = category;
       const { position: _groupPosition, ...groupFields } = group;
       return {
         ...row,
-        series:
-          ids && ids.length > 1
-            ? { index: ids.indexOf(row.id) + 1, count: ids.length }
-            : null,
+        series: (seriesId && positions.get(seriesId)?.get(row.id)) || null,
         category: { ...categoryFields, group: groupFields },
+        ownDueDay: dueDay,
         dueDay: effectiveDueDay(full),
       };
     });

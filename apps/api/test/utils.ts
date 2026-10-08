@@ -81,3 +81,25 @@ export async function createPaymentMethod(
     .expect(201);
   return res.body as PaymentMethodBody;
 }
+
+export interface CellBody {
+  categoryId: number;
+  month: string;
+  amountCents: number;
+}
+
+/** Plans one plain launch per cell (`POST /budget/transactions`); returns their ids. */
+export async function addTransactions(
+  client: Agent,
+  cells: CellBody[],
+): Promise<number[]> {
+  const ids: number[] = [];
+  for (const { categoryId, month, amountCents } of cells) {
+    const res = await client
+      .post('/budget/transactions')
+      .send({ categoryId, month, plannedCents: amountCents })
+      .expect(201);
+    ids.push((res.body as { id: number }[])[0].id);
+  }
+  return ids;
+}

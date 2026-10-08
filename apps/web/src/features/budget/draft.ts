@@ -1,50 +1,44 @@
-import type { MonthlyEntry, Month } from './types'
+import type { BudgetLine, LineCellChange, Month } from './types'
 
 /**
- * Unsaved edits of the budget grid, keyed by cell. Saved values come from the
- * server; an edit equal to the saved value is not a change.
+ * Unsaved edits of the budget grid, keyed by launch row and month. Saved
+ * values come from the server; an edit equal to the saved value is not a change.
  */
 export type Edits = ReadonlyMap<string, number>
 export type SavedValues = ReadonlyMap<string, number>
 
-export const cellKey = (categoryId: number, month: Month) => `${categoryId}:${month}`
+export const cellKey = (anchorId: number, month: Month) => `${anchorId}:${month}`
 
 export type DraftAction =
-  | { type: 'set'; categoryId: number; month: Month; amountCents: number }
-  | { type: 'fill'; categoryId: number; months: Month[]; amountCents: number }
+  | { type: 'set'; anchorId: number; month: Month; amountCents: number }
+  | { type: 'fill'; anchorId: number; months: Month[]; amountCents: number }
   | { type: 'discard' }
-  /** Drops the edits of categories that can no longer be saved (deleted or inactivated) */
-  | { type: 'forget'; categoryIds: number[] }
+  /** Drops the edits of rows that can no longer be saved (category inactivated or deleted) */
+  | { type: 'forget'; anchorIds: number[] }
 
 export function draftReducer(edits: Edits, action: DraftAction): Edits {
   switch (action.type) {
     case 'set':
-      return new Map(edits).set(cellKey(action.categoryId, action.month), action.amountCents)
+      return new Map(edits).set(cellKey(action.anchorId, action.month), action.amountCents)
     case 'fill': {
       const next = new Map(edits)
       for (const month of action.months) {
-        next.set(cellKey(action.categoryId, month), action.amountCents)
+        next.set(cellKey(action.anchorId, month), action.amountCents)
       }
       return next
     }
     case 'discard':
       return new Map()
     case 'forget': {
-      const ids = new Set(action.categoryIds.map(String))
+      const ids = new Set(action.anchorIds.map(String))
       return new Map([...edits].filter(([key]) => !ids.has(key.split(':')[0])))
     }
   }
 }
 
-export function savedValues(entries: MonthlyEntry[]): SavedValues {
-  return new Map(entries.map((e) => [cellKey(e.categoryId, e.month), e.amountCents]))
-}
-
-/** The user's group shares per cell (read-only part of the shown value) */
-export function groupValues(entries: MonthlyEntry[]): SavedValues {
-  return new Map(
-    entries.filter((e) => (e.groupCents ?? 0) > 0).map((e) => [cellKey(e.categoryId, e.month), e.groupCents ?? 0]),
-  )
+/** Planned amount of each row and month that has a transaction */
+export function savedValues(lines: BudgetLine[]): SavedValues {
+  return new Map(lines.flatMap((l) => l.cells.map((c) => [cellKey(l.anchorId, c.month), c.plannedCents] as const)))
 }
 
 export function valueOf(saved: SavedValues, edits: Edits, key: string): number {
@@ -55,12 +49,12 @@ export function isChanged(saved: SavedValues, edits: Edits, key: string): boolea
   return edits.has(key) && edits.get(key) !== (saved.get(key) ?? 0)
 }
 
-/** Cells to send to `PUT /budget/entries` (only real changes; 0 clears). */
-export function changedEntries(saved: SavedValues, edits: Edits): MonthlyEntry[] {
+/** Cells to send to `PUT /budget/lines` (only real changes; 0 deletes). */
+export function changedCells(saved: SavedValues, edits: Edits): LineCellChange[] {
   return [...edits]
     .filter(([key]) => isChanged(saved, edits, key))
     .map(([key, amountCents]) => {
-      const [categoryId, month] = key.split(':')
-      return { categoryId: Number(categoryId), month, amountCents }
+      const [anchorId, month] = key.split(':')
+      return { anchorId: Number(anchorId), month, amountCents }
     })
 }

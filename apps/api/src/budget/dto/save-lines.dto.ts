@@ -14,13 +14,16 @@ import { MONTH_PATTERN } from '../month.js';
 
 /** Largest amount accepted for one cell: R$ 1 bilhão */
 export const MAX_AMOUNT_CENTS = 100_000_000_000;
-export const MAX_ENTRIES_PER_SAVE = 1000;
+export const MAX_CELLS_PER_SAVE = 1000;
 
-export class EntryDto {
-  @ApiProperty({ example: 1 })
+export class LineCellDto {
+  @ApiProperty({
+    example: 12,
+    description: 'Any transaction of the line (its `anchorId`)',
+  })
   @IsInt()
   @Min(1)
-  categoryId: number;
+  anchorId: number;
 
   @ApiProperty({ example: '2026-10' })
   @Matches(MONTH_PATTERN, { message: 'month must be a month as YYYY-MM' })
@@ -28,7 +31,7 @@ export class EntryDto {
 
   @ApiProperty({
     example: 180000,
-    description: 'Integer cents; 0 clears the cell',
+    description: 'Integer cents; 0 deletes the month’s transaction',
   })
   @IsInt()
   @Min(0)
@@ -36,13 +39,13 @@ export class EntryDto {
   amountCents: number;
 }
 
-/** Body of `PUT /budget/entries`: cells to create, change or clear (0). */
-export class SaveEntriesDto {
-  @ApiProperty({ type: [EntryDto] })
+/** Body of `PUT /budget/lines`: line cells to create, change or clear (0). */
+export class SaveLinesDto {
+  @ApiProperty({ type: [LineCellDto] })
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(MAX_ENTRIES_PER_SAVE)
+  @ArrayMaxSize(MAX_CELLS_PER_SAVE)
   @ValidateNested({ each: true })
-  @Type(() => EntryDto)
-  entries: EntryDto[];
+  @Type(() => LineCellDto)
+  cells: LineCellDto[];
 }

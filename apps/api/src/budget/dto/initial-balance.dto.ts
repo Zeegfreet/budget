@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, Max, Min } from 'class-validator';
-import { MAX_AMOUNT_CENTS } from './save-entries.dto.js';
+import { MAX_AMOUNT_CENTS } from './save-lines.dto.js';
 
 /** Body and response of `PUT /budget/initial-balance`. May be negative (debt). */
 export class InitialBalanceDto {

@@ -15,7 +15,7 @@ import {
   IsPresent,
   MAX_DESCRIPTION_LENGTH,
 } from '../../budget/dto/category.dto.js';
-import { MAX_AMOUNT_CENTS } from '../../budget/dto/save-entries.dto.js';
+import { MAX_AMOUNT_CENTS } from '../../budget/dto/save-lines.dto.js';
 import {
   RECURRENCE_SCOPES,
   SeriesPositionDto,

@@ -15,12 +15,14 @@ import {
   payGroupTransaction,
   removeMember,
   setGroupLink,
+  setGroupTransactionSeriesEnd,
   unpayGroupTransaction,
   updateGroup,
   updateGroupTransaction,
   updateSplitMethod,
 } from './api'
 import { budgetQueries } from '@/features/budget/queries'
+import type { Month } from '@/features/budget/types'
 import { groupQueries, invitationQueries } from './queries'
 import type {
   GroupInput,
@@ -176,6 +178,11 @@ export function useGroupTransactionActions(groupId: number) {
       await deleteGroupTransaction(groupId, id, scope)
       await refresh()
       toast.success(scope === 'FOLLOWING' ? 'Lançamentos excluídos' : 'Lançamento excluído')
+    },
+    async setSeriesEnd(id: number, untilMonth: Month) {
+      const series = await setGroupTransactionSeriesEnd(groupId, id, untilMonth)
+      await refresh()
+      toast.success(`Recorrência ajustada: ${series.length} ${series.length === 1 ? 'lançamento' : 'lançamentos'}`)
     },
     async pay(id: number, memberId: number) {
       await payGroupTransaction(groupId, id, memberId)

@@ -79,7 +79,7 @@ export class CategoryService {
   async createCategory(
     userId: number,
     groupId: number,
-    { name, description, dueDay }: CreateCategoryDto,
+    { name }: CreateCategoryDto,
   ): Promise<CategoryDto> {
     const group = await this.findGroup(userId, groupId);
     if (!group.active) {
@@ -97,8 +97,6 @@ export class CategoryService {
           userId,
           groupId,
           name,
-          description: description ?? null,
-          dueDay: dueDay ?? null,
           position: (last._max.position ?? -1) + 1,
         },
         select: categorySelect,
@@ -109,14 +107,13 @@ export class CategoryService {
   async updateCategory(
     userId: number,
     id: number,
-    { name, description, dueDay, active }: UpdateCategoryDto,
+    { name, active }: UpdateCategoryDto,
   ): Promise<CategoryDto> {
     await this.findCategory(userId, id);
     return this.unique(
       this.prisma.category.update({
         where: { id },
-        // `undefined` leaves a field as is, `null` clears it
-        data: { name, description, dueDay, active },
+        data: { name, active },
         select: categorySelect,
       }),
     );

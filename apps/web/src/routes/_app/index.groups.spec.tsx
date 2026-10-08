@@ -5,7 +5,7 @@ import { fetchMe } from '@/features/auth/api'
 import { fetchGroupStatements } from '@/features/budget/api'
 import { setGroupLink } from '@/features/groups/api'
 import { ApiError } from '@/lib/api/client'
-import { budgetEntries, makeGroupStatement, stubBudgetApi } from '@/test/budget'
+import { makeGroupStatement, stubBudgetApi } from '@/test/budget'
 import { stubGroupsApi } from '@/test/groups'
 import { renderRoute } from '@/test/render'
 
@@ -16,10 +16,7 @@ vi.mock('@/features/groups/api')
 const groupsCard = () => screen.getByRole('region', { name: 'Grupos' })
 
 /** Ana's 1000,00 share of the rent lands in Moradia, on top of her own 1800,00 */
-const entriesWithShare = [
-  ...budgetEntries.filter((e) => !(e.categoryId === 1 && e.month === '2026-10')),
-  { categoryId: 1, month: '2026-10', amountCents: 180000, count: 1, groupCents: 100000 },
-]
+const shares = [{ categoryId: 1, month: '2026-10', amountCents: 100000 }]
 
 async function openDashboard() {
   const result = await renderRoute('/')
@@ -32,7 +29,7 @@ describe('Dashboard route (/) with finance groups', () => {
     vi.resetAllMocks()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
     vi.mocked(fetchMe).mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
-    stubBudgetApi({ entries: entriesWithShare, groupStatements: [makeGroupStatement()] })
+    stubBudgetApi({ shares, groupStatements: [makeGroupStatement()] })
     stubGroupsApi()
   })
 
@@ -69,18 +66,24 @@ describe('Dashboard route (/) with finance groups', () => {
     expect(within(republica).queryByRole('list', { name: 'Lançamentos de República' })).not.toBeInTheDocument()
   })
 
-  it('adds the share to the category cell and locks it, linking to the statement', async () => {
+  it('adds the share to the category and lists it as a read-only row, linking to the statement', async () => {
     await openDashboard()
+    const moradia = () =>
+      within(screen.getByRole('rowheader', { name: 'Moradia' }).closest('tr')!).getAllByRole('cell')
+    expect(moradia()[0]).toHaveTextContent('R$ 2.800,00')
 
-    expect(screen.queryByRole('textbox', { name: 'Moradia em outubro de 2026' })).not.toBeInTheDocument()
-    const link = screen.getByRole('link', {
-      name: 'Moradia em outubro de 2026: inclui sua parte em grupos, ver no extrato',
+    await userEvent.click(screen.getByRole('button', { name: 'Moradia' }))
+
+    const shareRow = screen.getByRole('rowheader', { name: 'Rateios de grupos em Moradia' }).closest('tr')!
+    const link = within(shareRow).getByRole('link', {
+      name: 'Sua parte em grupos em outubro de 2026, ver no extrato',
     })
-    expect(link).toHaveTextContent('R$ 2.800,00')
+    expect(link).toHaveTextContent('R$ 1.000,00')
     expect(link).toHaveAttribute('href', '/extrato?month=2026-10')
-    expect(link).toHaveAttribute('title', 'Inclui sua parte em grupos — veja no Extrato')
-    // Other months stay editable
-    expect(screen.getByRole('textbox', { name: 'Moradia em novembro de 2026' })).toHaveValue('1.800,00')
+    expect(link).toHaveAttribute('title', 'Sua parte em grupos — veja no Extrato')
+    expect(within(shareRow).queryByRole('textbox')).not.toBeInTheDocument()
+    // The own launch stays editable
+    expect(screen.getByRole('textbox', { name: 'Aluguel em outubro de 2026' })).toHaveValue('1.800,00')
   })
 
   it('links the group’s incomes to a category and refreshes the budget', async () => {

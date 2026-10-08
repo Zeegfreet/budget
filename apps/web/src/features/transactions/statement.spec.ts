@@ -108,7 +108,7 @@ describe('transaction helpers', () => {
 
   it('tells whether later occurrences exist', () => {
     expect(hasFollowing(rentTransaction)).toBe(true)
-    expect(hasFollowing({ ...rentTransaction, series: { index: 12, count: 12 } })).toBe(false)
+    expect(hasFollowing({ ...rentTransaction, series: { ...rentTransaction.series!, index: 12 } })).toBe(false)
     expect(hasFollowing(salaryTransaction)).toBe(false)
   })
 

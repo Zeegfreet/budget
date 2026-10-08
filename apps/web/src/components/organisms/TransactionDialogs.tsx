@@ -3,12 +3,13 @@ import {
   ConfirmDialog,
   RealizeDialog,
   RecurrenceScopeDialog,
+  SeriesRangeDialog,
   TransactionFormDialog,
   type TransactionFormValues,
 } from '@/components/molecules'
 import type { CategoryGroup, EntryKind, Month } from '@/features/budget/types'
 import type { PaymentMethod } from '@/features/payment-methods/types'
-import { transactionErrorMessage } from '@/features/transactions/errors'
+import { seriesErrorMessage, transactionErrorMessage } from '@/features/transactions/errors'
 import type { useTransactionActions } from '@/features/transactions/hooks'
 import { hasFollowing, transactionTitle } from '@/features/transactions/statement'
 import type { Transaction, TransactionPatch } from '@/features/transactions/types'
@@ -16,7 +17,7 @@ import type { Transaction, TransactionPatch } from '@/features/transactions/type
 /** The dialog open on the statement, if any */
 export type TransactionDialog =
   | { type: 'create'; kind: EntryKind }
-  | { type: 'edit' | 'realize' | 'delete'; transaction: Transaction }
+  | { type: 'edit' | 'realize' | 'delete' | 'series'; transaction: Transaction }
   /** Asks whether a change to a recurring transaction also applies to the later ones */
   | { type: 'update-scope'; transaction: Transaction; patch: TransactionPatch }
   | { type: 'delete-scope'; transaction: Transaction }
@@ -35,7 +36,7 @@ interface TransactionDialogsProps {
 
 const message = (fallback: string) => (error: unknown) => transactionErrorMessage(error, fallback)
 
-/** Create, edit, realize and delete dialogs of the statement. */
+/** Create, edit, realize, delete and recurrence range dialogs of the statement. */
 export function TransactionDialogs({
   dialog,
   onDialogChange,
@@ -58,10 +59,11 @@ export function TransactionDialogs({
 
   async function saveEdit(
     t: Transaction,
-    { categoryId, description, plannedCents, paymentMethodId }: TransactionFormValues,
+    { categoryId, description, plannedCents, dueDay, paymentMethodId }: TransactionFormValues,
   ) {
     const patch: TransactionPatch = { categoryId, description, plannedCents }
-    // Sent only when it changes, so editing other fields keeps it as is
+    // Sent only when they change, so editing other fields keeps them as they are
+    if (dueDay !== t.ownDueDay) patch.dueDay = dueDay
     if (paymentMethodId !== (t.paymentMethod?.id ?? null)) patch.paymentMethodId = paymentMethodId
     if (hasFollowing(t)) {
       // The form closes and the scope question takes over
@@ -80,11 +82,12 @@ export function TransactionDialogs({
         groups={groups}
         month={month}
         paymentMethods={paymentMethods}
-        onSubmit={({ repeatMonths, paymentMethodId, ...values }) =>
+        onSubmit={({ repeatMonths, dueDay, paymentMethodId, ...values }) =>
           actions.create({
             ...values,
             month,
             ...(repeatMonths > 1 ? { repeatMonths } : {}),
+            ...(dueDay !== null ? { dueDay } : {}),
             ...(paymentMethodId !== null ? { paymentMethodId } : {}),
           })
         }
@@ -103,6 +106,7 @@ export function TransactionDialogs({
                 categoryId: transaction.category.id,
                 description: transaction.description,
                 plannedCents: transaction.plannedCents,
+                dueDay: transaction.ownDueDay,
                 paymentMethodId: transaction.paymentMethod?.id ?? null,
               }
             : undefined
@@ -132,6 +136,15 @@ export function TransactionDialogs({
         confirmLabel="Excluir"
         onConfirm={() => actions.remove(transaction!.id, 'ONE')}
         errorMessage={message('Não foi possível excluir.')}
+      />
+      <SeriesRangeDialog
+        open={dialog?.type === 'series'}
+        onOpenChange={close}
+        title={transaction ? transactionTitle(transaction) : ''}
+        series={transaction?.series ?? null}
+        settledLabel="realizados"
+        onSubmit={(untilMonth) => actions.setSeriesEnd(transaction!.id, untilMonth)}
+        errorMessage={seriesErrorMessage}
       />
       <RecurrenceScopeDialog
         open={dialog?.type === 'update-scope'}

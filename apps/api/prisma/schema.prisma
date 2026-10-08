@@ -98,10 +98,6 @@ model Category {
   position          Int           @default(0)
   /// Inactive categories are hidden from the grid and not editable; their values still count
   active            Boolean       @default(true)
-  /// Short note, e.g. "Apartamento do centro"
-  description       String?
-  /// Day of the month the bill is due (1–31)
-  dueDay            Int?
   transactions      Transaction[]
   /// Group memberships whose expense shares land here
   groupExpenseLinks GroupMember[] @relation("MemberExpenseCategory")
@@ -130,8 +126,10 @@ model Transaction {
   realizedCents   Int?
   /// Shared by the occurrences created by one recurring launch
   seriesId        String?
+  /// Day of the month the launch is due (1–31)
+  dueDay          Int?
   /// Card or account the expense is paid with; its due day overrides the
-  /// category's. Expenses only. `null` follows the category's due day.
+  /// launch's. Expenses only.
   paymentMethodId Int?
   paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   createdAt       DateTime       @default(now())

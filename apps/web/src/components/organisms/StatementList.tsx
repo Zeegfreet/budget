@@ -1,8 +1,8 @@
 import { useNavigate } from '@tanstack/react-router'
-import { CircleCheckIcon, ExternalLinkIcon, RepeatIcon, UsersIcon } from 'lucide-react'
+import { CircleCheckIcon, ExternalLinkIcon, UsersIcon } from 'lucide-react'
 import { useId } from 'react'
 import { MoneyText } from '@/components/atoms'
-import { RowActions, TransactionRow, type RowAction, type TransactionRowAction } from '@/components/molecules'
+import { RowActions, SeriesBadge, TransactionRow, type RowAction, type TransactionRowAction } from '@/components/molecules'
 import { Badge } from '@/components/ui/badge'
 import type { Statement, StatementGroup, StatementShare } from '@/features/transactions/statement'
 import { cn } from '@/lib/utils'
@@ -120,12 +120,7 @@ function ShareRow({ share: { group, item } }: { share: StatementShare }) {
                 <UsersIcon aria-hidden />
                 {group.name}
               </Badge>
-              {item.series && (
-                <Badge variant="secondary" className="shrink-0" title="Lançamento recorrente">
-                  <RepeatIcon aria-hidden />
-                  {item.series.index}/{item.series.count}
-                </Badge>
-              )}
+              {item.series && <SeriesBadge series={item.series} title={item.description} />}
             </div>
             <p className="truncate text-xs text-muted-foreground">
               {item.category.name} · {status}

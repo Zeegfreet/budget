@@ -5,24 +5,31 @@ import { fetchMe, logout } from '@/features/auth/api'
 import {
   fetchCategories,
   fetchEntries,
+  fetchLines,
   fetchSummary,
-  saveEntries,
+  saveLines,
   updateInitialBalance,
 } from '@/features/budget/api'
 import { UNSAVED_CHANGES_MESSAGE } from '@/features/budget/hooks'
+import { createTransaction, deleteTransaction, updateTransaction } from '@/features/transactions/api'
 import { ApiError } from '@/lib/api/client'
-import { budgetEntries, budgetSummary, stubBudgetApi } from '@/test/budget'
+import { budgetLines, budgetSummary, entriesOf, makeLine, stubBudgetApi } from '@/test/budget'
+import { stubPaymentMethodsApi } from '@/test/payment-methods'
 import { renderRoute } from '@/test/render'
+import { stubTransactionsApi } from '@/test/transactions'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
 vi.mock('@/features/budget/api')
+vi.mock('@/features/transactions/api')
+vi.mock('@/features/payment-methods/api')
 
 const fetchMeMock = vi.mocked(fetchMe)
 const logoutMock = vi.mocked(logout)
 const fetchCategoriesMock = vi.mocked(fetchCategories)
 const fetchEntriesMock = vi.mocked(fetchEntries)
+const fetchLinesMock = vi.mocked(fetchLines)
 const fetchSummaryMock = vi.mocked(fetchSummary)
-const saveEntriesMock = vi.mocked(saveEntries)
+const saveLinesMock = vi.mocked(saveLines)
 const updateInitialBalanceMock = vi.mocked(updateInitialBalance)
 
 const unauthorized = new ApiError(401, ['Unauthorized'])
@@ -38,12 +45,28 @@ const rowCells = (header: string) =>
 
 const card = (title: string) => screen.getByRole('region', { name: title })
 const cell = (name: string) => screen.getByRole('textbox', { name })
-const MORADIA_OUT = 'Moradia em outubro de 2026'
+/** The rent row (Moradia), October */
+const ALUGUEL_OUT = 'Aluguel em outubro de 2026'
 
-async function openDashboard() {
+/** Opens the dashboard with the given categories expanded to their launches */
+async function openDashboard(...expand: string[]) {
   const result = await renderRoute('/')
   await screen.findByRole('heading', { name: 'Dashboard' })
+  for (const category of expand) await expandCategory(category)
   return result
+}
+
+/** Shows a category's launch rows (categories start collapsed) */
+async function expandCategory(name: string) {
+  // The category's toggle (a type may share its name, e.g. Salário)
+  const toggle = screen.getAllByRole('button', { name }).at(-1)!
+  await userEvent.click(toggle)
+}
+
+/** Opens a row's menu through its hover "⋯" button and picks an option */
+async function rowAction(row: string, option: string) {
+  await userEvent.click(screen.getByRole('button', { name: `Opções de ${row}` }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: option }))
 }
 
 async function typeInCell(name: string, text: string) {
@@ -65,6 +88,8 @@ describe('Dashboard route (/)', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
     fetchMeMock.mockResolvedValue({ id: 1, name: 'Ana Souza', email: 'ana@example.com' })
     stubBudgetApi()
+    stubTransactionsApi()
+    stubPaymentMethodsApi()
   })
 
   afterEach(() => {
@@ -101,7 +126,8 @@ describe('Dashboard route (/)', () => {
       expect(within(card('Despesas do mês')).getByText(/2\.600,00/)).toBeInTheDocument()
       expect(within(card('Saldo acumulado')).getByText(/4\.900,00/)).toBeInTheDocument()
 
-      await typeInCell(MORADIA_OUT, '2.000')
+      await expandCategory('Moradia')
+      await typeInCell(ALUGUEL_OUT, '2.000')
       expect(within(card('Despesas do mês')).getByText(/2\.800,00/)).toBeInTheDocument()
     })
 
@@ -144,10 +170,11 @@ describe('Dashboard route (/)', () => {
   })
 
   describe('monthly grid', () => {
-    it('shows the current month and the next 11, Despesas before Receitas', async () => {
+    it('shows the current month and the next 11, Despesas before Receitas, categories collapsed', async () => {
       await openDashboard()
 
       expect(fetchEntriesMock).toHaveBeenCalledWith('2026-10', '2027-09')
+      expect(fetchLinesMock).toHaveBeenCalledWith('2026-10', '2027-09')
       const table = screen.getByRole('table', { name: 'Planejamento mensal' })
       const headers = within(table).getAllByRole('columnheader')
       expect(headers).toHaveLength(14)
@@ -158,20 +185,21 @@ describe('Dashboard route (/)', () => {
 
       const sections = within(table)
         .getAllByRole('rowheader')
-        .map((h) => h.textContent)
-      expect(sections.indexOf('Despesas')).toBeLessThan(sections.indexOf('Receitas'))
+        .map((h) => h.getAttribute('aria-label') ?? h.textContent)
       expect(sections).toEqual([
         'Despesas', 'Despesas Básicas', 'Moradia', 'Alimentação', 'Custos de Vida', 'Lazer',
         'Receitas', 'Salário', 'Salário', 'Renda Extra', 'Renda extra',
         'Saldo do mês', 'Saldo acumulado',
       ])
+      expect(screen.getByRole('button', { name: 'Moradia' })).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     })
 
-    it('sums categories into types and sections, and projects the balance', async () => {
+    it('sums the launches into categories, types and sections, and projects the balance', async () => {
       await openDashboard()
 
-      expect(cell(MORADIA_OUT)).toHaveValue('1.800,00')
-      expect(cell('Lazer em outubro de 2026')).toHaveValue('')
+      expect(rowCells('Moradia').slice(0, 2)).toEqual(['R$ 1.800,00', 'R$ 1.800,00'])
+      expect(rowCells('Lazer')[0]).toBe('R$ 0,00')
       expect(rowCells('Despesas').slice(0, 3)).toEqual(['R$ 2.500,00', 'R$ 1.800,00', 'R$ 300,00'])
       expect(rowCells('Receitas').slice(0, 2)).toEqual(['R$ 5.000,00', 'R$ 0,00'])
       expect(rowCells('Saldo do mês').slice(0, 3)).toEqual(['R$ 2.500,00', '-R$ 1.800,00', '-R$ 300,00'])
@@ -179,8 +207,26 @@ describe('Dashboard route (/)', () => {
       expect(rowCells('Saldo acumulado').slice(0, 3)).toEqual(['R$ 5.000,00', 'R$ 3.200,00', 'R$ 2.900,00'])
     })
 
+    it('expands a category into its launches, with their due day, and a row to add one', async () => {
+      await openDashboard('Moradia', 'Lazer')
+
+      expect(screen.getByRole('button', { name: 'Moradia' })).toHaveAttribute('aria-expanded', 'true')
+      const rent = screen.getByRole('rowheader', { name: 'Aluguel' })
+      expect(rent).toHaveTextContent('Vence dia 10')
+      expect(cell(ALUGUEL_OUT)).toHaveValue('1.800,00')
+      expect(cell('Aluguel em dezembro de 2026')).toHaveValue('')
+      expect(rowCells('Moradia')[0]).toBe('R$ 1.800,00')
+      expect(screen.getByRole('rowheader', { name: 'Moradia' })).toHaveTextContent('1 lançamento')
+      // A launch without description
+      expect(cell('Sem descrição em dezembro de 2026')).toHaveValue('300,00')
+      expect(screen.getByRole('button', { name: 'Novo lançamento em Lazer' })).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Moradia' }))
+      expect(screen.queryByRole('rowheader', { name: 'Aluguel' })).not.toBeInTheDocument()
+    })
+
     it('totals every row of the window in the last column', async () => {
-      await openDashboard()
+      await openDashboard('Lazer')
 
       // Moradia 1.800 + 1.800; Despesas 2.500 + 1.800 + 300
       expect(rowCells('Moradia').at(-1)).toBe('R$ 3.600,00')
@@ -191,7 +237,8 @@ describe('Dashboard route (/)', () => {
       // Closing balance of the window: opening 2.500 + 400
       expect(rowCells('Saldo acumulado').at(-1)).toBe('R$ 2.900,00')
 
-      await typeInCell('Lazer em janeiro de 2027', '100')
+      await typeInCell('Sem descrição em janeiro de 2027', '100')
+      expect(rowCells('Sem descrição').at(-1)).toBe('R$ 400,00')
       expect(rowCells('Lazer').at(-1)).toBe('R$ 400,00')
       expect(rowCells('Despesas').at(-1)).toBe('R$ 4.700,00')
     })
@@ -216,156 +263,149 @@ describe('Dashboard route (/)', () => {
       expect(screen.queryByRole('rowheader', { name: 'Moradia' })).not.toBeInTheDocument()
     })
 
-    it('edits a cell, updating totals and cards before saving', async () => {
-      await openDashboard()
+    it('edits a launch, updating its category, totals and cards before saving', async () => {
+      await openDashboard('Moradia')
 
-      await typeInCell(MORADIA_OUT, '2.000')
+      await typeInCell(ALUGUEL_OUT, '2.000')
 
-      expect(cell(MORADIA_OUT)).toHaveValue('2.000,00')
-      expect(cell(MORADIA_OUT).closest('[data-changed]')).not.toBeNull()
+      expect(cell(ALUGUEL_OUT)).toHaveValue('2.000,00')
+      expect(cell(ALUGUEL_OUT).closest('[data-changed]')).not.toBeNull()
+      expect(rowCells('Moradia')[0]).toBe('R$ 2.000,00')
       expect(rowCells('Despesas')[0]).toBe('R$ 2.700,00')
       expect(within(card('Despesas do mês')).getByText(/2\.700,00/)).toBeInTheDocument()
       expect(within(card('Saldo acumulado')).getByText(/4\.800,00/)).toBeInTheDocument()
       expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('1 alteração não salva')
-      expect(saveEntriesMock).not.toHaveBeenCalled()
+      expect(saveLinesMock).not.toHaveBeenCalled()
     })
 
-    it('saves only the changed cells and clears the draft', async () => {
-      await openDashboard()
-      await typeInCell(MORADIA_OUT, '2000')
-      await typeInCell('Lazer em novembro de 2026', '150,5')
+    // Many typed cells in two expanded categories: slow when every spec file runs in parallel
+    it('saves only the changed months of each launch and clears the draft', async () => {
+      await openDashboard('Moradia', 'Lazer')
+      await typeInCell(ALUGUEL_OUT, '2000')
+      await typeInCell('Sem descrição em novembro de 2026', '150,5')
       // Typing the saved value back is not a change
-      await typeInCell('Salário em outubro de 2026', '5.000,00')
+      await typeInCell('Aluguel em novembro de 2026', '1.800,00')
 
-      fetchEntriesMock.mockResolvedValue([
-        ...budgetEntries.filter((e) => !(e.categoryId === 1 && e.month === '2026-10')),
-        { categoryId: 1, month: '2026-10', amountCents: 200000 },
-        { categoryId: 3, month: '2026-11', amountCents: 15050 },
-      ])
+      const saved = [
+        makeLine(
+          101,
+          1,
+          [
+            ['2026-10', 200000],
+            ['2026-11', 180000],
+          ],
+          { description: 'Aluguel', dueDay: 10 },
+        ),
+        budgetLines[1],
+        makeLine(301, 3, [
+          ['2026-11', 15050],
+          ['2026-12', 30000],
+        ]),
+        budgetLines[3],
+      ]
+      fetchLinesMock.mockResolvedValue(saved)
+      fetchEntriesMock.mockResolvedValue(entriesOf(saved))
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
 
-      expect(saveEntriesMock).toHaveBeenCalledWith([
-        { categoryId: 1, month: '2026-10', amountCents: 200000 },
-        { categoryId: 3, month: '2026-11', amountCents: 15050 },
+      expect(saveLinesMock).toHaveBeenCalledWith([
+        { anchorId: 101, month: '2026-10', amountCents: 200000 },
+        { anchorId: 301, month: '2026-11', amountCents: 15050 },
       ])
       await waitFor(() =>
         expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument(),
       )
-      expect(cell(MORADIA_OUT)).toHaveValue('2.000,00')
-      expect(cell(MORADIA_OUT).closest('[data-changed]')).toBeNull()
+      expect(cell(ALUGUEL_OUT)).toHaveValue('2.000,00')
+      expect(cell(ALUGUEL_OUT).closest('[data-changed]')).toBeNull()
       expect(fetchSummaryMock).toHaveBeenCalledTimes(2)
-    })
+    }, 15_000)
 
     it('keeps the draft and shows the error when saving fails', async () => {
-      saveEntriesMock.mockRejectedValue(new ApiError(404, ['Category not found']))
-      await openDashboard()
-      await typeInCell(MORADIA_OUT, '10')
+      saveLinesMock.mockRejectedValue(new ApiError(404, ['Transaction not found']))
+      await openDashboard('Moradia')
+      await typeInCell(ALUGUEL_OUT, '10')
 
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível salvar: Category not found')
-      expect(cell(MORADIA_OUT)).toHaveValue('10,00')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível salvar: Transaction not found')
+      expect(cell(ALUGUEL_OUT)).toHaveValue('10,00')
       expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toBeInTheDocument()
     })
 
     it('discards every unsaved change', async () => {
-      await openDashboard()
-      await typeInCell(MORADIA_OUT, '10')
-      await typeInCell('Lazer em outubro de 2026', '20')
+      await openDashboard('Moradia', 'Lazer')
+      await typeInCell(ALUGUEL_OUT, '10')
+      await typeInCell('Sem descrição em outubro de 2026', '20')
 
       await userEvent.click(screen.getByRole('button', { name: 'Descartar' }))
 
-      expect(cell(MORADIA_OUT)).toHaveValue('1.800,00')
-      expect(cell('Lazer em outubro de 2026')).toHaveValue('')
+      expect(cell(ALUGUEL_OUT)).toHaveValue('1.800,00')
+      expect(cell('Sem descrição em outubro de 2026')).toHaveValue('')
       expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument()
     })
 
     it('Esc reverts the cell and invalid text is ignored', async () => {
-      await openDashboard()
+      await openDashboard('Moradia')
 
-      await userEvent.click(cell(MORADIA_OUT))
-      await userEvent.clear(cell(MORADIA_OUT))
-      await userEvent.type(cell(MORADIA_OUT), '999{Escape}')
-      expect(cell(MORADIA_OUT)).toHaveValue('1.800,00')
+      await userEvent.click(cell(ALUGUEL_OUT))
+      await userEvent.clear(cell(ALUGUEL_OUT))
+      await userEvent.type(cell(ALUGUEL_OUT), '999{Escape}')
+      expect(cell(ALUGUEL_OUT)).toHaveValue('1.800,00')
 
-      await userEvent.click(cell(MORADIA_OUT))
-      await userEvent.type(cell(MORADIA_OUT), 'abc')
-      expect(cell(MORADIA_OUT)).toHaveAttribute('aria-invalid', 'true')
+      await userEvent.click(cell(ALUGUEL_OUT))
+      await userEvent.type(cell(ALUGUEL_OUT), 'abc')
+      expect(cell(ALUGUEL_OUT)).toHaveAttribute('aria-invalid', 'true')
       await userEvent.tab()
-      expect(cell(MORADIA_OUT)).toHaveValue('1.800,00')
+      expect(cell(ALUGUEL_OUT)).toHaveValue('1.800,00')
 
       expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument()
     })
 
-    it('Enter commits and moves to the cell below; emptying a cell clears it', async () => {
-      await openDashboard()
+    it('Enter commits and moves to the launch below; emptying a month deletes it', async () => {
+      await openDashboard('Moradia', 'Alimentação')
 
-      await userEvent.click(cell(MORADIA_OUT))
-      await userEvent.clear(cell(MORADIA_OUT))
+      await userEvent.click(cell(ALUGUEL_OUT))
+      await userEvent.clear(cell(ALUGUEL_OUT))
       await userEvent.keyboard('{Enter}')
 
-      expect(cell('Alimentação em outubro de 2026')).toHaveFocus()
-      expect(cell(MORADIA_OUT)).toHaveValue('')
+      expect(cell('Mercado em outubro de 2026')).toHaveFocus()
+      expect(cell(ALUGUEL_OUT)).toHaveValue('')
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
-      expect(saveEntriesMock).toHaveBeenCalledWith([{ categoryId: 1, month: '2026-10', amountCents: 0 }])
+      expect(saveLinesMock).toHaveBeenCalledWith([{ anchorId: 101, month: '2026-10', amountCents: 0 }])
     })
 
     it('replicates a value to every following month from the cell menu', async () => {
-      await openDashboard()
+      await openDashboard('Moradia')
 
-      await cellAction(MORADIA_OUT, 'Replicar para os meses seguintes')
+      await cellAction(ALUGUEL_OUT, 'Replicar para os meses seguintes')
 
       for (const month of ['novembro de 2026', 'dezembro de 2026', 'janeiro de 2027', 'setembro de 2027']) {
-        expect(cell(`Moradia em ${month}`)).toHaveValue('1.800,00')
+        expect(cell(`Aluguel em ${month}`)).toHaveValue('1.800,00')
       }
-      // November already had 1.800,00 saved, so 10 cells changed
-      expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('10 alterações não salvas')
-    })
-
-    it('shows cells with several transactions read-only, linking to the statement, and skips them when replicating', async () => {
-      stubBudgetApi({
-        entries: [
-          ...budgetEntries.filter((e) => !(e.categoryId === 1 && e.month === '2026-11')),
-          { categoryId: 1, month: '2026-11', amountCents: 200000, count: 2 },
-        ],
-      })
-      await openDashboard()
-
-      expect(screen.queryByRole('textbox', { name: 'Moradia em novembro de 2026' })).not.toBeInTheDocument()
-      const link = screen.getByRole('link', {
-        name: 'Moradia em novembro de 2026: vários lançamentos, editar no extrato',
-      })
-      expect(link).toHaveTextContent('R$ 2.000,00')
-      expect(link).toHaveAttribute('href', '/extrato?month=2026-11')
-
-      await cellAction(MORADIA_OUT, 'Replicar para os meses seguintes')
-      expect(cell('Moradia em dezembro de 2026')).toHaveValue('1.800,00')
-      expect(link).toHaveTextContent('R$ 2.000,00')
-      // December to September: 10 cells, November left out
+      // November already had 1.800,00 saved, so 10 months changed
       expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('10 alterações não salvas')
     })
 
     it('replicates only until December', async () => {
-      await openDashboard()
-      await typeInCell('Alimentação em outubro de 2026', '800')
+      await openDashboard('Alimentação')
+      await typeInCell('Mercado em outubro de 2026', '800')
 
-      await cellAction('Alimentação em outubro de 2026', 'Replicar até dezembro')
+      await cellAction('Mercado em outubro de 2026', 'Replicar até dezembro')
 
-      expect(cell('Alimentação em novembro de 2026')).toHaveValue('800,00')
-      expect(cell('Alimentação em dezembro de 2026')).toHaveValue('800,00')
-      expect(cell('Alimentação em janeiro de 2027')).toHaveValue('')
+      expect(cell('Mercado em novembro de 2026')).toHaveValue('800,00')
+      expect(cell('Mercado em dezembro de 2026')).toHaveValue('800,00')
+      expect(cell('Mercado em janeiro de 2027')).toHaveValue('')
     })
 
     it('offers only the actions that make sense for the cell', async () => {
-      await openDashboard()
+      await openDashboard('Lazer')
 
-      await userEvent.click(screen.getByRole('button', { name: 'Ações de Lazer em dezembro de 2026' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Ações de Sem descrição em dezembro de 2026' }))
       let menu = await screen.findByRole('menu')
       expect(within(menu).queryByRole('menuitem', { name: 'Replicar até dezembro' })).not.toBeInTheDocument()
       expect(within(menu).getByRole('menuitem', { name: 'Limpar valor' })).not.toHaveAttribute('aria-disabled')
       await userEvent.keyboard('{Escape}')
 
-      await userEvent.click(screen.getByRole('button', { name: 'Ações de Lazer em setembro de 2027' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Ações de Sem descrição em setembro de 2027' }))
       menu = await screen.findByRole('menu')
       expect(within(menu).getByRole('menuitem', { name: 'Replicar para os meses seguintes' })).toHaveAttribute(
         'aria-disabled',
@@ -374,26 +414,125 @@ describe('Dashboard route (/)', () => {
       expect(within(menu).getByRole('menuitem', { name: 'Limpar valor' })).toHaveAttribute('aria-disabled', 'true')
     })
 
-    it('clears a cell from its menu', async () => {
+    it('clears a month from its menu', async () => {
+      await openDashboard('Moradia')
+
+      await cellAction(ALUGUEL_OUT, 'Limpar valor')
+
+      expect(cell(ALUGUEL_OUT)).toHaveValue('')
+      expect(rowCells('Despesas')[0]).toBe('R$ 700,00')
+    })
+
+    it('launches a new expense in a category right away, with its due day', async () => {
+      await openDashboard('Lazer')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Novo lançamento em Lazer' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      expect(within(dialog).getByRole('combobox', { name: 'Categoria' })).toHaveDisplayValue('Lazer')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Netflix')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '55,90')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Dia de vencimento (opcional)' }), '5')
+      await userEvent.click(within(dialog).getByRole('switch', { name: 'Repetir nos próximos meses' }))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(createTransaction).toHaveBeenCalledWith({
+        categoryId: 3,
+        description: 'Netflix',
+        plannedCents: 5590,
+        month: '2026-10',
+        repeatMonths: 12,
+        dueDay: 5,
+      })
+      // The grid and the statement read it back
+      expect(fetchLinesMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('also launches from the category menu', async () => {
       await openDashboard()
 
-      await cellAction(MORADIA_OUT, 'Limpar valor')
+      await rowAction('Alimentação', 'Novo lançamento')
 
-      expect(cell(MORADIA_OUT)).toHaveValue('')
-      expect(rowCells('Despesas')[0]).toBe('R$ 700,00')
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      expect(within(dialog).getByRole('combobox', { name: 'Categoria' })).toHaveDisplayValue('Alimentação')
+    })
+
+    it('rejects an invalid due day', async () => {
+      await openDashboard('Lazer')
+      await userEvent.click(screen.getByRole('button', { name: 'Novo lançamento em Lazer' }))
+      const dialog = await screen.findByRole('dialog')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '10')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Dia de vencimento (opcional)' }), '32')
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      expect(within(dialog).getByText('Informe um dia entre 1 e 31.')).toBeInTheDocument()
+      expect(createTransaction).not.toHaveBeenCalled()
+    })
+
+    it('edits a launch from its first pending month on', async () => {
+      await openDashboard('Moradia')
+
+      await rowAction('Aluguel', 'Editar')
+      const dialog = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      expect(dialog).toHaveTextContent('Vale de outubro de 2026 em diante')
+      const day = within(dialog).getByRole('textbox', { name: 'Dia de vencimento (opcional)' })
+      expect(day).toHaveValue('10')
+      await userEvent.clear(day)
+      await userEvent.type(day, '15')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(updateTransaction).toHaveBeenCalledWith(101, { dueDay: 15 }, 'FOLLOWING')
+    })
+
+    it('starts editing after the realized months', async () => {
+      const [rent, ...others] = budgetLines
+      stubBudgetApi({
+        lines: [{ ...rent, cells: [{ ...rent.cells[0], realizedCents: 180000 }, rent.cells[1]] }, ...others],
+      })
+      await openDashboard('Moradia')
+
+      await rowAction('Aluguel', 'Editar')
+      const dialog = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      expect(dialog).toHaveTextContent('Vale de novembro de 2026 em diante')
+      await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }))
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Aluguel novo')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      await waitFor(() => expect(updateTransaction).toHaveBeenCalledWith(102, { description: 'Aluguel novo' }, 'FOLLOWING'))
+    })
+
+    it('deletes a launch from its first pending month on, after confirming', async () => {
+      await openDashboard('Moradia')
+
+      await rowAction('Aluguel', 'Excluir')
+      const dialog = await screen.findByRole('alertdialog', { name: 'Excluir lançamento' })
+      expect(dialog).toHaveTextContent('Excluir Aluguel de outubro de 2026 em diante?')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }))
+
+      await waitFor(() => expect(deleteTransaction).toHaveBeenCalledWith(101, 'FOLLOWING'))
+    })
+
+    it('opens a launch in the statement', async () => {
+      const { router } = await openDashboard('Lazer')
+
+      await rowAction('Sem descrição', 'Ver no extrato')
+
+      await waitFor(() => expect(router.state.location.href).toBe('/extrato?month=2026-12'))
     })
 
     it('asks before leaving the page with unsaved changes', async () => {
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-      const { router } = await openDashboard()
-      await typeInCell(MORADIA_OUT, '10')
+      const { router } = await openDashboard('Moradia')
+      await typeInCell(ALUGUEL_OUT, '10')
 
       await openUserMenu()
       await userEvent.click(await screen.findByRole('menuitem', { name: 'Editar perfil' }))
 
       expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE)
       expect(router.state.location.pathname).toBe('/')
-      expect(cell(MORADIA_OUT)).toHaveValue('10,00')
+      expect(cell(ALUGUEL_OUT)).toHaveValue('10,00')
 
       confirm.mockReturnValue(true)
       await openUserMenu()

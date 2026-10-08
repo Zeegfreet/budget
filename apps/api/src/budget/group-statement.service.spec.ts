@@ -87,8 +87,8 @@ describe('GroupStatementService', () => {
       ])
       // Series occurrences
       .mockResolvedValueOnce([
-        { id: 10, seriesId: 's1' },
-        { id: 12, seriesId: 's1' },
+        { id: 10, seriesId: 's1', month: '2026-10' },
+        { id: 12, seriesId: 's1', month: '2026-11' },
       ]);
 
     const [statement] = await service.list(7, '2026-10');
@@ -129,7 +129,12 @@ describe('GroupStatementService', () => {
         totalCents: 3000,
         paid: true,
         paidByName: 'Bruno',
-        series: { index: 1, count: 2 },
+        series: {
+          index: 1,
+          count: 2,
+          firstMonth: '2026-10',
+          lastMonth: '2026-11',
+        },
         category: moradia,
       },
       {

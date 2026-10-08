@@ -17,7 +17,12 @@ interface GroupTransaction {
   amountCents: number;
   splitMethod: { id: number; name: string; type: string } | null;
   paidBy: { memberId: number; name: string } | null;
-  series: { index: number; count: number } | null;
+  series: {
+    index: number;
+    count: number;
+    firstMonth: string;
+    lastMonth: string;
+  } | null;
   shares: { memberId: number; name: string; amountCents: number }[];
 }
 
@@ -381,6 +386,8 @@ describe('Group split methods, transactions and balance (e2e)', () => {
       expect((await month('2027-02'))[0].series).toEqual({
         index: 4,
         count: 12,
+        firstMonth: '2026-11',
+        lastMonth: '2027-10',
       });
     });
 
@@ -465,6 +472,82 @@ describe('Group split methods, transactions and balance (e2e)', () => {
       await ana
         .delete(`${base()}/transactions/${series[2].id}?scope=ALL`)
         .expect(400);
+    });
+
+    describe('series range', () => {
+      const rent = async (repeatMonths = 3) =>
+        (
+          await create(ana, {
+            kind: 'EXPENSE',
+            description: 'Aluguel',
+            month: '2026-10',
+            amountCents: 100000,
+            splitMethodId: equal.id,
+            paidByMemberId: anaId,
+            repeatMonths,
+          }).expect(201)
+        ).body as GroupTransaction[];
+      const setEnd = (client: Agent, id: number, untilMonth: unknown) =>
+        client.put(`${base()}/transactions/${id}/series`).send({ untilMonth });
+
+      it('extends a series with unpaid copies of the last one, same shares', async () => {
+        const series = await rent();
+
+        const res = await setEnd(ana, series[0].id, '2027-01').expect(200);
+
+        const all = res.body as GroupTransaction[];
+        expect(all.map((t) => t.month)).toEqual([
+          '2026-10',
+          '2026-11',
+          '2026-12',
+          '2027-01',
+        ]);
+        expect(all[3]).toMatchObject({
+          description: 'Aluguel',
+          amountCents: 100000,
+          paidBy: null,
+          splitMethod: { id: equal.id },
+          shares: [{ amountCents: 50000 }, { amountCents: 50000 }],
+          series: { index: 4, count: 4, lastMonth: '2027-01' },
+        });
+      });
+
+      it('shortens a series deleting the unpaid occurrences after the end', async () => {
+        const series = await rent();
+
+        await setEnd(bruno, series[2].id, '2026-11').expect(200);
+
+        expect(await month('2026-12')).toEqual([]);
+        expect((await month('2026-11'))[0].series).toMatchObject({
+          index: 2,
+          count: 2,
+        });
+      });
+
+      it('refuses to drop a paid occurrence with 409', async () => {
+        const series = await rent();
+        await ana
+          .put(`${base()}/transactions/${series[2].id}/payment`)
+          .send({ memberId: brunoId })
+          .expect(200);
+
+        await setEnd(ana, series[0].id, '2026-10').expect(409);
+        expect(await month('2026-12')).toHaveLength(1);
+      });
+
+      it('validates the month and the id', async () => {
+        const [first] = await rent(1);
+        await setEnd(ana, first.id, '2026-09').expect(400);
+        await setEnd(ana, first.id, '2031-10').expect(400);
+        await setEnd(ana, first.id, 'x').expect(400);
+        await setEnd(ana, 999999, '2026-12').expect(404);
+        // A single transaction becomes a series
+        const res = await setEnd(ana, first.id, '2026-11').expect(200);
+        expect((res.body as GroupTransaction[])[1].series).toMatchObject({
+          index: 2,
+          count: 2,
+        });
+      });
     });
 
     it('keeps transactions when their rule is deleted', async () => {
@@ -629,6 +712,10 @@ describe('Group split methods, transactions and balance (e2e)', () => {
         .send({ memberId: anaId })
         .expect(404);
       await carla.delete(`${base()}/transactions/${t.id}/payment`).expect(404);
+      await carla
+        .put(`${base()}/transactions/${t.id}/series`)
+        .send({ untilMonth: '2026-12' })
+        .expect(404);
       await carla.get(`${base()}/balance?month=2026-10`).expect(404);
 
       expect(await month('2026-10')).toEqual([
@@ -658,6 +745,10 @@ describe('Group split methods, transactions and balance (e2e)', () => {
         .send({ description: 'X' })
         .expect(404);
       await carla.delete(`${other}/transactions/${t.id}`).expect(404);
+      await carla
+        .put(`${other}/transactions/${t.id}/series`)
+        .send({ untilMonth: '2026-12' })
+        .expect(404);
       await carla.delete(`${other}/split-methods/${equal.id}`).expect(404);
       await carla
         .post(`${other}/transactions`)

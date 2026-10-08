@@ -1,16 +1,29 @@
-import type { CategoryGroup, EntryKind, Month } from './types'
+import type { BudgetLine, CategoryGroup, EntryKind, LineCell, Month } from './types'
+
+/** A launch row under its category: one recurring series or one plain launch */
+export interface LineRow {
+  line: BudgetLine
+  /** The description, or a placeholder */
+  label: string
+  /** Effective due day: the payment method's, or else the launch's */
+  dueDay: number | null
+  values: number[]
+  total: number
+}
 
 export interface CategoryRow {
   id: number
   name: string
-  description: string | null
-  dueDay: number | null
   active: boolean
   /** Takes values: the category and its type are active */
   editable: boolean
+  /** Its launches plus the group shares, per month */
   values: number[]
   /** Sum of every month in the window */
   total: number
+  lines: LineRow[]
+  /** The user's shares of linked groups per month, or `null` when there are none */
+  shares: number[] | null
 }
 
 export interface GroupRow {
@@ -59,32 +72,56 @@ const sumColumns = (rows: number[][], width: number) =>
 
 const sum = (values: number[]) => values.reduce((total, v) => total + v, 0)
 
+export const UNNAMED_LINE = 'Sem descrição'
+
+/** Where the table's amounts come from (draft values while editing, or saved ones) */
+export interface TableValues {
+  /** A launch row's planned amount in a month */
+  line: (anchorId: number, month: Month) => number
+  /** The user's group shares in a category and month */
+  groupShare: (categoryId: number, month: Month) => number
+}
+
 /**
- * Builds the pivot table (all integer cents) from the category tree and cell
- * values. Inactive types and categories stay in the totals (their history is
- * kept); hiding them is up to the view.
+ * Builds the pivot table (all integer cents) from the category tree, its
+ * launch rows and the values. Inactive types and categories stay in the totals
+ * (their history is kept); hiding them is up to the view.
  */
 export function buildBudgetTable(
   groups: CategoryGroup[],
+  lines: BudgetLine[],
   months: Month[],
-  value: (categoryId: number, month: Month) => number,
+  { line: lineValue, groupShare }: TableValues,
   openingCents: number,
 ): BudgetTable {
+  const linesOf = new Map<number, BudgetLine[]>()
+  for (const line of lines) linesOf.set(line.categoryId, [...(linesOf.get(line.categoryId) ?? []), line])
   const sections = SECTIONS.map(({ kind, label }): Section => {
     const groupRows = groups
       .filter((g) => g.kind === kind)
       .map((g): GroupRow => {
         const categories = g.categories.map((c): CategoryRow => {
-          const values = months.map((m) => value(c.id, m))
+          const lineRows = (linesOf.get(c.id) ?? []).map((line): LineRow => {
+            const values = months.map((m) => lineValue(line.anchorId, m))
+            return {
+              line,
+              label: line.description ?? UNNAMED_LINE,
+              dueDay: line.paymentMethod?.dueDay ?? line.dueDay,
+              values,
+              total: sum(values),
+            }
+          })
+          const shares = months.map((m) => groupShare(c.id, m))
+          const values = sumColumns([...lineRows.map((l) => l.values), shares], months.length)
           return {
             id: c.id,
             name: c.name,
-            description: c.description,
-            dueDay: c.dueDay,
             active: c.active,
             editable: g.active && c.active,
             values,
             total: sum(values),
+            lines: lineRows,
+            shares: shares.some((v) => v !== 0) ? shares : null,
           }
         })
         const totals = sumColumns(categories.map((c) => c.values), months.length)
@@ -122,4 +159,12 @@ export function buildBudgetTable(
     balanceTotal,
     accumulatedTotal: openingCents + balanceTotal,
   }
+}
+
+/**
+ * The occurrence a row's edit or delete starts from: its first pending month
+ * in the window (realized ones stay as they are), or else its first month.
+ */
+export function lineTarget(line: BudgetLine): LineCell {
+  return line.cells.find((c) => c.realizedCents === null) ?? line.cells[0]
 }

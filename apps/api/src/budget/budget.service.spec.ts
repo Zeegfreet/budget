@@ -18,7 +18,7 @@ describe('BudgetService', () => {
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      deleteMany: vi.fn(),
       groupBy: vi.fn(),
     },
     groupTransactionShare: { findMany: vi.fn() },
@@ -36,7 +36,9 @@ describe('BudgetService', () => {
     prisma.user.update.mockImplementation((args) => ({ update: args }));
     prisma.transaction.create.mockImplementation((args) => ({ create: args }));
     prisma.transaction.update.mockImplementation((args) => ({ update: args }));
-    prisma.transaction.delete.mockImplementation((args) => ({ delete: args }));
+    prisma.transaction.deleteMany.mockImplementation((args) => ({
+      deleteMany: args,
+    }));
   });
 
   describe('categories', () => {
@@ -186,72 +188,174 @@ describe('BudgetService', () => {
     });
   });
 
-  describe('saveEntries', () => {
-    const active = { active: true, group: { active: true } };
+  describe('lines', () => {
+    const row = (id: number, extra: object) => ({
+      id,
+      categoryId: 1,
+      month: '2026-10',
+      description: null,
+      dueDay: null,
+      plannedCents: 100,
+      realizedCents: null,
+      seriesId: null,
+      paymentMethod: null,
+      ...extra,
+    });
 
-    it('creates, updates and deletes the cell’s transaction, last duplicate winning', async () => {
-      prisma.category.findMany.mockResolvedValue([active, active]);
+    it('groups a series in one row and keeps plain launches apart, by due day', async () => {
       prisma.transaction.findMany.mockResolvedValue([
-        { id: 40, categoryId: 2, month: '2026-11' },
-        { id: 41, categoryId: 2, month: '2026-12' },
+        row(10, { seriesId: 's', description: 'Netflix', dueDay: 20 }),
+        row(11, { description: 'Avulso' }),
+        row(12, {
+          description: 'Spotify',
+          paymentMethod: { id: 2, name: 'Cartão', dueDay: 5 },
+        }),
+        row(13, {
+          seriesId: 's',
+          month: '2026-11',
+          plannedCents: 150,
+          realizedCents: 140,
+        }),
       ]);
 
-      await service.saveEntries(7, [
-        { categoryId: 1, month: '2026-10', amountCents: 100 },
-        { categoryId: 1, month: '2026-10', amountCents: 250 },
-        { categoryId: 2, month: '2026-11', amountCents: 0 },
-        { categoryId: 2, month: '2026-12', amountCents: 900 },
-        { categoryId: 1, month: '2027-01', amountCents: 0 },
-      ]);
+      const lines = await service.lines(7, '2026-10', '2027-09');
 
-      expect(prisma.category.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { userId: 7, id: { in: [1, 2] } } }),
-      );
       expect(prisma.transaction.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ userId: 7 }),
+          where: { userId: 7, month: { gte: '2026-10', lte: '2027-09' } },
         }),
       );
+      expect(lines.map((l) => l.anchorId)).toEqual([12, 10, 11]);
+      expect(lines[1]).toEqual({
+        anchorId: 10,
+        categoryId: 1,
+        description: 'Netflix',
+        dueDay: 20,
+        paymentMethod: null,
+        cells: [
+          {
+            month: '2026-10',
+            transactionId: 10,
+            plannedCents: 100,
+            realizedCents: null,
+          },
+          {
+            month: '2026-11',
+            transactionId: 13,
+            plannedCents: 150,
+            realizedCents: 140,
+          },
+        ],
+      });
+    });
+
+    it('rejects a reversed or too long range', async () => {
+      await expect(service.lines(7, '2026-10', '2026-09')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.transaction.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('saveLines', () => {
+    const active = { active: true, group: { active: true } };
+    const anchor = (id: number, seriesId: string | null) => ({
+      id,
+      categoryId: 1,
+      description: 'Netflix',
+      dueDay: 5,
+      paymentMethodId: null,
+      seriesId,
+    });
+
+    it('updates, deletes and creates occurrences of a series, last duplicate winning', async () => {
+      prisma.transaction.findMany
+        .mockResolvedValueOnce([anchor(10, 's')])
+        .mockResolvedValueOnce([
+          { id: 10, month: '2026-10', seriesId: 's', categoryId: 1 },
+          { id: 11, month: '2026-11', seriesId: 's', categoryId: 1 },
+        ]);
+      prisma.category.findMany.mockResolvedValue([active]);
+
+      await service.saveLines(7, [
+        { anchorId: 10, month: '2026-10', amountCents: 100 },
+        { anchorId: 10, month: '2026-10', amountCents: 250 },
+        { anchorId: 10, month: '2026-11', amountCents: 0 },
+        { anchorId: 10, month: '2026-12', amountCents: 900 },
+        { anchorId: 10, month: '2027-01', amountCents: 0 },
+      ]);
+
+      expect(prisma.transaction.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ where: { userId: 7, id: { in: [10] } } }),
+      );
       expect(prisma.$transaction.mock.calls[0][0]).toEqual([
+        { update: { where: { id: 10 }, data: { plannedCents: 250 } } },
+        { deleteMany: { where: { userId: 7, id: { in: [11] } } } },
         {
           create: {
             data: {
               userId: 7,
               categoryId: 1,
-              month: '2026-10',
-              plannedCents: 250,
+              description: 'Netflix',
+              dueDay: 5,
+              paymentMethodId: null,
+              month: '2026-12',
+              plannedCents: 900,
+              seriesId: 's',
             },
           },
         },
-        { delete: { where: { id: 40 } } },
-        { update: { where: { id: 41 }, data: { plannedCents: 900 } } },
       ]);
     });
 
-    it('fails with 409 when a cell holds several transactions', async () => {
+    it('turns a plain launch into a series when another month gets a value', async () => {
+      prisma.transaction.findMany
+        .mockResolvedValueOnce([anchor(10, null)])
+        .mockResolvedValueOnce([]);
       prisma.category.findMany.mockResolvedValue([active]);
-      prisma.transaction.findMany.mockResolvedValue([
-        { id: 40, categoryId: 1, month: '2026-10' },
-        { id: 41, categoryId: 1, month: '2026-10' },
+
+      await service.saveLines(7, [
+        { anchorId: 10, month: '2026-11', amountCents: 100 },
+        { anchorId: 10, month: '2026-12', amountCents: 100 },
       ]);
 
+      const [join, first, second] = prisma.$transaction.mock.calls[0][0];
+      const seriesId = join.update.data.seriesId;
+      expect(join).toEqual({
+        update: { where: { id: 10 }, data: { seriesId } },
+      });
+      expect(seriesId).toEqual(expect.any(String));
+      expect(first.create.data).toMatchObject({ month: '2026-11', seriesId });
+      expect(second.create.data).toMatchObject({ month: '2026-12', seriesId });
+    });
+
+    it('fails with 404 and writes nothing when a launch is not the user’s', async () => {
+      prisma.transaction.findMany.mockResolvedValueOnce([anchor(10, null)]);
+
       await expect(
-        service.saveEntries(7, [
-          { categoryId: 1, month: '2026-10', amountCents: 100 },
+        service.saveLines(7, [
+          { anchorId: 10, month: '2026-10', amountCents: 100 },
+          { anchorId: 99, month: '2026-10', amountCents: 100 },
         ]),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(NotFoundException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('fails with 404 and writes nothing when a category is not the user’s', async () => {
+    it('fails with 409 when the row has several transactions in the month', async () => {
+      prisma.transaction.findMany
+        .mockResolvedValueOnce([anchor(10, 's')])
+        .mockResolvedValueOnce([
+          { id: 10, month: '2026-10', seriesId: 's', categoryId: 1 },
+          { id: 11, month: '2026-10', seriesId: 's', categoryId: 1 },
+        ]);
       prisma.category.findMany.mockResolvedValue([active]);
 
       await expect(
-        service.saveEntries(7, [
-          { categoryId: 1, month: '2026-10', amountCents: 100 },
-          { categoryId: 99, month: '2026-10', amountCents: 100 },
+        service.saveLines(7, [
+          { anchorId: 10, month: '2026-10', amountCents: 100 },
         ]),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(ConflictException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
@@ -259,15 +363,34 @@ describe('BudgetService', () => {
       ['the category', { active: false, group: { active: true } }],
       ['its type', { active: true, group: { active: false } }],
     ])('fails with 400 when %s is inactive', async (_case, category) => {
-      prisma.category.findMany.mockResolvedValue([active, category]);
+      prisma.transaction.findMany
+        .mockResolvedValueOnce([anchor(10, null)])
+        .mockResolvedValueOnce([]);
+      prisma.category.findMany.mockResolvedValue([category]);
 
       await expect(
-        service.saveEntries(7, [
-          { categoryId: 1, month: '2026-10', amountCents: 100 },
-          { categoryId: 2, month: '2026-10', amountCents: 100 },
+        service.saveLines(7, [
+          { anchorId: 10, month: '2026-11', amountCents: 100 },
         ]),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('still deletes in an inactive category', async () => {
+      prisma.transaction.findMany
+        .mockResolvedValueOnce([anchor(10, null)])
+        .mockResolvedValueOnce([
+          { id: 10, month: '2026-10', seriesId: null, categoryId: 1 },
+        ]);
+      prisma.category.findMany.mockResolvedValue([]);
+
+      await service.saveLines(7, [
+        { anchorId: 10, month: '2026-10', amountCents: 0 },
+      ]);
+
+      expect(prisma.$transaction.mock.calls[0][0]).toEqual([
+        { deleteMany: { where: { userId: 7, id: { in: [10] } } } },
+      ]);
     });
   });
 

@@ -132,6 +132,16 @@ export async function deleteGroupTransaction(groupId: number, id: number, scope:
   await api.delete(`/groups/${groupId}/transactions/${id}`, { params: { scope } })
 }
 
+/** Moves the series' last month: extends it with unpaid copies of the last occurrence, or drops the unpaid ones after it */
+export async function setGroupTransactionSeriesEnd(
+  groupId: number,
+  id: number,
+  untilMonth: Month,
+): Promise<GroupTransaction[]> {
+  const { data } = await api.put<GroupTransaction[]>(`/groups/${groupId}/transactions/${id}/series`, { untilMonth })
+  return data
+}
+
 export async function payGroupTransaction(groupId: number, id: number, memberId: number): Promise<GroupTransaction> {
   const { data } = await api.put<GroupTransaction>(`/groups/${groupId}/transactions/${id}/payment`, { memberId })
   return data

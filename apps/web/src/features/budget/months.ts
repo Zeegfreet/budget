@@ -47,3 +47,10 @@ export function formatMonthLong(month: Month): string {
 export function endOfYear(month: Month): Month {
   return toMonth(parts(month)[0], 11)
 }
+
+/** Months from `from` to `to`, both included ("2026-10".."2027-09" → 12) */
+export function monthSpan(from: Month, to: Month): number {
+  const [fy, fi] = parts(from)
+  const [ty, ti] = parts(to)
+  return (ty - fy) * 12 + (ti - fi) + 1
+}

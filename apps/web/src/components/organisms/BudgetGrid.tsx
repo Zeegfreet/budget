@@ -1,5 +1,6 @@
 import {
   ChevronRightIcon,
+  ExternalLinkIcon,
   EyeIcon,
   EyeOffIcon,
   PencilIcon,
@@ -21,16 +22,19 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { endOfYear, formatMonthLabel, formatMonthLong } from '@/features/budget/months'
-import type { BudgetTable, CategoryRow, GroupRow } from '@/features/budget/rows'
-import type { Month } from '@/features/budget/types'
+import type { BudgetTable, CategoryRow, GroupRow, LineRow } from '@/features/budget/rows'
+import type { EntryKind, Month } from '@/features/budget/types'
 import { cn } from '@/lib/utils'
 
-/** What the user asked to do with a type or category; the page handles it. */
+/** What the user asked to do with a type, category or launch row; the page handles it. */
 export type GridAction =
   | { type: 'toggle-group'; group: GroupRow }
   | { type: 'toggle-category'; category: CategoryRow }
   | { type: 'edit-group' | 'delete-group' | 'create-category'; group: GroupRow }
   | { type: 'edit-category' | 'delete-category'; category: CategoryRow }
+  | { type: 'create-line'; category: CategoryRow; kind: EntryKind }
+  | { type: 'edit-line' | 'delete-line'; line: LineRow; kind: EntryKind }
+  | { type: 'open-line'; line: LineRow; kind: EntryKind }
 
 interface BudgetGridProps {
   table: BudgetTable
@@ -38,13 +42,10 @@ interface BudgetGridProps {
   months: Month[]
   /** Shows inactive types and categories (faded, read-only) */
   showInactive: boolean
-  isChanged: (categoryId: number, month: Month) => boolean
-  /** The cell holds several transactions: shown read-only, linking to the statement */
-  isLocked: (categoryId: number, month: Month) => boolean
-  /** The cell includes the user's share of a linked group (locked as well) */
-  hasGroupShare?: (categoryId: number, month: Month) => boolean
-  onChange: (categoryId: number, month: Month, cents: number) => void
-  onFill: (categoryId: number, month: Month, scope: FillScope) => void
+  /** A launch row's month differs from the saved value */
+  isChanged: (anchorId: number, month: Month) => boolean
+  onChange: (anchorId: number, month: Month, cents: number) => void
+  onFill: (anchorId: number, month: Month, scope: FillScope) => void
   onAction: (action: GridAction) => void
 }
 
@@ -111,30 +112,50 @@ const toggleAction = (active: boolean, onSelect: () => void): RowAction =>
     ? { label: 'Inativar', icon: EyeOffIcon, onSelect }
     : { label: 'Reativar', icon: EyeIcon, onSelect }
 
+interface AddRowProps {
+  text: string
+  /** Names the parent, e.g. "Nova categoria em Despesas Básicas" */
+  ariaLabel: string
+  indent: string
+  months: number
+  onClick: () => void
+}
+
+/** "+ Nova categoria" / "+ Novo lançamento" closing a type or a category */
+function AddRow({ text, ariaLabel, indent, months, onClick }: AddRowProps) {
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell className={cn(STICKY, 'bg-background py-1', indent)}>
+        <Button variant="ghost" size="xs" aria-label={ariaLabel} className="text-muted-foreground" onClick={onClick}>
+          <PlusIcon aria-hidden />
+          {text}
+        </Button>
+      </TableCell>
+      <TableCell colSpan={months} />
+      <TableCell className={TOTAL} />
+    </TableRow>
+  )
+}
+
 /**
  * Pivot table of the budget: Despesas and Receitas (fixed), each expandable
- * into types and then categories, one editable column per month and a Total
- * column. Types and categories have a menu (hover "⋯" or right click) to edit,
- * inactivate or delete them; "+ Nova categoria" closes each type.
+ * into types, categories (collapsed by default) and their launches, one column
+ * per month and a Total column. Values are typed on the launch rows (one per
+ * recurring series or plain launch); categories show their sums, group shares
+ * included. Every level has a menu (hover "⋯" or right click).
  */
-export function BudgetGrid({
-  table,
-  months,
-  showInactive,
-  isChanged,
-  isLocked,
-  hasGroupShare = () => false,
-  onChange,
-  onFill,
-  onAction,
-}: BudgetGridProps) {
+export function BudgetGrid({ table, months, showInactive, isChanged, onChange, onFill, onAction }: BudgetGridProps) {
+  // Sections and types start open, categories closed
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const toggle = (id: string) =>
-    setCollapsed((prev) => {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const flip = (set: typeof setCollapsed) => (id: string) =>
+    set((prev) => {
       const next = new Set(prev)
       if (!next.delete(id)) next.add(id)
       return next
     })
+  const toggle = flip(setCollapsed)
+  const toggleCategory = flip(setExpanded)
 
   const lastMonth = months[months.length - 1]
   let row = 0
@@ -154,7 +175,16 @@ export function BudgetGrid({
     },
   ]
 
-  const categoryActions = (category: CategoryRow): RowAction[] => [
+  const categoryActions = (category: CategoryRow, kind: EntryKind): RowAction[] => [
+    ...(category.editable
+      ? [
+          {
+            label: 'Novo lançamento',
+            icon: PlusIcon,
+            onSelect: () => onAction({ type: 'create-line', category, kind }),
+          },
+        ]
+      : []),
     { label: 'Editar', icon: PencilIcon, onSelect: () => onAction({ type: 'edit-category', category }) },
     toggleAction(category.active, () => onAction({ type: 'toggle-category', category })),
     {
@@ -166,80 +196,149 @@ export function BudgetGrid({
     },
   ]
 
-  const categoryRow = (category: CategoryRow) => {
+  const lineActions = (line: LineRow, kind: EntryKind, editable: boolean): RowAction[] => [
+    ...(editable
+      ? [{ label: 'Editar', icon: PencilIcon, onSelect: () => onAction({ type: 'edit-line', line, kind }) }]
+      : []),
+    { label: 'Ver no extrato', icon: ExternalLinkIcon, onSelect: () => onAction({ type: 'open-line', line, kind }) },
+    {
+      label: 'Excluir',
+      icon: Trash2Icon,
+      destructive: true,
+      separated: true,
+      onSelect: () => onAction({ type: 'delete-line', line, kind }),
+    },
+  ]
+
+  const lineRow = (line: LineRow, category: CategoryRow, kind: EntryKind) => {
+    const { anchorId } = line.line
     const rowIndex = category.editable ? row++ : -1
     return (
       <TableRow
-        key={`category:${category.id}`}
+        key={`line:${anchorId}`}
         data-inactive={!category.editable || undefined}
         className={cn('hover:bg-transparent', !category.editable && 'text-muted-foreground/70')}
       >
         <TableHead
           scope="row"
-          aria-label={category.name}
-          className={cn(STICKY, 'h-auto max-w-80 bg-background py-1 pl-14 font-normal text-muted-foreground')}
+          aria-label={line.label}
+          className={cn(STICKY, 'h-auto max-w-80 bg-background py-1 pl-20 font-normal text-muted-foreground')}
         >
-          <RowActions label={category.name} actions={categoryActions(category)}>
+          <RowActions label={line.label} actions={lineActions(line, kind, category.editable)}>
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate">{category.name}</span>
-              {category.dueDay !== null && <Tag>Vence dia {category.dueDay}</Tag>}
-              {!category.active && <Tag>Inativa</Tag>}
+              <span className={cn('truncate', line.line.description === null && 'italic')}>{line.label}</span>
+              {line.dueDay !== null && <Tag>Vence dia {line.dueDay}</Tag>}
             </div>
-            {category.description && (
-              <p className="truncate text-xs text-muted-foreground/80" title={category.description}>
-                {category.description}
-              </p>
-            )}
           </RowActions>
         </TableHead>
         {months.map((month, col) => (
           <TableCell
             key={month}
-            className={cn(
-              category.editable && !isLocked(category.id, month) ? 'p-0' : 'px-3 text-right',
-              col === 0 && 'bg-primary/5',
-            )}
+            className={cn(category.editable ? 'p-0' : 'px-3 text-right', col === 0 && 'bg-primary/5')}
           >
-            {category.editable && isLocked(category.id, month) ? (
-              <Link
-                to="/extrato"
-                search={{ month }}
-                aria-label={
-                  hasGroupShare(category.id, month)
-                    ? `${category.name} em ${formatMonthLong(month)}: inclui sua parte em grupos, ver no extrato`
-                    : `${category.name} em ${formatMonthLong(month)}: vários lançamentos, editar no extrato`
-                }
-                title={
-                  hasGroupShare(category.id, month)
-                    ? 'Inclui sua parte em grupos — veja no Extrato'
-                    : 'Vários lançamentos — edite no Extrato'
-                }
-                className="underline decoration-dotted underline-offset-4 hover:text-primary"
-              >
-                <MoneyText cents={category.values[col]} />
-              </Link>
-            ) : category.editable ? (
+            {category.editable ? (
               <BudgetCell
-                label={`${category.name} em ${formatMonthLong(month)}`}
-                cents={category.values[col]}
-                changed={isChanged(category.id, month)}
+                label={`${line.label} em ${formatMonthLong(month)}`}
+                cents={line.values[col]}
+                changed={isChanged(anchorId, month)}
                 row={rowIndex}
                 col={col}
                 canFillWindow={month < lastMonth}
                 canFillYear={month < endOfYear(month)}
-                onChange={(cents) => onChange(category.id, month, cents)}
-                onFill={(scope) => onFill(category.id, month, scope)}
+                onChange={(cents) => onChange(anchorId, month, cents)}
+                onFill={(scope) => onFill(anchorId, month, scope)}
               />
             ) : (
-              <MoneyText cents={category.values[col]} />
+              <MoneyText cents={line.values[col]} />
             )}
           </TableCell>
         ))}
         <TableCell className={TOTAL}>
-          <MoneyText cents={category.total} />
+          <MoneyText cents={line.total} />
         </TableCell>
       </TableRow>
     )
+  }
+
+  const sharesRow = (category: CategoryRow, shares: number[]) => (
+    <TableRow key={`shares:${category.id}`} className="hover:bg-transparent">
+      <TableHead
+        scope="row"
+        aria-label={`Rateios de grupos em ${category.name}`}
+        className={cn(STICKY, 'h-auto max-w-80 bg-background py-1 pl-20 font-normal text-muted-foreground')}
+      >
+        <span className="italic">Rateios de grupos</span>
+      </TableHead>
+      {months.map((month, col) => (
+        <TableCell key={month} className={cn('px-3 text-right text-muted-foreground', col === 0 && 'bg-primary/5')}>
+          {shares[col] === 0 ? (
+            <MoneyText cents={0} />
+          ) : (
+            <Link
+              to="/extrato"
+              search={{ month }}
+              aria-label={`Sua parte em grupos em ${formatMonthLong(month)}, ver no extrato`}
+              title="Sua parte em grupos — veja no Extrato"
+              className="underline decoration-dotted underline-offset-4 hover:text-primary"
+            >
+              <MoneyText cents={shares[col]} />
+            </Link>
+          )}
+        </TableCell>
+      ))}
+      <TableCell className={cn(TOTAL, 'text-muted-foreground')}>
+        <MoneyText cents={shares.reduce((a, b) => a + b, 0)} />
+      </TableCell>
+    </TableRow>
+  )
+
+  const categoryRows = (category: CategoryRow, kind: EntryKind) => {
+    const categoryId = `category:${category.id}`
+    const open = expanded.has(categoryId)
+    return [
+      <TableRow
+        key={categoryId}
+        data-inactive={!category.editable || undefined}
+        className={cn(!category.editable && 'text-muted-foreground/70')}
+      >
+        <TableHead
+          scope="row"
+          aria-label={category.name}
+          className={cn(STICKY, 'h-auto max-w-80 bg-background py-1 pl-12 font-normal text-muted-foreground')}
+        >
+          <RowActions label={category.name} actions={categoryActions(category, kind)}>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ToggleLabel label={category.name} expanded={open} onToggle={() => toggleCategory(categoryId)} />
+              {category.lines.length > 0 && (
+                <Tag>
+                  {category.lines.length} {category.lines.length === 1 ? 'lançamento' : 'lançamentos'}
+                </Tag>
+              )}
+              {!category.active && <Tag>Inativa</Tag>}
+            </div>
+          </RowActions>
+        </TableHead>
+        <TotalCells values={category.values} total={category.total} />
+      </TableRow>,
+      ...(open
+        ? [
+            ...category.lines.map((line) => lineRow(line, category, kind)),
+            ...(category.shares ? [sharesRow(category, category.shares)] : []),
+            ...(category.editable
+              ? [
+                  <AddRow
+                    key={`add-line:${category.id}`}
+                    text="Novo lançamento"
+                    ariaLabel={`Novo lançamento em ${category.name}`}
+                    indent="pl-19"
+                    months={months.length}
+                    onClick={() => onAction({ type: 'create-line', category, kind })}
+                  />,
+                ]
+              : []),
+          ]
+        : []),
+    ]
   }
 
   const groupRows = (group: GroupRow) => {
@@ -263,25 +362,17 @@ export function BudgetGrid({
         </TableHead>
         <TotalCells values={group.totals} total={group.total} className="font-medium" />
       </TableRow>,
-      ...(!groupOpen ? [] : categories.map(categoryRow)),
+      ...(!groupOpen ? [] : categories.flatMap((c) => categoryRows(c, group.kind))),
       ...(groupOpen && group.active
         ? [
-            <TableRow key={`add:${group.id}`} className="hover:bg-transparent">
-              <TableCell className={cn(STICKY, 'bg-background py-1 pl-13')}>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-label={`Nova categoria em ${group.name}`}
-                  className="text-muted-foreground"
-                  onClick={() => onAction({ type: 'create-category', group })}
-                >
-                  <PlusIcon aria-hidden />
-                  Nova categoria
-                </Button>
-              </TableCell>
-              <TableCell colSpan={months.length} />
-              <TableCell className={TOTAL} />
-            </TableRow>,
+            <AddRow
+              key={`add:${group.id}`}
+              text="Nova categoria"
+              ariaLabel={`Nova categoria em ${group.name}`}
+              indent="pl-11"
+              months={months.length}
+              onClick={() => onAction({ type: 'create-category', group })}
+            />,
           ]
         : []),
     ]

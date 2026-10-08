@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchMe } from '@/features/auth/api'
 import { updateGroup } from '@/features/budget/api'
 import { ApiError } from '@/lib/api/client'
-import { budgetGroups, stubBudgetApi } from '@/test/budget'
+import { budgetGroups, makeLine, stubBudgetApi } from '@/test/budget'
 import { renderRoute } from '@/test/render'
 
 vi.mock('@/features/auth/api', () => ({ fetchMe: vi.fn(), login: vi.fn(), logout: vi.fn() }))
@@ -78,8 +78,9 @@ describe('Dashboard: goals per expense type', () => {
   it('follows unsaved edits of the grid', async () => {
     stubBudgetApi({ groups: withGoals })
     await openDashboard()
+    await userEvent.click(screen.getByRole('button', { name: 'Moradia' }))
 
-    const input = screen.getByRole('textbox', { name: 'Moradia em outubro de 2026' })
+    const input = screen.getByRole('textbox', { name: 'Aluguel em outubro de 2026' })
     await userEvent.click(input)
     await userEvent.clear(input)
     await userEvent.type(input, '2.000')
@@ -97,7 +98,7 @@ describe('Dashboard: goals per expense type', () => {
   })
 
   it('shows no share for a month without income', async () => {
-    stubBudgetApi({ groups: withGoals, entries: [{ categoryId: 1, month: '2026-10', amountCents: 1000 }] })
+    stubBudgetApi({ groups: withGoals, lines: [makeLine(101, 1, [['2026-10', 1000]])] })
     await openDashboard()
 
     const meter = within(goal('Despesas Básicas')).getByRole('meter', { name: 'Mês atual' })

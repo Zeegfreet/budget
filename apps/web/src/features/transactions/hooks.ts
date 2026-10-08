@@ -5,9 +5,11 @@ import {
   createTransaction,
   deleteTransaction,
   realizeTransaction,
+  setTransactionSeriesEnd,
   unrealizeTransaction,
   updateTransaction,
 } from './api'
+import type { Month } from '@/features/budget/types'
 import type { RecurrenceScope, TransactionInput, TransactionPatch } from './types'
 
 /**
@@ -33,6 +35,11 @@ export function useTransactionActions() {
       await deleteTransaction(id, scope)
       await refresh()
       toast.success(scope === 'FOLLOWING' ? 'Lançamentos excluídos' : 'Lançamento excluído')
+    },
+    async setSeriesEnd(id: number, untilMonth: Month) {
+      const series = await setTransactionSeriesEnd(id, untilMonth)
+      await refresh()
+      toast.success(`Recorrência ajustada: ${series.length} ${series.length === 1 ? 'lançamento' : 'lançamentos'}`)
     },
     async realize(id: number, amountCents: number) {
       await realizeTransaction(id, amountCents)

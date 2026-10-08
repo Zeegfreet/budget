@@ -10,68 +10,48 @@ import {
   updateCategory,
   updateGroup,
 } from './api'
-import {
-  cellKey,
-  changedEntries,
-  draftReducer,
-  groupValues,
-  isChanged,
-  savedValues,
-  valueOf,
-  type Edits,
-} from './draft'
+import { cellKey, changedCells, draftReducer, isChanged, savedValues, valueOf, type Edits } from './draft'
+import { categoryErrorMessage } from './errors'
 import { budgetQueries } from './queries'
-import type { CategoryInput, CategoryPatch, GroupInput, GroupPatch, MonthlyEntry, Month } from './types'
+import type {
+  BudgetLine,
+  CategoryInput,
+  CategoryPatch,
+  GroupInput,
+  GroupPatch,
+  MonthlyEntry,
+  Month,
+} from './types'
 
-/** Local, unsaved edits of the budget grid on top of the saved entries. */
-export function useBudgetDraft(entries: MonthlyEntry[]) {
-  const saved = useMemo(() => savedValues(entries), [entries])
-  const shares = useMemo(() => groupValues(entries), [entries])
-  const locked = useMemo(
-    () =>
-      new Set(
-        entries
-          .filter((e) => (e.count ?? 1) > 1 || (e.groupCents ?? 0) > 0)
-          .map((e) => cellKey(e.categoryId, e.month)),
-      ),
+/**
+ * Local, unsaved edits of the grid's launch rows on top of the saved values,
+ * plus the user's group shares per category (read-only).
+ */
+export function useBudgetDraft(lines: BudgetLine[], entries: MonthlyEntry[]) {
+  const saved = useMemo(() => savedValues(lines), [lines])
+  const shares = useMemo(
+    () => new Map(entries.filter((e) => e.groupCents > 0).map((e) => [cellKey(e.categoryId, e.month), e.groupCents])),
     [entries],
   )
   const [edits, dispatch] = useReducer(draftReducer, new Map() as Edits)
 
   return {
     dispatch,
-    changes: useMemo(() => changedEntries(saved, edits), [saved, edits]),
-    /** What the cell shows: the personal amount (edited or saved) plus the group shares */
+    changes: useMemo(() => changedCells(saved, edits), [saved, edits]),
+    /** What a row shows in a month (edited or saved) */
     value: useCallback(
-      (categoryId: number, month: Month) => {
-        const key = cellKey(categoryId, month)
-        return valueOf(saved, edits, key) + (shares.get(key) ?? 0)
-      },
-      [saved, edits, shares],
-    ),
-    isChanged: useCallback(
-      (categoryId: number, month: Month) => isChanged(saved, edits, cellKey(categoryId, month)),
+      (anchorId: number, month: Month) => valueOf(saved, edits, cellKey(anchorId, month)),
       [saved, edits],
     ),
-    /** The saved value (group shares included), ignoring edits */
-    savedValue: useCallback(
-      (categoryId: number, month: Month) => {
-        const key = cellKey(categoryId, month)
-        return (saved.get(key) ?? 0) + (shares.get(key) ?? 0)
-      },
-      [saved, shares],
+    /** The saved value, ignoring edits */
+    savedValue: useCallback((anchorId: number, month: Month) => saved.get(cellKey(anchorId, month)) ?? 0, [saved]),
+    isChanged: useCallback(
+      (anchorId: number, month: Month) => isChanged(saved, edits, cellKey(anchorId, month)),
+      [saved, edits],
     ),
-    /**
-     * The cell holds several transactions or the user's share of a linked
-     * group: read-only here, detailed in the statement
-     */
-    isLocked: useCallback(
-      (categoryId: number, month: Month) => locked.has(cellKey(categoryId, month)),
-      [locked],
-    ),
-    /** The cell includes the user's share of a linked group */
-    hasGroupShare: useCallback(
-      (categoryId: number, month: Month) => shares.has(cellKey(categoryId, month)),
+    /** The user's shares of linked groups in the category and month */
+    groupShare: useCallback(
+      (categoryId: number, month: Month) => shares.get(cellKey(categoryId, month)) ?? 0,
       [shares],
     ),
   }
@@ -133,6 +113,32 @@ export function useCategoryActions(forget: (categoryIds: number[]) => void) {
       forget([id])
       await refresh(true)
       toast.success('Categoria excluída')
+    },
+  }
+}
+
+/**
+ * Inactivating or reactivating a type or category from a menu, with a toast
+ * for the outcome (errors included, as there is no form to show them).
+ */
+export function useCategoryToggle(actions: ReturnType<typeof useCategoryActions>) {
+  async function run(change: () => Promise<void>, active: boolean, name: string) {
+    try {
+      await change()
+      toast.success(active ? `${name} reativado(a)` : `${name} inativado(a)`)
+    } catch (error) {
+      toast.error(categoryErrorMessage(error, 'Não foi possível alterar.'))
+    }
+  }
+  return {
+    toggleGroup(group: { id: number; name: string; active: boolean; categories: { id: number }[] }) {
+      const active = !group.active
+      const ids = group.categories.map((c) => c.id)
+      return run(() => actions.updateGroup(group.id, { active }, ids), active, group.name)
+    },
+    toggleCategory(category: { id: number; name: string; active: boolean }) {
+      const active = !category.active
+      return run(() => actions.updateCategory(category.id, { active }), active, category.name)
     },
   }
 }

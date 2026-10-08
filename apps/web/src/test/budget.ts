@@ -1,24 +1,24 @@
 import { vi } from 'vitest'
 import * as budgetApi from '@/features/budget/api'
 import type {
+  BudgetLine,
   BudgetSummary,
   Category,
   CategoryGroup,
   GroupStatement,
   GroupStatementItem,
+  Month,
   MonthlyEntry,
 } from '@/features/budget/types'
 
 // For specs that `vi.mock('@/features/budget/api')`: data matching a clock set to October 2026.
 
-/** An active category without description or due day */
+/** An active category */
 export const makeCategory = (id: number, name: string, position = 0, extra: Partial<Category> = {}): Category => ({
   id,
   name,
   position,
   active: true,
-  description: null,
-  dueDay: null,
   ...extra,
 })
 
@@ -40,13 +40,71 @@ export const budgetGroups: CategoryGroup[] = [
   makeGroup({ id: 40, kind: 'INCOME', name: 'Renda Extra', position: 3, categories: [makeCategory(5, 'Renda extra')] }),
 ]
 
-export const budgetEntries: MonthlyEntry[] = [
-  { categoryId: 1, month: '2026-10', amountCents: 180000 },
-  { categoryId: 1, month: '2026-11', amountCents: 180000 },
-  { categoryId: 2, month: '2026-10', amountCents: 70000 },
-  { categoryId: 3, month: '2026-12', amountCents: 30000 },
-  { categoryId: 4, month: '2026-10', amountCents: 500000 },
+/**
+ * A launch row of the grid: `cells` maps months to planned amounts; each
+ * month's transaction id is `anchorId` plus its position.
+ */
+export const makeLine = (
+  anchorId: number,
+  categoryId: number,
+  cells: [Month, number][],
+  extra: Partial<Omit<BudgetLine, 'anchorId' | 'categoryId' | 'cells'>> = {},
+): BudgetLine => ({
+  anchorId,
+  categoryId,
+  description: null,
+  dueDay: null,
+  paymentMethod: null,
+  cells: cells.map(([month, plannedCents], i) => ({
+    month,
+    transactionId: anchorId + i,
+    plannedCents,
+    realizedCents: null,
+  })),
+  ...extra,
+})
+
+/** Rent (Moradia, Oct–Nov), groceries (Alimentação), an unnamed leisure launch in December and the salary */
+export const budgetLines: BudgetLine[] = [
+  makeLine(
+    101,
+    1,
+    [
+      ['2026-10', 180000],
+      ['2026-11', 180000],
+    ],
+    { description: 'Aluguel', dueDay: 10 },
+  ),
+  makeLine(201, 2, [['2026-10', 70000]], { description: 'Mercado' }),
+  makeLine(301, 3, [['2026-12', 30000]]),
+  makeLine(401, 4, [['2026-10', 500000]], { description: 'Salário', dueDay: 5 }),
 ]
+
+/** The user's share of a linked group in a category and month */
+export interface ShareCell {
+  categoryId: number
+  month: Month
+  amountCents: number
+}
+
+/** What `GET /budget/entries` answers for these rows and group shares */
+export function entriesOf(lines: BudgetLine[], shares: ShareCell[] = []): MonthlyEntry[] {
+  const entries = new Map<string, MonthlyEntry>()
+  const entry = (categoryId: number, month: Month) => {
+    const key = `${categoryId}:${month}`
+    if (!entries.has(key)) entries.set(key, { categoryId, month, amountCents: 0, count: 0, groupCents: 0 })
+    return entries.get(key)!
+  }
+  for (const line of lines) {
+    for (const cell of line.cells) {
+      const e = entry(line.categoryId, cell.month)
+      e.amountCents += cell.plannedCents
+      e.count += 1
+    }
+  }
+  for (const share of shares) entry(share.categoryId, share.month).groupCents += share.amountCents
+  return [...entries.values()]
+}
 
 export const budgetSummary: BudgetSummary = {
   month: '2026-10',
@@ -61,7 +119,6 @@ export const budgetSummary: BudgetSummary = {
 const housing = {
   id: 1,
   name: 'Moradia',
-  dueDay: null,
   active: true,
   group: { id: 10, name: 'Despesas Básicas', kind: 'EXPENSE', active: true },
 } as const
@@ -117,20 +174,24 @@ export const makeGroupStatement = (extra: Partial<GroupStatement> = {}): GroupSt
 
 export function stubBudgetApi({
   groups = budgetGroups,
-  entries = budgetEntries,
+  lines = budgetLines,
+  shares = [],
   summary = budgetSummary,
   groupStatements = [],
 }: {
   groups?: CategoryGroup[]
-  entries?: MonthlyEntry[]
+  lines?: BudgetLine[]
+  /** The user's shares of linked groups, per category and month */
+  shares?: ShareCell[]
   summary?: BudgetSummary
   groupStatements?: GroupStatement[]
 } = {}) {
   vi.mocked(budgetApi.fetchCategories).mockResolvedValue(groups)
   vi.mocked(budgetApi.fetchGroupStatements).mockResolvedValue(groupStatements)
-  vi.mocked(budgetApi.fetchEntries).mockResolvedValue(entries)
+  vi.mocked(budgetApi.fetchEntries).mockResolvedValue(entriesOf(lines, shares))
+  vi.mocked(budgetApi.fetchLines).mockResolvedValue(lines)
   vi.mocked(budgetApi.fetchSummary).mockResolvedValue(summary)
-  vi.mocked(budgetApi.saveEntries).mockResolvedValue()
+  vi.mocked(budgetApi.saveLines).mockResolvedValue()
   vi.mocked(budgetApi.updateInitialBalance).mockResolvedValue()
   // Tree changes resolve with whatever; the page refetches the tree afterwards
   vi.mocked(budgetApi.createGroup).mockResolvedValue(groups[0])

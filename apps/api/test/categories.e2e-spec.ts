@@ -19,8 +19,6 @@ interface Category {
   name: string;
   position: number;
   active: boolean;
-  description: string | null;
-  dueDay: number | null;
 }
 interface Group {
   id: number;
@@ -66,8 +64,16 @@ describe('Categories (e2e)', () => {
       expenseCents: number;
     };
 
-  const save = (client: Agent, entries: unknown) =>
-    client.put('/budget/entries').send({ entries });
+  /** Plans one launch of `amountCents` in the category and month. */
+  const plan = (
+    client: Agent,
+    categoryId: number,
+    month: string,
+    amountCents: number,
+  ) =>
+    client
+      .post('/budget/transactions')
+      .send({ categoryId, month, plannedCents: amountCents });
 
   beforeEach(async () => {
     app = await createTestApp();
@@ -97,8 +103,6 @@ describe('Categories (e2e)', () => {
       name: 'Moradia',
       position: 0,
       active: true,
-      description: null,
-      dueDay: null,
     });
   });
 
@@ -155,9 +159,7 @@ describe('Categories (e2e)', () => {
 
     it('deletes a type with its categories and values', async () => {
       const ids = await defaults(ana);
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-10', amountCents: 1000 },
-      ]).expect(204);
+      await plan(ana, ids.housing, '2026-10', 1000).expect(201);
       expect((await summary(ana)).openingBalanceCents).toBe(-1000);
 
       await ana.delete(`/budget/groups/${ids.basics}`).expect(204);
@@ -166,9 +168,7 @@ describe('Categories (e2e)', () => {
         'Despesas Básicas',
       );
       expect((await summary(ana)).openingBalanceCents).toBe(0);
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-10', amountCents: 1 },
-      ]).expect(404);
+      await plan(ana, ids.housing, '2026-10', 1).expect(404);
     });
 
     it('does not bring the defaults back after deleting every type', async () => {
@@ -238,66 +238,48 @@ describe('Categories (e2e)', () => {
   });
 
   describe('categories', () => {
-    it('creates a category with description and due day at the end', async () => {
+    it('creates a category at the end, trimmed', async () => {
       const ids = await defaults(ana);
       const res = await ana
         .post(`/budget/groups/${ids.basics}/categories`)
-        .send({ name: ' Condomínio ', description: ' Bloco B ', dueDay: 10 })
+        .send({ name: ' Condomínio ' })
         .expect(201);
       expect(res.body).toEqual({
         id: expect.any(Number),
         name: 'Condomínio',
         position: 4,
         active: true,
-        description: 'Bloco B',
-        dueDay: 10,
       });
 
       const [basics] = await tree(ana);
       expect(basics.categories.at(-1)!.name).toBe('Condomínio');
     });
 
-    it('edits and clears the optional fields', async () => {
+    it('renames a category', async () => {
       const ids = await defaults(ana);
-      const url = `/budget/categories/${ids.housing}`;
-
-      await ana
-        .patch(url)
-        .send({ name: 'Aluguel', description: 'Apto', dueDay: 5 })
+      const res = await ana
+        .patch(`/budget/categories/${ids.housing}`)
+        .send({ name: ' Aluguel ' })
         .expect(200);
-      const cleared = await ana
-        .patch(url)
-        .send({ description: '  ', dueDay: null })
-        .expect(200);
-      expect(cleared.body).toMatchObject({
-        name: 'Aluguel',
-        description: null,
-        dueDay: null,
-      });
+      expect(res.body).toMatchObject({ name: 'Aluguel', active: true });
     });
 
     it('keeps the values of an inactive category but rejects editing them', async () => {
       const ids = await defaults(ana);
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-10', amountCents: 1000 },
-      ]).expect(204);
+      await plan(ana, ids.housing, '2026-10', 1000).expect(201);
 
       await ana
         .patch(`/budget/categories/${ids.housing}`)
         .send({ active: false })
         .expect(200);
       expect((await summary(ana)).openingBalanceCents).toBe(-1000);
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-11', amountCents: 1 },
-      ]).expect(400);
+      await plan(ana, ids.housing, '2026-11', 1).expect(400);
 
       await ana
         .patch(`/budget/categories/${ids.housing}`)
         .send({ active: true })
         .expect(200);
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-11', amountCents: 1 },
-      ]).expect(204);
+      await plan(ana, ids.housing, '2026-11', 1).expect(201);
     });
 
     it('rejects values and new categories in an inactive type', async () => {
@@ -307,9 +289,7 @@ describe('Categories (e2e)', () => {
         .send({ active: false })
         .expect(200);
 
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-11', amountCents: 1 },
-      ]).expect(400);
+      await plan(ana, ids.housing, '2026-11', 1).expect(400);
       await ana
         .post(`/budget/groups/${ids.basics}/categories`)
         .send({ name: 'Nova' })
@@ -318,9 +298,7 @@ describe('Categories (e2e)', () => {
 
     it('deletes a category with its values', async () => {
       const ids = await defaults(ana);
-      await save(ana, [
-        { categoryId: ids.housing, month: '2026-11', amountCents: 1000 },
-      ]).expect(204);
+      await plan(ana, ids.housing, '2026-11', 1000).expect(201);
 
       await ana.delete(`/budget/categories/${ids.housing}`).expect(204);
 
@@ -345,10 +323,11 @@ describe('Categories (e2e)', () => {
     it.each([
       ['a missing name', {}],
       ['a long name', { name: 'x'.repeat(61) }],
-      ['a long description', { name: 'X', description: 'x'.repeat(121) }],
-      ['day 0', { name: 'X', dueDay: 0 }],
-      ['day 32', { name: 'X', dueDay: 32 }],
-      ['a fractional day', { name: 'X', dueDay: 1.5 }],
+      [
+        'a description (it belongs to the launch)',
+        { name: 'X', description: 'x' },
+      ],
+      ['a due day (it belongs to the launch)', { name: 'X', dueDay: 10 }],
       ['an unknown field', { name: 'X', groupId: 1 }],
     ])('rejects %s when creating with 400', async (_case, body) => {
       const ids = await defaults(ana);
@@ -360,7 +339,7 @@ describe('Categories (e2e)', () => {
 
     it.each([
       ['a null name', { name: null }],
-      ['day 32', { dueDay: 32 }],
+      ['a due day', { dueDay: 10 }],
       ['a move to another type', { groupId: 1 }],
     ])('rejects %s when updating with 400', async (_case, body) => {
       const ids = await defaults(ana);
@@ -386,9 +365,7 @@ describe('Categories (e2e)', () => {
   describe('isolation between users', () => {
     it('user A cannot change or delete user B’s types and categories', async () => {
       const anaIds = await defaults(ana);
-      await save(ana, [
-        { categoryId: anaIds.housing, month: '2026-10', amountCents: 1000 },
-      ]).expect(204);
+      await plan(ana, anaIds.housing, '2026-10', 1000).expect(201);
       const before = await tree(ana);
 
       const bruno = await signUp('Bruno Lima', 'bruno@example.com');

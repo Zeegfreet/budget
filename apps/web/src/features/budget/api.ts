@@ -7,7 +7,9 @@ import type {
   CategoryPatch,
   GroupInput,
   GroupPatch,
+  BudgetLine,
   GroupStatement,
+  LineCellChange,
   MonthlyEntry,
   Month,
 } from './types'
@@ -22,9 +24,15 @@ export async function fetchEntries(from: Month, to: Month): Promise<MonthlyEntry
   return data
 }
 
-/** Saves changed cells; `amountCents: 0` clears one. */
-export async function saveEntries(entries: MonthlyEntry[]): Promise<void> {
-  await api.put('/budget/entries', { entries })
+/** The launch rows (one per series or plain launch) of the range */
+export async function fetchLines(from: Month, to: Month): Promise<BudgetLine[]> {
+  const { data } = await api.get<BudgetLine[]>('/budget/lines', { params: { from, to } })
+  return data
+}
+
+/** Saves changed row cells; `amountCents: 0` deletes that month's transaction. */
+export async function saveLines(cells: LineCellChange[]): Promise<void> {
+  await api.put('/budget/lines', { cells })
 }
 
 export async function fetchSummary(month: Month): Promise<BudgetSummary> {

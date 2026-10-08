@@ -1,4 +1,4 @@
-import type { EntryKind, Month } from '@/features/budget/types'
+import type { EntryKind, Month, SeriesPosition } from '@/features/budget/types'
 import type { RecurrenceScope } from '@/features/transactions/types'
 
 export type { RecurrenceScope }
@@ -111,7 +111,7 @@ export interface GroupTransaction {
   splitMethod: { id: number; name: string; type: SplitType } | null
   /** Who paid (expense) or received (income); `null` while pending */
   paidBy: { memberId: number; name: string } | null
-  series: { index: number; count: number } | null
+  series: SeriesPosition | null
   /** Add up to the amount */
   shares: MemberShare[]
 }

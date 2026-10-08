@@ -9,7 +9,7 @@ import {
   deleteGroup,
   fetchCategories,
   fetchEntries,
-  saveEntries,
+  saveLines,
   updateCategory,
   updateGroup,
 } from '@/features/budget/api'
@@ -39,9 +39,11 @@ const rowCells = (header: string) =>
     .map((cell) => cell.textContent?.replace(/\s/g, ' '))
 const unsavedBar = () => screen.queryByRole('region', { name: 'Alterações não salvas' })
 
-async function openDashboard() {
+/** Opens the dashboard with the given categories expanded to their launches */
+async function openDashboard(...expand: string[]) {
   await renderRoute('/')
   await screen.findByRole('heading', { name: 'Dashboard' })
+  for (const category of expand) await userEvent.click(screen.getByRole('button', { name: category }))
 }
 
 /** Opens a row's menu through its hover "⋯" button and picks an option */
@@ -93,28 +95,38 @@ describe('Dashboard: managing types and categories', () => {
     ])
   })
 
-  it('edits a category name, description and due day', async () => {
+  it('offers the category actions, launching included', async () => {
+    await openDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Opções de Moradia' }))
+
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Novo lançamento',
+      'Editar',
+      'Inativar',
+      'Excluir',
+    ])
+  })
+
+  it('renames a category; description and due day belong to its launches', async () => {
     await openDashboard()
 
     await rowAction('Moradia', 'Editar')
     const dialog = await screen.findByRole('dialog', { name: 'Editar categoria' })
+    expect(within(dialog).queryByRole('textbox', { name: /Descrição/ })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('textbox', { name: /Dia de vencimento/ })).not.toBeInTheDocument()
     const name = within(dialog).getByRole('textbox', { name: 'Nome' })
     expect(name).toHaveValue('Moradia')
     await userEvent.clear(name)
-    await userEvent.type(name, 'Aluguel')
-    await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Apto do centro')
-    await userEvent.type(within(dialog).getByRole('textbox', { name: /Dia de vencimento/ }), '10')
+    await userEvent.type(name, 'Casa')
 
-    fetchCategoriesMock.mockResolvedValue(
-      withCategory(1, { name: 'Aluguel', description: 'Apto do centro', dueDay: 10 }),
-    )
+    fetchCategoriesMock.mockResolvedValue(withCategory(1, { name: 'Casa' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
-    expect(updateCategory).toHaveBeenCalledWith(1, { name: 'Aluguel', description: 'Apto do centro', dueDay: 10 })
+    expect(updateCategory).toHaveBeenCalledWith(1, { name: 'Casa' })
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    const row = screen.getByRole('rowheader', { name: 'Aluguel' })
-    expect(row).toHaveTextContent('Vence dia 10')
-    expect(row).toHaveTextContent('Apto do centro')
+    expect(screen.getByRole('rowheader', { name: 'Casa' })).toBeInTheDocument()
   })
 
   it('renames a type and sets its goal from the edit dialog', async () => {
@@ -146,37 +158,27 @@ describe('Dashboard: managing types and categories', () => {
   })
 
   describe('"+ Nova categoria"', () => {
-    it('creates a category with description and due day at the end of the type', async () => {
+    it('creates a category at the end of the type, ready for launches', async () => {
       await openDashboard()
 
       await userEvent.click(screen.getByRole('button', { name: 'Nova categoria em Despesas Básicas' }))
       const dialog = await screen.findByRole('dialog', { name: 'Nova categoria' })
       expect(dialog).toHaveTextContent('Em Despesas Básicas.')
       await userEvent.type(within(dialog).getByRole('textbox', { name: 'Nome' }), 'Condomínio')
-      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Bloco B')
-      const day = within(dialog).getByRole('textbox', { name: /Dia de vencimento/ })
-      await userEvent.type(day, '32')
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Criar' }))
-
-      expect(within(dialog).getByText('Informe um dia entre 1 e 31.')).toBeInTheDocument()
-      expect(createCategory).not.toHaveBeenCalled()
-
-      await userEvent.clear(day)
-      await userEvent.type(day, '5')
       fetchCategoriesMock.mockResolvedValue(
         budgetGroups.map((g) =>
-          g.id === 10
-            ? { ...g, categories: [...g.categories, makeCategory(9, 'Condomínio', 2, { description: 'Bloco B', dueDay: 5 })] }
-            : g,
+          g.id === 10 ? { ...g, categories: [...g.categories, makeCategory(9, 'Condomínio', 2)] } : g,
         ),
       )
       await userEvent.click(within(dialog).getByRole('button', { name: 'Criar' }))
 
-      expect(createCategory).toHaveBeenCalledWith(10, { name: 'Condomínio', description: 'Bloco B', dueDay: 5 })
+      expect(createCategory).toHaveBeenCalledWith(10, { name: 'Condomínio' })
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
       const names = screen.getAllByRole('rowheader').map((h) => h.getAttribute('aria-label') ?? h.textContent)
       expect(names.slice(1, 5)).toEqual(['Despesas Básicas', 'Moradia', 'Alimentação', 'Condomínio'])
-      expect(screen.getByRole('textbox', { name: 'Condomínio em outubro de 2026' })).toHaveValue('')
+      expect(rowCells('Condomínio')[0]).toBe('R$ 0,00')
+      await userEvent.click(screen.getByRole('button', { name: 'Condomínio' }))
+      expect(screen.getByRole('button', { name: 'Novo lançamento em Condomínio' })).toBeInTheDocument()
     })
 
     it('requires a name and shows a duplicate name error from the API', async () => {
@@ -192,14 +194,14 @@ describe('Dashboard: managing types and categories', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Criar' }))
 
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('Já existe um item com esse nome.')
-      expect(createCategory).toHaveBeenCalledWith(20, { name: 'Lazer', description: null, dueDay: null })
+      expect(createCategory).toHaveBeenCalledWith(20, { name: 'Lazer' })
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
   })
 
   describe('inactivating', () => {
     it('hides an inactive category, keeps its values in the totals and shows it on demand', async () => {
-      await openDashboard()
+      await openDashboard('Lazer')
       expect(rowCells('Despesas')[2]).toBe('R$ 300,00')
 
       fetchCategoriesMock.mockResolvedValue(withCategory(3, { active: false }))
@@ -214,20 +216,22 @@ describe('Dashboard: managing types and categories', () => {
       const row = screen.getByRole('rowheader', { name: 'Lazer' })
       expect(row).toHaveTextContent('Inativa')
       expect(row.closest('tr')).toHaveAttribute('data-inactive', 'true')
-      // Read-only: values are shown as text, not inputs
-      expect(screen.queryByRole('textbox', { name: 'Lazer em dezembro de 2026' })).not.toBeInTheDocument()
+      // Read-only: its launches are shown as text, not inputs, and take no new ones
+      expect(screen.queryByRole('textbox', { name: 'Sem descrição em dezembro de 2026' })).not.toBeInTheDocument()
+      expect(rowCells('Sem descrição')[2]).toBe('R$ 300,00')
       expect(rowCells('Lazer')[2]).toBe('R$ 300,00')
+      expect(screen.queryByRole('button', { name: 'Novo lançamento em Lazer' })).not.toBeInTheDocument()
 
       fetchCategoriesMock.mockResolvedValue(budgetGroups)
       await rowAction('Lazer', 'Reativar')
       expect(updateCategory).toHaveBeenLastCalledWith(3, { active: true })
-      expect(await screen.findByRole('textbox', { name: 'Lazer em dezembro de 2026' })).toHaveValue('300,00')
+      expect(await screen.findByRole('textbox', { name: 'Sem descrição em dezembro de 2026' })).toHaveValue('300,00')
     })
 
     it('drops the unsaved edits of a category when it is inactivated', async () => {
-      await openDashboard()
-      await typeInCell('Lazer em outubro de 2026', '50')
-      await typeInCell('Moradia em outubro de 2026', '10')
+      await openDashboard('Lazer', 'Moradia')
+      await typeInCell('Sem descrição em outubro de 2026', '50')
+      await typeInCell('Aluguel em outubro de 2026', '10')
       expect(unsavedBar()).toHaveTextContent('2 alterações não salvas')
 
       fetchCategoriesMock.mockResolvedValue(withCategory(3, { active: false }))
@@ -235,11 +239,11 @@ describe('Dashboard: managing types and categories', () => {
 
       await waitFor(() => expect(unsavedBar()).toHaveTextContent('1 alteração não salva'))
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
-      expect(saveEntries).toHaveBeenCalledWith([{ categoryId: 1, month: '2026-10', amountCents: 1000 }])
+      expect(saveLines).toHaveBeenCalledWith([{ anchorId: 101, month: '2026-10', amountCents: 1000 }])
     })
 
     it('inactivates a whole type, which also stops its categories', async () => {
-      await openDashboard()
+      await openDashboard('Lazer')
 
       fetchCategoriesMock.mockResolvedValue(withGroup(20, { active: false }))
       await rowAction('Custos de Vida', 'Inativar')
@@ -249,8 +253,9 @@ describe('Dashboard: managing types and categories', () => {
 
       await userEvent.click(screen.getByRole('switch', { name: 'Mostrar inativas' }))
       expect(screen.getByRole('rowheader', { name: 'Custos de Vida' })).toHaveTextContent('Inativo')
-      // Its (active) category is read-only and can't get new siblings
-      expect(screen.queryByRole('textbox', { name: 'Lazer em outubro de 2026' })).not.toBeInTheDocument()
+      // Its (active) category is read-only and can't get new siblings or launches
+      expect(screen.queryByRole('textbox', { name: 'Sem descrição em outubro de 2026' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Novo lançamento em Lazer' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Nova categoria em Custos de Vida' })).not.toBeInTheDocument()
     })
   })
@@ -293,8 +298,8 @@ describe('Dashboard: managing types and categories', () => {
     })
 
     it('deletes a type and forgets the unsaved edits of its categories', async () => {
-      await openDashboard()
-      await typeInCell('Lazer em outubro de 2026', '50')
+      await openDashboard('Lazer')
+      await typeInCell('Sem descrição em outubro de 2026', '50')
 
       await rowAction('Custos de Vida', 'Excluir')
       fetchCategoriesMock.mockResolvedValue(budgetGroups.filter((g) => g.id !== 20))

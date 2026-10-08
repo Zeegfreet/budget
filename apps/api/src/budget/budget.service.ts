@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import type { EntryKind, Prisma } from '../prisma/generated/client.js';
 import { isUniqueViolation } from '../prisma/errors.js';
@@ -11,10 +13,11 @@ import { assertWritableCategories } from './category-access.js';
 import { DEFAULT_CATEGORIES } from './default-categories.js';
 import { linkedShareCells } from './group-shares.js';
 import type {
+  BudgetLineDto,
   CategoryGroupDto,
   MonthlyEntryDto,
 } from './dto/budget-responses.dto.js';
-import type { EntryDto } from './dto/save-entries.dto.js';
+import type { LineCellDto } from './dto/save-lines.dto.js';
 import { MAX_MONTH_SPAN, monthSpan } from './month.js';
 
 const byPosition = { position: 'asc' } as const;
@@ -24,8 +27,6 @@ export const categorySelect = {
   name: true,
   position: true,
   active: true,
-  description: true,
-  dueDay: true,
 } satisfies Prisma.CategorySelect;
 
 export const groupSelect = {
@@ -40,6 +41,18 @@ export const groupSelect = {
     select: categorySelect,
   },
 } satisfies Prisma.CategoryGroupSelect;
+
+/** `{ gte, lte }` for a month range, at most `MAX_MONTH_SPAN` long (400 otherwise). */
+function monthRange(from: string, to: string) {
+  const span = monthSpan(from, to);
+  if (span < 1) throw new BadRequestException('from must not be after to');
+  if (span > MAX_MONTH_SPAN) {
+    throw new BadRequestException(
+      `The range must span at most ${MAX_MONTH_SPAN} months`,
+    );
+  }
+  return { gte: from, lte: to };
+}
 
 /**
  * Personal budget: category tree, the grid of planned amounts per category and
@@ -70,14 +83,7 @@ export class BudgetService {
     from: string,
     to: string,
   ): Promise<MonthlyEntryDto[]> {
-    const span = monthSpan(from, to);
-    if (span < 1) throw new BadRequestException('from must not be after to');
-    if (span > MAX_MONTH_SPAN) {
-      throw new BadRequestException(
-        `The range must span at most ${MAX_MONTH_SPAN} months`,
-      );
-    }
-    const range = { gte: from, lte: to };
+    const range = monthRange(from, to);
     const [cells, shares] = await Promise.all([
       this.prisma.transaction.groupBy({
         by: ['month', 'categoryId'],
@@ -122,68 +128,181 @@ export class BudgetService {
   }
 
   /**
-   * Sets the planned amount of grid cells: creates the cell's transaction,
-   * changes it, or deletes it (`0`). All or nothing: a category that isn't the
-   * user's fails the whole save with 404 (no existence leak), an inactive one
-   * (or one in an inactive type) with 400, and a cell holding several
-   * transactions (edited in the statement) with 409.
+   * The launch rows of the grid in the range: one per recurring series, one
+   * per plain launch, each with its planned amount per month. Ordered by
+   * category, effective due day (none last), description and id.
    */
-  async saveEntries(userId: number, entries: EntryDto[]): Promise<void> {
+  async lines(
+    userId: number,
+    from: string,
+    to: string,
+  ): Promise<BudgetLineDto[]> {
+    const rows = await this.prisma.transaction.findMany({
+      where: { userId, month: monthRange(from, to) },
+      orderBy: [{ month: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        categoryId: true,
+        month: true,
+        description: true,
+        dueDay: true,
+        plannedCents: true,
+        realizedCents: true,
+        seriesId: true,
+        paymentMethod: { select: { id: true, name: true, dueDay: true } },
+      },
+    });
+    const lines = new Map<string, BudgetLineDto>();
+    for (const t of rows) {
+      const key = t.seriesId ?? `#${t.id}`;
+      const cell = {
+        month: t.month,
+        transactionId: t.id,
+        plannedCents: t.plannedCents,
+        realizedCents: t.realizedCents,
+      };
+      const line = lines.get(key);
+      if (line) {
+        line.anchorId = Math.min(line.anchorId, t.id);
+        line.cells.push(cell);
+      } else {
+        // The first occurrence in the range names the line
+        lines.set(key, {
+          anchorId: t.id,
+          categoryId: t.categoryId,
+          description: t.description,
+          dueDay: t.dueDay,
+          paymentMethod: t.paymentMethod,
+          cells: [cell],
+        });
+      }
+    }
+    const day = (l: BudgetLineDto) => l.paymentMethod?.dueDay ?? l.dueDay ?? 32;
+    return [...lines.values()].sort(
+      (a, b) =>
+        a.categoryId - b.categoryId ||
+        day(a) - day(b) ||
+        (a.description ?? '').localeCompare(b.description ?? '', 'pt-BR') ||
+        a.anchorId - b.anchorId,
+    );
+  }
+
+  /**
+   * Sets the planned amount of launch rows per month: changes the month's
+   * transaction, deletes it (`0`) or creates it as a new occurrence of the
+   * row (a copy of its anchor; a plain launch becomes a series). All or
+   * nothing: an anchor that isn't the user's fails with 404 and writing to an
+   * inactive category (or type) with 400; deleting is always allowed.
+   */
+  async saveLines(userId: number, cells: LineCellDto[]): Promise<void> {
+    const anchorIds = [...new Set(cells.map((c) => c.anchorId))];
+    const anchors = await this.prisma.transaction.findMany({
+      where: { userId, id: { in: anchorIds } },
+      select: {
+        id: true,
+        categoryId: true,
+        description: true,
+        dueDay: true,
+        paymentMethodId: true,
+        seriesId: true,
+      },
+    });
+    if (anchors.length !== anchorIds.length) {
+      throw new NotFoundException('Transaction not found');
+    }
+    const anchorOf = new Map(anchors.map((a) => [a.id, a]));
+
+    // Last write wins when the same cell appears twice in one request
+    const key = (c: { anchorId: number; month: string }) =>
+      `${c.anchorId}:${c.month}`;
+    const latest = [...new Map(cells.map((c) => [key(c), c])).values()];
+
+    const seriesIds = anchors.flatMap((a) => (a.seriesId ? [a.seriesId] : []));
+    const occurrences = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        OR: [
+          { id: { in: anchorIds } },
+          ...(seriesIds.length > 0 ? [{ seriesId: { in: seriesIds } }] : []),
+        ],
+        month: { in: [...new Set(latest.map((c) => c.month))] },
+      },
+      select: { id: true, month: true, seriesId: true, categoryId: true },
+    });
+    const existing = (anchorId: number, month: string) => {
+      const anchor = anchorOf.get(anchorId)!;
+      return occurrences.filter(
+        (o) =>
+          o.month === month &&
+          (anchor.seriesId
+            ? o.seriesId === anchor.seriesId
+            : o.id === anchorId),
+      );
+    };
+
     await assertWritableCategories(
       this.prisma,
       userId,
-      entries.map((e) => e.categoryId),
+      latest.flatMap((c) =>
+        c.amountCents === 0
+          ? []
+          : [
+              anchorOf.get(c.anchorId)!.categoryId,
+              ...existing(c.anchorId, c.month).map((o) => o.categoryId),
+            ],
+      ),
     );
 
-    // Last write wins when the same cell appears twice in one request
-    const key = (c: { categoryId: number; month: string }) =>
-      `${c.categoryId}:${c.month}`;
-    const cells = new Map(entries.map((e) => [key(e), e]));
-
-    const existing = await this.prisma.transaction.findMany({
-      where: {
-        userId,
-        OR: [...cells.values()].map(({ categoryId, month }) => ({
-          categoryId,
-          month,
-        })),
-      },
-      select: { id: true, categoryId: true, month: true },
-    });
-    const idsByCell = new Map<string, number[]>();
-    for (const t of existing) {
-      idsByCell.set(key(t), [...(idsByCell.get(key(t)) ?? []), t.id]);
-    }
-    if ([...idsByCell.values()].some((ids) => ids.length > 1)) {
-      throw new ConflictException(
-        'A cell has several transactions; edit them in the statement',
-      );
-    }
-
-    const writes = [...cells.values()].flatMap(
-      ({ categoryId, month, amountCents }) => {
-        const [id] = idsByCell.get(key({ categoryId, month })) ?? [];
-        if (id === undefined) {
-          return amountCents === 0
+    const newSeries = new Map<number, string>();
+    const writes = latest.flatMap(
+      ({ anchorId, month, amountCents }): Prisma.PrismaPromise<unknown>[] => {
+        const found = existing(anchorId, month);
+        if (amountCents === 0) {
+          return found.length === 0
             ? []
             : [
-                this.prisma.transaction.create({
-                  data: {
-                    userId,
-                    categoryId,
-                    month,
-                    plannedCents: amountCents,
-                  },
+                this.prisma.transaction.deleteMany({
+                  where: { userId, id: { in: found.map((o) => o.id) } },
                 }),
               ];
         }
+        if (found.length > 1) {
+          throw new ConflictException(
+            'The row has several transactions in the month; edit them in the statement',
+          );
+        }
+        if (found.length === 1) {
+          return [
+            this.prisma.transaction.update({
+              where: { id: found[0].id },
+              data: { plannedCents: amountCents },
+            }),
+          ];
+        }
+        const { id: _id, seriesId, ...fields } = anchorOf.get(anchorId)!;
+        let series = seriesId ?? newSeries.get(anchorId);
+        const joins: Prisma.PrismaPromise<unknown>[] = [];
+        if (!series) {
+          series = randomUUID();
+          newSeries.set(anchorId, series);
+          joins.push(
+            this.prisma.transaction.update({
+              where: { id: anchorId },
+              data: { seriesId: series },
+            }),
+          );
+        }
         return [
-          amountCents === 0
-            ? this.prisma.transaction.delete({ where: { id } })
-            : this.prisma.transaction.update({
-                where: { id },
-                data: { plannedCents: amountCents },
-              }),
+          ...joins,
+          this.prisma.transaction.create({
+            data: {
+              userId,
+              ...fields,
+              month,
+              plannedCents: amountCents,
+              seriesId: series,
+            },
+          }),
         ];
       },
     );

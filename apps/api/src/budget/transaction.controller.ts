@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
@@ -30,6 +31,7 @@ import {
   CreateTransactionDto,
   RealizationDto,
   RecurrenceScopeQueryDto,
+  SeriesEndDto,
   TransactionDto,
   TransactionMonthQueryDto,
   UpdateTransactionDto,
@@ -87,6 +89,23 @@ export class TransactionController {
     @Query() { scope }: RecurrenceScopeQueryDto,
   ): Promise<void> {
     return this.transactionService.remove(user.id, id, scope);
+  }
+
+  @Put(':id/series')
+  @ApiOkResponse({
+    type: [TransactionDto],
+    description: 'Every occurrence of the series after the change',
+  })
+  @ApiNotFoundResponse()
+  @ApiConflictResponse({
+    description: 'A realized occurrence falls after the new end',
+  })
+  setSeriesEnd(
+    @CurrentUser() user: JwtUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() { untilMonth }: SeriesEndDto,
+  ): Promise<TransactionDto[]> {
+    return this.transactionService.setSeriesEnd(user.id, id, untilMonth);
   }
 
   @Put(':id/realization')

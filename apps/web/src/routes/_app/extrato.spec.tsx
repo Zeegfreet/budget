@@ -3,17 +3,26 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchMe } from '@/features/auth/api'
-import { fetchSummary } from '@/features/budget/api'
+import {
+  createCategory,
+  createGroup,
+  deleteCategory,
+  fetchCategories,
+  fetchSummary,
+  updateCategory,
+  updateGroup,
+} from '@/features/budget/api'
 import {
   createTransaction,
   deleteTransaction,
   fetchTransactions,
   realizeTransaction,
+  setTransactionSeriesEnd,
   unrealizeTransaction,
   updateTransaction,
 } from '@/features/transactions/api'
 import { ApiError } from '@/lib/api/client'
-import { stubBudgetApi } from '@/test/budget'
+import { budgetGroups, stubBudgetApi } from '@/test/budget'
 import { renderRoute } from '@/test/render'
 import { categories, makeTransaction, octoberTransactions, stubTransactionsApi } from '@/test/transactions'
 
@@ -433,6 +442,200 @@ describe('Statement route (/extrato)', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Opções de Salário' }))
       expect(await screen.findByRole('menuitem', { name: 'Excluir' })).toBeInTheDocument()
       expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('due day', () => {
+    it('launches with a due day of its own', async () => {
+      await openStatement()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Nova despesa' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: 'Categoria' }), 'Lazer')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '40')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Dia de vencimento (opcional)' }), '20')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      await waitFor(() =>
+        expect(createMock).toHaveBeenCalledWith({
+          categoryId: 3,
+          description: null,
+          plannedCents: 4000,
+          month: '2026-10',
+          dueDay: 20,
+        }),
+      )
+    })
+
+    it('edits the due day, sending it only when it changes', async () => {
+      await openStatement()
+
+      await rowAction('Alimentação', 'Editar')
+      let form = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      const day = within(form).getByRole('textbox', { name: 'Dia de vencimento (opcional)' })
+      expect(day).toHaveValue('')
+      await userEvent.type(day, '7')
+      await userEvent.click(within(form).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() =>
+        expect(updateMock).toHaveBeenCalledWith(
+          3,
+          { categoryId: 2, description: null, plannedCents: 70000, dueDay: 7 },
+          'ONE',
+        ),
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+      await rowAction('Salário', 'Editar')
+      form = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      expect(within(form).getByRole('textbox', { name: 'Dia de vencimento (opcional)' })).toHaveValue('5')
+      await userEvent.click(within(form).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() =>
+        expect(updateMock).toHaveBeenLastCalledWith(
+          1,
+          { categoryId: 4, description: null, plannedCents: 500000 },
+          'ONE',
+        ),
+      )
+    })
+  })
+
+  describe('recurrence range', () => {
+    const openRange = async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Recorrência de Aluguel: 1 de 12' }))
+      return screen.findByRole('dialog', { name: 'Período da recorrência' })
+    }
+
+    it('extends a series from its badge', async () => {
+      await openStatement()
+
+      const dialog = await openRange()
+      expect(dialog).toHaveTextContent('Aluguel: parcela 1 de 12, de out/26 a set/27.')
+      expect(within(dialog).getByRole('button', { name: 'Salvar' })).toBeDisabled()
+      const later = within(dialog).getByRole('button', { name: 'Próximo mês' })
+      await userEvent.click(later)
+      await userEvent.click(later)
+      await userEvent.click(later)
+      expect(dialog).toHaveTextContent('dezembro de 2027')
+      expect(dialog).toHaveTextContent('15 lançamentos no total')
+      expect(within(dialog).getByRole('status')).toHaveTextContent('Serão criados 3 lançamentos')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(setTransactionSeriesEnd).toHaveBeenCalledWith(2, '2027-12')
+      // The statement reads it back
+      expect(fetchTransactionsMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('shortens a series, showing the conflict when a later one was realized', async () => {
+      vi.mocked(setTransactionSeriesEnd).mockRejectedValueOnce(
+        new ApiError(409, ['An occurrence after untilMonth is already settled']),
+      )
+      await openStatement()
+
+      const dialog = await openRange()
+      const earlier = within(dialog).getByRole('button', { name: 'Mês anterior' })
+      for (let i = 0; i < 6; i++) await userEvent.click(earlier)
+      expect(dialog).toHaveTextContent('março de 2027')
+      expect(within(dialog).getByRole('status')).toHaveTextContent(
+        'Os lançamentos pendentes depois de março de 2027 serão excluídos',
+      )
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Há lançamentos já realizados depois desse mês')
+      expect(setTransactionSeriesEnd).toHaveBeenCalledWith(2, '2027-03')
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('never ends before the first month', async () => {
+      await openStatement()
+
+      const dialog = await openRange()
+      const earlier = within(dialog).getByRole('button', { name: 'Mês anterior' })
+      for (let i = 0; i < 11; i++) await userEvent.click(earlier)
+
+      expect(dialog).toHaveTextContent('outubro de 2026')
+      expect(dialog).toHaveTextContent('1 lançamento no total')
+      expect(earlier).toBeDisabled()
+    })
+  })
+
+  describe('categories menu', () => {
+    const openMenu = async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Categorias' }))
+      return screen.findByRole('dialog', { name: 'Categorias' })
+    }
+
+    it('lists the types and categories, inactive ones included', async () => {
+      stubBudgetApi({
+        groups: budgetGroups.map((g) =>
+          g.id === 20 ? { ...g, categories: g.categories.map((c) => ({ ...c, active: false })) } : g,
+        ),
+      })
+      await openStatement()
+
+      const panel = await openMenu()
+      const expenses = within(panel).getByRole('region', { name: 'Despesas' })
+      expect(within(expenses).getByRole('listitem', { name: 'Despesas Básicas' })).toHaveTextContent(
+        'Despesas BásicasMoradiaAlimentação',
+      )
+      expect(within(expenses).getByRole('listitem', { name: 'Lazer' })).toHaveTextContent('Inativa')
+      expect(within(within(panel).getByRole('region', { name: 'Receitas' })).getAllByRole('listitem')).toHaveLength(4)
+    })
+
+    it('creates a category in a type', async () => {
+      await openStatement()
+      const panel = await openMenu()
+
+      await userEvent.click(within(panel).getByRole('button', { name: 'Opções de Custos de Vida' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Nova categoria' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova categoria' })
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Nome' }), 'Streaming')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Criar' }))
+
+      await waitFor(() => expect(createCategory).toHaveBeenCalledWith(20, { name: 'Streaming' }))
+      // The launch form offers the new category once the tree is back
+      expect(vi.mocked(fetchCategories)).toHaveBeenCalledTimes(2)
+    })
+
+    it('creates a type', async () => {
+      await openStatement()
+      const panel = await openMenu()
+
+      await userEvent.click(within(panel).getByRole('button', { name: 'Novo tipo de receita' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Novo tipo de receita' })
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Nome' }), 'Aluguéis')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Criar' }))
+
+      await waitFor(() => expect(createGroup).toHaveBeenCalledWith({ kind: 'INCOME', name: 'Aluguéis', goalPercent: null }))
+    })
+
+    it('inactivates a category and a type', async () => {
+      const success = vi.spyOn(toast, 'success')
+      await openStatement()
+      const panel = await openMenu()
+
+      await userEvent.click(within(panel).getByRole('button', { name: 'Opções de Lazer' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Inativar' }))
+      await waitFor(() => expect(updateCategory).toHaveBeenCalledWith(3, { active: false }))
+      await waitFor(() => expect(success).toHaveBeenCalledWith('Lazer inativado(a)'))
+
+      await userEvent.click(within(panel).getByRole('button', { name: 'Opções de Renda Extra' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Inativar' }))
+      await waitFor(() => expect(updateGroup).toHaveBeenCalledWith(40, { active: false }))
+    })
+
+    it('deletes a category after confirming', async () => {
+      await openStatement()
+      const panel = await openMenu()
+
+      await userEvent.click(within(panel).getByRole('button', { name: 'Opções de Alimentação' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Excluir' }))
+      const confirm = await screen.findByRole('alertdialog', { name: 'Excluir a categoria Alimentação?' })
+      await userEvent.click(within(confirm).getByRole('button', { name: 'Excluir' }))
+
+      await waitFor(() => expect(deleteCategory).toHaveBeenCalledWith(2))
+      // Its values went too: the statement reloads
+      await waitFor(() => expect(fetchTransactionsMock).toHaveBeenCalledTimes(2))
     })
   })
 })

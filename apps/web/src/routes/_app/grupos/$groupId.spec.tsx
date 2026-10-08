@@ -8,6 +8,7 @@ import {
   fetchGroupBalance,
   fetchGroupTransactions,
   payGroupTransaction,
+  setGroupTransactionSeriesEnd,
   unpayGroupTransaction,
   updateGroupTransaction,
 } from '@/features/groups/api'
@@ -228,6 +229,48 @@ describe('Group route (/grupos/$groupId)', () => {
       await userEvent.click(within(scope).getByRole('button', { name: 'Excluir só este' }))
 
       await waitFor(() => expect(deleteGroupTransaction).toHaveBeenCalledWith(7, rentTransaction.id, 'ONE'))
+    })
+  })
+
+  describe('recurrence range', () => {
+    const openRange = async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Recorrência de Aluguel: 1 de 12' }))
+      return screen.findByRole('dialog', { name: 'Período da recorrência' })
+    }
+
+    it('extends a series from its badge', async () => {
+      await openGroup()
+
+      const dialog = await openRange()
+      expect(dialog).toHaveTextContent('Aluguel: parcela 1 de 12, de out/26 a set/27.')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Próximo mês' }))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(setGroupTransactionSeriesEnd).toHaveBeenCalledWith(7, 10, '2027-10')
+      expect(fetchGroupTransactions).toHaveBeenCalledTimes(2)
+    })
+
+    it('shortens a series, showing the conflict when a later one was paid', async () => {
+      vi.mocked(setGroupTransactionSeriesEnd).mockRejectedValueOnce(
+        new ApiError(409, ['An occurrence after untilMonth is already settled']),
+      )
+      await openGroup()
+
+      const dialog = await openRange()
+      expect(dialog).not.toHaveTextContent('realizados')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Mês anterior' }))
+      expect(within(dialog).getByRole('status')).toHaveTextContent('Os já pagos não podem ser removidos')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('Há lançamentos já pagos depois desse mês')
+      expect(setGroupTransactionSeriesEnd).toHaveBeenCalledWith(7, 10, '2027-08')
+    })
+
+    it('shows no badge button for single transactions', async () => {
+      await openGroup()
+
+      expect(within(row('Água')).queryByRole('button', { name: /Recorrência/ })).not.toBeInTheDocument()
     })
   })
 

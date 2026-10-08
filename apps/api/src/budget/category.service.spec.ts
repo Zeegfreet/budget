@@ -158,7 +158,7 @@ describe('CategoryService', () => {
       prisma.categoryGroup.findFirst.mockResolvedValue(expenseGroup);
       prisma.category.create.mockResolvedValue({ id: 11 });
 
-      await service.createCategory(7, 3, { name: 'Aluguel', dueDay: 10 });
+      await service.createCategory(7, 3, { name: 'Aluguel' });
 
       expect(prisma.category.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -166,8 +166,6 @@ describe('CategoryService', () => {
             userId: 7,
             groupId: 3,
             name: 'Aluguel',
-            description: null,
-            dueDay: 10,
             position: 0,
           },
         }),
@@ -205,11 +203,11 @@ describe('CategoryService', () => {
   });
 
   describe('updateCategory and deleteCategory', () => {
-    it('passes null to clear fields and leaves the others untouched', async () => {
+    it('changes only the given fields', async () => {
       prisma.category.findFirst.mockResolvedValue({ id: 11 });
       prisma.category.update.mockResolvedValue({ id: 11 });
 
-      await service.updateCategory(7, 11, { description: null, dueDay: 5 });
+      await service.updateCategory(7, 11, { active: false });
 
       expect(prisma.category.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 11, userId: 7 } }),
@@ -217,12 +215,7 @@ describe('CategoryService', () => {
       expect(prisma.category.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 11 },
-          data: {
-            name: undefined,
-            description: null,
-            dueDay: 5,
-            active: undefined,
-          },
+          data: { name: undefined, active: false },
         }),
       );
     });

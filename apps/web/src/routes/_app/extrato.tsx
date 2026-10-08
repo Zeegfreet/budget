@@ -1,18 +1,23 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { PlusIcon } from 'lucide-react'
+import { PlusIcon, TagsIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState, GroupLinkDialog, MonthSwitcher } from '@/components/molecules'
 import {
+  BudgetDialogs,
+  CategoryManager,
   GroupStatementsCard,
   StatementList,
   StatementSummary,
   TransactionDialogs,
+  type BudgetDialog,
+  type CategoryAction,
   type StatementAction,
   type TransactionDialog,
 } from '@/components/organisms'
 import { Button } from '@/components/ui/button'
+import { useCategoryActions, useCategoryToggle } from '@/features/budget/hooks'
 import { currentMonth, formatMonthLong } from '@/features/budget/months'
 import { budgetQueries } from '@/features/budget/queries'
 import type { GroupStatement, Month } from '@/features/budget/types'
@@ -71,6 +76,22 @@ function StatementPage() {
   const [linking, setLinking] = useState<GroupStatement | null>(null)
   const linkMethods = usePaymentMethodOptions(month, linking !== null)
   const formMethods = usePaymentMethodOptions(month, dialog?.type === 'create' || dialog?.type === 'edit')
+  const [managing, setManaging] = useState(false)
+  const [categoryDialog, setCategoryDialog] = useState<BudgetDialog>(null)
+  // No unsaved values on this page, so nothing to forget
+  const categoryActions = useCategoryActions(() => {})
+  const { toggleGroup, toggleCategory } = useCategoryToggle(categoryActions)
+
+  function handleCategoryAction(action: CategoryAction) {
+    switch (action.type) {
+      case 'toggle-group':
+        return toggleGroup(action.group)
+      case 'toggle-category':
+        return toggleCategory(action.category)
+      default:
+        setCategoryDialog(action)
+    }
+  }
 
   async function toggleRealized({ id, realizedCents, plannedCents }: StatementAction['transaction']) {
     try {
@@ -116,7 +137,13 @@ function StatementPage() {
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <MonthSwitcher month={month} onChange={(m) => navigate({ search: { month: m } })} />
-          {newButtons}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="ghost" onClick={() => setManaging(true)}>
+              <TagsIcon />
+              Categorias
+            </Button>
+            {newButtons}
+          </div>
         </div>
       </div>
 
@@ -135,6 +162,9 @@ function StatementPage() {
       {groupStatements.length > 0 && (
         <GroupStatementsCard statements={groupStatements} month={month} detailed onLink={setLinking} />
       )}
+
+      <CategoryManager open={managing} onOpenChange={setManaging} groups={groups} onAction={handleCategoryAction} />
+      <BudgetDialogs dialog={categoryDialog} onClose={() => setCategoryDialog(null)} actions={categoryActions} />
 
       <TransactionDialogs
         dialog={dialog}

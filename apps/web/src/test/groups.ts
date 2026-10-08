@@ -84,7 +84,7 @@ export const rentTransaction = makeGroupTransaction(10, {
   amountCents: 200000,
   splitMethod: { id: percentRule.id, name: percentRule.name, type: 'PERCENT' },
   paidBy: { memberId: 1, name: 'Ana' },
-  series: { index: 1, count: 12 },
+  series: { index: 1, count: 12, firstMonth: '2026-10', lastMonth: '2027-09' },
   shares: [
     { memberId: 1, name: 'Ana', amountCents: 60000 },
     { memberId: 2, name: 'Bruno', amountCents: 140000 },
@@ -171,5 +171,6 @@ export function stubGroupsApi({
   vi.mocked(groupsApi.deleteGroupTransaction).mockResolvedValue()
   vi.mocked(groupsApi.payGroupTransaction).mockResolvedValue(transactions[0])
   vi.mocked(groupsApi.unpayGroupTransaction).mockResolvedValue(transactions[0])
+  vi.mocked(groupsApi.setGroupTransactionSeriesEnd).mockResolvedValue([transactions[0]])
   vi.mocked(groupsApi.fetchGroupBalance).mockResolvedValue(balance)
 }

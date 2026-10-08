@@ -13,7 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsPresent, MAX_NAME_LENGTH } from '../../budget/dto/category.dto.js';
-import { MAX_AMOUNT_CENTS } from '../../budget/dto/save-entries.dto.js';
+import { MAX_AMOUNT_CENTS } from '../../budget/dto/save-lines.dto.js';
 import { SplitType } from '../../prisma/generated/enums.js';
 
 /** Most participants a rule may name. */

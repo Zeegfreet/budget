@@ -26,6 +26,12 @@ export async function deleteTransaction(id: number, scope: RecurrenceScope = 'ON
   await api.delete(`/budget/transactions/${id}`, { params: { scope } })
 }
 
+/** Moves the series' last month: extends it with copies of the last occurrence, or drops the pending ones after it */
+export async function setTransactionSeriesEnd(id: number, untilMonth: Month): Promise<Transaction[]> {
+  const { data } = await api.put<Transaction[]>(`/budget/transactions/${id}/series`, { untilMonth })
+  return data
+}
+
 export async function realizeTransaction(id: number, amountCents: number): Promise<Transaction> {
   const { data } = await api.put<Transaction>(`/budget/transactions/${id}/realization`, { amountCents })
   return data

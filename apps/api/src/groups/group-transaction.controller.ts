@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
@@ -26,7 +27,10 @@ import {
   CurrentUser,
   type JwtUser,
 } from '../auth/decorators/current-user.decorator.js';
-import { RecurrenceScopeQueryDto } from '../budget/dto/transaction.dto.js';
+import {
+  RecurrenceScopeQueryDto,
+  SeriesEndDto,
+} from '../budget/dto/transaction.dto.js';
 import {
   CreateGroupTransactionDto,
   GroupBalanceDto,
@@ -90,6 +94,23 @@ export class GroupTransactionController {
     @Query() { scope }: RecurrenceScopeQueryDto,
   ): Promise<void> {
     return this.service.remove(user.id, groupId, id, scope);
+  }
+
+  @Put('transactions/:id/series')
+  @ApiOkResponse({
+    type: [GroupTransactionDto],
+    description: 'Every occurrence of the series after the change',
+  })
+  @ApiConflictResponse({
+    description: 'A paid occurrence falls after the new end',
+  })
+  setSeriesEnd(
+    @CurrentUser() user: JwtUser,
+    @Param('groupId', ParseIntPipe) groupId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() { untilMonth }: SeriesEndDto,
+  ): Promise<GroupTransactionDto[]> {
+    return this.service.setSeriesEnd(user.id, groupId, id, untilMonth);
   }
 
   @Put('transactions/:id/payment')

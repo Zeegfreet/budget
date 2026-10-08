@@ -25,11 +25,17 @@ interface Transaction {
   description: string | null;
   plannedCents: number;
   realizedCents: number | null;
-  series: { index: number; count: number } | null;
+  series: {
+    index: number;
+    count: number;
+    firstMonth: string;
+    lastMonth: string;
+  } | null;
+  dueDay: number | null;
+  ownDueDay: number | null;
   category: {
     id: number;
     name: string;
-    dueDay: number | null;
     active: boolean;
     group: { id: number; name: string; kind: string; active: boolean };
   };
@@ -109,6 +115,10 @@ describe('Transactions (e2e)', () => {
       .send({ amountCents: 1 })
       .expect(401);
     await http.delete('/budget/transactions/1/realization').expect(401);
+    await http
+      .put('/budget/transactions/1/series')
+      .send({ untilMonth: '2027-01' })
+      .expect(401);
   });
 
   describe('POST /budget/transactions', () => {
@@ -130,10 +140,10 @@ describe('Transactions (e2e)', () => {
           series: null,
           paymentMethod: null,
           dueDay: null,
+          ownDueDay: null,
           category: {
             id: ids.leisure,
             name: 'Lazer',
-            dueDay: null,
             active: true,
             group: {
               id: expect.any(Number),
@@ -164,7 +174,12 @@ describe('Transactions (e2e)', () => {
         '2027-09',
       ]);
       expect(created.map((t) => t.series)).toEqual(
-        created.map((_, i) => ({ index: i + 1, count: 12 })),
+        created.map((_, i) => ({
+          index: i + 1,
+          count: 12,
+          firstMonth: '2026-10',
+          lastMonth: '2027-09',
+        })),
       );
 
       const [march] = await month(ana, '2027-03');
@@ -207,6 +222,14 @@ describe('Transactions (e2e)', () => {
         },
       ],
       [
+        'due day 0',
+        { categoryId: 1, month: '2026-10', plannedCents: 1, dueDay: 0 },
+      ],
+      [
+        'due day 32',
+        { categoryId: 1, month: '2026-10', plannedCents: 1, dueDay: 32 },
+      ],
+      [
         'an unknown field',
         { categoryId: 1, month: '2026-10', plannedCents: 1, userId: 2 },
       ],
@@ -237,10 +260,6 @@ describe('Transactions (e2e)', () => {
 
   describe('GET /budget/transactions', () => {
     it('lists the month by due day, then the grid order', async () => {
-      await ana
-        .patch(`/budget/categories/${ids.leisure}`)
-        .send({ dueDay: 5 })
-        .expect(200);
       await create(ana, {
         categoryId: ids.salary,
         month: '2026-10',
@@ -255,6 +274,7 @@ describe('Transactions (e2e)', () => {
         categoryId: ids.leisure,
         month: '2026-10',
         plannedCents: 2000,
+        dueDay: 5,
       }).expect(201);
       await create(ana, {
         categoryId: ids.housing,
@@ -446,7 +466,7 @@ describe('Transactions (e2e)', () => {
 
       expect(await month(ana, '2026-11')).toEqual([]);
       const [december] = await month(ana, '2026-12');
-      expect(december.series).toEqual({ index: 2, count: 11 });
+      expect(december.series).toMatchObject({ index: 2, count: 11 });
     });
 
     it('with FOLLOWING deletes the later pending occurrences, keeping earlier and realized ones', async () => {
@@ -475,59 +495,158 @@ describe('Transactions (e2e)', () => {
     });
   });
 
-  describe('grid cells', () => {
-    it('sums several transactions and refuses to edit that cell from the grid', async () => {
-      await create(ana, {
-        categoryId: ids.leisure,
-        month: '2026-10',
-        plannedCents: 1000,
-      }).expect(201);
-      await create(ana, {
-        categoryId: ids.leisure,
-        month: '2026-10',
-        plannedCents: 2500,
-      }).expect(201);
-
-      const grid = await ana
-        .get('/budget/entries?from=2026-10&to=2026-10')
-        .expect(200);
-      expect(grid.body).toEqual([
-        {
-          categoryId: ids.leisure,
+  describe('due day', () => {
+    it('keeps the launch’s own due day in the whole series and edits it with FOLLOWING', async () => {
+      const series = (
+        await create(ana, {
+          categoryId: ids.housing,
           month: '2026-10',
-          amountCents: 3500,
-          count: 2,
-          groupCents: 0,
-        },
+          plannedCents: 1000,
+          dueDay: 10,
+          repeatMonths: 3,
+        }).expect(201)
+      ).body as Transaction[];
+      expect(series.map((t) => [t.dueDay, t.ownDueDay])).toEqual([
+        [10, 10],
+        [10, 10],
+        [10, 10],
       ]);
 
       await ana
-        .put('/budget/entries')
-        .send({
-          entries: [
-            { categoryId: ids.leisure, month: '2026-10', amountCents: 1 },
-          ],
-        })
-        .expect(409);
+        .patch(`/budget/transactions/${series[1].id}`)
+        .send({ dueDay: 15, scope: 'FOLLOWING' })
+        .expect(200);
+      await ana
+        .patch(`/budget/transactions/${series[2].id}`)
+        .send({ dueDay: null })
+        .expect(200);
+
+      expect((await month(ana, '2026-10'))[0].dueDay).toBe(10);
+      expect((await month(ana, '2026-11'))[0].dueDay).toBe(15);
+      expect((await month(ana, '2026-12'))[0].dueDay).toBeNull();
     });
 
-    it('editing a single-transaction cell changes that transaction', async () => {
+    it.each([0, 32, 1.5, '10'])(
+      'rejects due day %s when editing with 400',
+      async (dueDay) => {
+        const [rent] = await rentSeries();
+        await ana
+          .patch(`/budget/transactions/${rent.id}`)
+          .send({ dueDay })
+          .expect(400);
+      },
+    );
+  });
+
+  describe('series range', () => {
+    const setEnd = (client: Agent, id: number, untilMonth: unknown) =>
+      client.put(`/budget/transactions/${id}/series`).send({ untilMonth });
+
+    it('extends a series with copies of its last occurrence', async () => {
+      const series = await rentSeries();
+      await ana
+        .patch(`/budget/transactions/${series[11].id}`)
+        .send({ plannedCents: 12000, dueDay: 5 })
+        .expect(200);
+
+      const res = await setEnd(ana, series[3].id, '2027-11').expect(200);
+
+      const all = res.body as Transaction[];
+      expect(all).toHaveLength(14);
+      expect(all.at(-1)).toMatchObject({
+        month: '2027-11',
+        plannedCents: 12000,
+        realizedCents: null,
+        dueDay: 5,
+        description: 'Aluguel',
+        series: {
+          index: 14,
+          count: 14,
+          firstMonth: '2026-10',
+          lastMonth: '2027-11',
+        },
+      });
+      expect((await month(ana, '2026-10'))[0].series).toMatchObject({
+        index: 1,
+        count: 14,
+      });
+    });
+
+    it('shortens a series deleting the pending occurrences after the end', async () => {
+      const series = await rentSeries();
+
+      const res = await setEnd(ana, series[0].id, '2026-12').expect(200);
+
+      expect((res.body as Transaction[]).map((t) => t.month)).toEqual([
+        '2026-10',
+        '2026-11',
+        '2026-12',
+      ]);
+      expect(await month(ana, '2027-01')).toEqual([]);
+      expect((await month(ana, '2026-12'))[0].series).toEqual({
+        index: 3,
+        count: 3,
+        firstMonth: '2026-10',
+        lastMonth: '2026-12',
+      });
+    });
+
+    it('turns a plain launch into a series', async () => {
+      const [single] = (
+        await create(ana, {
+          categoryId: ids.leisure,
+          month: '2026-10',
+          plannedCents: 4500,
+        }).expect(201)
+      ).body as Transaction[];
+
+      const res = await setEnd(ana, single.id, '2026-12').expect(200);
+
+      expect((res.body as Transaction[]).map((t) => t.series?.count)).toEqual([
+        3, 3, 3,
+      ]);
+    });
+
+    it('refuses to drop a realized occurrence with 409', async () => {
+      const series = await rentSeries();
+      await ana
+        .put(`/budget/transactions/${series[5].id}/realization`)
+        .send({ amountCents: 10000 })
+        .expect(200);
+
+      await setEnd(ana, series[0].id, '2027-01').expect(409);
+      expect(await month(ana, '2027-02')).toHaveLength(1);
+    });
+
+    it('rejects extending into an inactive category with 400', async () => {
+      const series = await rentSeries();
+      await ana
+        .patch(`/budget/categories/${ids.housing}`)
+        .send({ active: false })
+        .expect(200);
+
+      await setEnd(ana, series[0].id, '2027-12').expect(400);
+      // Shortening still works
+      await setEnd(ana, series[0].id, '2026-10').expect(200);
+    });
+
+    it.each([
+      ['a month before the first one', '2026-09'],
+      ['more than 60 months', '2031-10'],
+      ['an invalid month', '2027-13'],
+      ['a missing month', undefined],
+    ])('rejects %s with 400', async (_case, untilMonth) => {
+      const [rent] = await rentSeries();
+      await setEnd(ana, rent.id, untilMonth).expect(400);
+    });
+
+    it('rejects an unknown field with 400 and an unknown id with 404', async () => {
       const [rent] = await rentSeries();
       await ana
-        .put('/budget/entries')
-        .send({
-          entries: [
-            { categoryId: ids.housing, month: '2026-10', amountCents: 999 },
-          ],
-        })
-        .expect(204);
-
-      const [october] = await month(ana, '2026-10');
-      expect(october).toMatchObject({
-        id: rent.id,
-        description: 'Aluguel',
-        plannedCents: 999,
-      });
+        .put(`/budget/transactions/${rent.id}/series`)
+        .send({ untilMonth: '2027-12', count: 3 })
+        .expect(400);
+      await setEnd(ana, 999999, '2027-12').expect(404);
     });
   });
 
@@ -552,6 +671,10 @@ describe('Transactions (e2e)', () => {
         .expect(404);
       await bruno
         .delete(`/budget/transactions/${anaRent.id}?scope=FOLLOWING`)
+        .expect(404);
+      await bruno
+        .put(`/budget/transactions/${anaRent.id}/series`)
+        .send({ untilMonth: '2026-10' })
         .expect(404);
       // Nor create in, or move his own transaction into, Ana's category
       await create(bruno, {

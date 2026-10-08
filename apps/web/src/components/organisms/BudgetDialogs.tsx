@@ -4,11 +4,16 @@ import type { useCategoryActions } from '@/features/budget/hooks'
 import type { CategoryRow, GroupRow } from '@/features/budget/rows'
 import type { EntryKind } from '@/features/budget/types'
 
-/** The dialog open on the dashboard, if any */
+/** The type a dialog acts on (a grid row or a tree item) */
+export type DialogGroup = Pick<GroupRow, 'id' | 'kind' | 'name' | 'goalPercent'> & { categories: { id: number }[] }
+/** The category a dialog acts on */
+export type DialogCategory = Pick<CategoryRow, 'id' | 'name'>
+
+/** The dialog open on the dashboard (or the statement's category menu), if any */
 export type BudgetDialog =
   | { type: 'create-group'; kind: EntryKind }
-  | { type: 'edit-group' | 'delete-group' | 'create-category'; group: GroupRow }
-  | { type: 'edit-category' | 'delete-category'; category: CategoryRow }
+  | { type: 'edit-group' | 'delete-group' | 'create-category'; group: DialogGroup }
+  | { type: 'edit-category' | 'delete-category'; category: DialogCategory }
   | { type: 'goals' }
   | null
 
@@ -17,13 +22,13 @@ interface BudgetDialogsProps {
   onClose: () => void
   actions: ReturnType<typeof useCategoryActions>
   /** Active expense types, for the goals dialog */
-  goalTargets: GoalTarget[]
+  goalTargets?: GoalTarget[]
 }
 
 const KIND_LABEL = { EXPENSE: 'despesa', INCOME: 'receita' } as const
 
 /** Create, edit and delete dialogs of the category tree, plus the goals. */
-export function BudgetDialogs({ dialog, onClose, actions, goalTargets }: BudgetDialogsProps) {
+export function BudgetDialogs({ dialog, onClose, actions, goalTargets = [] }: BudgetDialogsProps) {
   const openChange = (open: boolean) => {
     if (!open) onClose()
   }
@@ -34,7 +39,6 @@ export function BudgetDialogs({ dialog, onClose, actions, goalTargets }: BudgetD
       <CategoryFormDialog
         open={is('create-group')}
         onOpenChange={openChange}
-        variant="group"
         withGoal={dialog?.type === 'create-group' && dialog.kind === 'EXPENSE'}
         title={dialog?.type === 'create-group' ? `Novo tipo de ${KIND_LABEL[dialog.kind]}` : ''}
         description="Tipos agrupam categorias, por exemplo Despesas Básicas ou Investimentos."
@@ -48,7 +52,6 @@ export function BudgetDialogs({ dialog, onClose, actions, goalTargets }: BudgetD
       <CategoryFormDialog
         open={is('edit-group')}
         onOpenChange={openChange}
-        variant="group"
         withGoal={dialog?.type === 'edit-group' && dialog.group.kind === 'EXPENSE'}
         title="Editar tipo"
         initial={dialog?.type === 'edit-group' ? dialog.group : undefined}
@@ -64,25 +67,23 @@ export function BudgetDialogs({ dialog, onClose, actions, goalTargets }: BudgetD
       <CategoryFormDialog
         open={is('create-category')}
         onOpenChange={openChange}
-        variant="category"
         title="Nova categoria"
         description={dialog?.type === 'create-category' ? `Em ${dialog.group.name}.` : undefined}
         submitLabel="Criar"
-        onSubmit={({ name, description, dueDay }) =>
+        onSubmit={({ name }) =>
           dialog?.type === 'create-category'
-            ? actions.createCategory(dialog.group.id, { name, description, dueDay })
+            ? actions.createCategory(dialog.group.id, { name })
             : Promise.resolve()
         }
       />
       <CategoryFormDialog
         open={is('edit-category')}
         onOpenChange={openChange}
-        variant="category"
         title="Editar categoria"
         initial={dialog?.type === 'edit-category' ? dialog.category : undefined}
-        onSubmit={({ name, description, dueDay }) =>
+        onSubmit={({ name }) =>
           dialog?.type === 'edit-category'
-            ? actions.updateCategory(dialog.category.id, { name, description, dueDay })
+            ? actions.updateCategory(dialog.category.id, { name })
             : Promise.resolve()
         }
       />

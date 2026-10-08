@@ -31,3 +31,11 @@ export function groupErrorMessage(error: unknown, fallback: string): string {
   if (error.status === 404) return 'Não encontrado. Atualize a página.'
   return error.messages.join(' ') || fallback
 }
+
+/** Message for a failed change of a group series' range */
+export function groupSeriesErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return 'Há lançamentos já pagos depois desse mês. Desfaça o pagamento ou escolha um mês posterior.'
+  }
+  return groupErrorMessage(error, 'Não foi possível ajustar a recorrência.')
+}

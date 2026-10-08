@@ -7,7 +7,13 @@ import {
   type SplitMethod,
   splitMethods,
 } from './groups.js';
-import { type Agent, createTestApp, resetDatabase, signUp } from './utils.js';
+import {
+  addTransactions,
+  type Agent,
+  createTestApp,
+  resetDatabase,
+  signUp,
+} from './utils.js';
 
 interface CategoryTree {
   id: number;
@@ -292,12 +298,9 @@ describe('Groups in the personal budget (e2e)', () => {
 
     it('adds the share to the personal amount of the cell', async () => {
       const moradia = await category(ana, 'Moradia');
-      await ana
-        .put('/budget/entries')
-        .send({
-          entries: [{ categoryId: moradia, month: MONTH, amountCents: 5000 }],
-        })
-        .expect(204);
+      await addTransactions(ana, [
+        { categoryId: moradia, month: MONTH, amountCents: 5000 },
+      ]);
       await link(ana, {
         expenseCategoryId: moradia,
         incomeCategoryId: null,

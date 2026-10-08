@@ -11,3 +11,11 @@ export function transactionErrorMessage(error: unknown, fallback: string): strin
   }
   return fallback
 }
+
+/** Message for a failed change of a series' range */
+export function seriesErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return 'Há lançamentos já realizados depois desse mês. Desfaça a realização ou escolha um mês posterior.'
+  }
+  return transactionErrorMessage(error, 'Não foi possível ajustar a recorrência.')
+}
