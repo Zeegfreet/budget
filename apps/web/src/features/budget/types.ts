@@ -1,3 +1,5 @@
+import type { GroupCategory } from '@/features/groups/types'
+
 export type EntryKind = 'INCOME' | 'EXPENSE'
 
 /** A month as `YYYY-MM`, matching the API */
@@ -129,7 +131,9 @@ export interface GroupStatementItem {
   groupPaid: boolean
   paidByName: string | null
   series: SeriesPosition | null
-  /** Where it counts in the budget (the group's link for its kind); `null` = not counted */
+  /** The group's own category of the transaction */
+  groupCategory: { id: number; name: string } | null
+  /** Where it counts in the budget (the one mapped to its group category, or else the link of its kind); `null` = not counted */
   category: ShareCategory | null
 }
 
@@ -153,7 +157,11 @@ export interface GroupStatement {
     incomeCategory: { id: number; name: string } | null
     /** Where the expense shares are paid */
     paymentMethod: { id: number; name: string; dueDay: number | null } | null
+    /** Per group category overrides of the categories above */
+    categoryLinks: { groupCategory: { id: number; name: string }; category: { id: number; name: string } }[]
   }
+  /** The group's categories (to edit the link) */
+  groupCategories: GroupCategory[]
   /** The group's totals in the month */
   expenseCents: number
   incomeCents: number

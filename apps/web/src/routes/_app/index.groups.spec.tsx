@@ -98,7 +98,7 @@ describe('Dashboard route (/) with finance groups', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: 5, paymentMethodId: null })
+    expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: 5, paymentMethodId: null, categoryLinks: [] })
     expect(fetchGroupStatements).toHaveBeenCalled()
   })
 
@@ -112,6 +112,6 @@ describe('Dashboard route (/) with finance groups', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
     expect(await within(dialog).findByText('Escolha uma categoria ativa.')).toBeInTheDocument()
-    expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null })
+    expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null, categoryLinks: [] })
   })
 })

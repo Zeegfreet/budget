@@ -56,6 +56,47 @@ describe('Statement route (/extrato) with finance groups', () => {
     expect(within(region('Receitas')).queryByText('Sublocação')).not.toBeInTheDocument()
   })
 
+  it('puts each share in the category mapped to its group category', async () => {
+    const leisure = {
+      id: 3,
+      name: 'Lazer',
+      active: true,
+      group: { id: 20, name: 'Custos de Vida', kind: 'EXPENSE', active: true },
+    } as const
+    stubBudgetApi({
+      groupStatements: [
+        makeGroupStatement({
+          link: {
+            expenseCategory: { id: 1, name: 'Moradia' },
+            incomeCategory: null,
+            paymentMethod: null,
+            categoryLinks: [{ groupCategory: { id: 21, name: 'Festas' }, category: { id: 3, name: 'Lazer' } }],
+          },
+          items: [
+            makeStatementItem(10, { groupCategory: { id: 20, name: 'Aluguel' } }),
+            makeStatementItem(11, {
+              description: 'Churrasco',
+              shareCents: 5000,
+              groupCategory: { id: 21, name: 'Festas' },
+              category: leisure,
+            }),
+          ],
+        }),
+      ],
+    })
+    await openStatement()
+
+    const rent = within(screen.getByRole('list', { name: 'Despesas Básicas' })).getByRole('listitem', {
+      name: 'Aluguel (República)',
+    })
+    expect(rent).toHaveTextContent('Aluguel → Moradia · Pendente no grupo')
+    const party = within(screen.getByRole('list', { name: 'Custos de Vida' })).getByRole('listitem', {
+      name: 'Churrasco (República)',
+    })
+    expect(party).toHaveTextContent('Festas → Lazer · Pendente no grupo')
+    expect(region('Grupos')).toHaveTextContent('exceto 1 categoria do grupo com vínculo próprio')
+  })
+
   it('shows a share someone else paid as open until they confirm it', async () => {
     stubBudgetApi({
       groupStatements: [
@@ -160,7 +201,7 @@ describe('Statement route (/extrato) with finance groups', () => {
     stubBudgetApi({
       groupStatements: [
         makeGroupStatement({
-          link: { expenseCategory: null, incomeCategory: null, paymentMethod: null },
+          link: { expenseCategory: null, incomeCategory: null, paymentMethod: null, categoryLinks: [] },
           items: [makeStatementItem(10, { category: null })],
         }),
       ],
@@ -176,7 +217,7 @@ describe('Statement route (/extrato) with finance groups', () => {
     await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: 'Despesas do grupo' }), 'Moradia')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
-    await waitFor(() => expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null, paymentMethodId: null }))
+    await waitFor(() => expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null, paymentMethodId: null, categoryLinks: [] }))
     await waitFor(() => expect(fetchGroupStatements).toHaveBeenCalled())
   })
 })

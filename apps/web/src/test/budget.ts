@@ -143,6 +143,7 @@ export const makeStatementItem = (
   groupPaid: false,
   paidByName: null,
   series: null,
+  groupCategory: null,
   category: housing,
   ...extra,
 })
@@ -155,7 +156,8 @@ export const makeGroupStatement = (extra: Partial<GroupStatement> = {}): GroupSt
   group: { id: 7, name: 'República' },
   active: true,
   memberId: 1,
-  link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: null, paymentMethod: null },
+  link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: null, paymentMethod: null, categoryLinks: [] },
+  groupCategories: [],
   expenseCents: 200000,
   incomeCents: 4000,
   pendingCents: 4000,

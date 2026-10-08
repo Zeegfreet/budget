@@ -78,6 +78,7 @@ describe('compareItems', () => {
             expenseCategory: { id: 1, name: 'Moradia' },
             incomeCategory: null,
             paymentMethod: { id: 6, name: 'Conta Itaú', dueDay: 7 },
+            categoryLinks: [],
           },
           items: [makeStatementItem(10, { dueDay: 7, shareCents: 60000 })],
         }),

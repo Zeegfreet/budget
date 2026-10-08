@@ -29,7 +29,7 @@ import { budgetQueries } from '@/features/budget/queries'
 import type { GroupStatement, Month } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import { useGroupActions } from '@/features/groups/hooks'
-import { statementLink } from '@/features/groups/link'
+import { EMPTY_LINK, statementLink } from '@/features/groups/link'
 import { transactionErrorMessage } from '@/features/transactions/errors'
 import { useTransactionActions } from '@/features/transactions/hooks'
 import { useStatementView } from '@/features/transactions/preferences'
@@ -219,7 +219,8 @@ function StatementPage() {
         groupName={linking?.group.name ?? ''}
         categories={groups}
         paymentMethods={linkMethods}
-        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null }}
+        groupCategories={linking?.groupCategories ?? []}
+        initial={linking ? statementLink(linking) : EMPTY_LINK}
         onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
         errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />

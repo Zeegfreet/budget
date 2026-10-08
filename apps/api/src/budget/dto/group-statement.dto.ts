@@ -1,4 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  GroupCategoryDto,
+  GroupCategoryRefDto,
+} from '../../groups/dto/group-category.dto.js';
 import { EntryKind } from '../../prisma/generated/enums.js';
 import {
   SeriesPositionDto,
@@ -32,6 +36,15 @@ export class LinkedPaymentMethodDto {
   dueDay: number | null;
 }
 
+/** A group category mapped to one of the user's categories. */
+export class GroupStatementCategoryLinkDto {
+  @ApiProperty({ type: GroupCategoryRefDto })
+  groupCategory: GroupCategoryRefDto;
+
+  @ApiProperty({ type: LinkedCategoryDto })
+  category: LinkedCategoryDto;
+}
+
 export class GroupStatementLinkDto {
   @ApiProperty({ type: LinkedCategoryDto, nullable: true })
   expenseCategory: LinkedCategoryDto | null;
@@ -45,6 +58,13 @@ export class GroupStatementLinkDto {
     description: 'Where the expense shares are paid (its invoice shows them)',
   })
   paymentMethod: LinkedPaymentMethodDto | null;
+
+  @ApiProperty({
+    type: [GroupStatementCategoryLinkDto],
+    description:
+      'Per group category overrides; the other items use the category of their kind',
+  })
+  categoryLinks: GroupStatementCategoryLinkDto[];
 }
 
 /** The user's share of one group transaction. */
@@ -99,10 +119,17 @@ export class GroupStatementItemDto {
   series: SeriesPositionDto | null;
 
   @ApiProperty({
+    type: GroupCategoryRefDto,
+    nullable: true,
+    description: 'The group’s own category of the transaction',
+  })
+  groupCategory: GroupCategoryRefDto | null;
+
+  @ApiProperty({
     type: TransactionCategoryDto,
     nullable: true,
     description:
-      'Personal category the share counts in (the link of its kind); `null` = not in the budget',
+      'Personal category the share counts in (the one mapped to its group category, or else the link of its kind); `null` = not in the budget',
   })
   category: TransactionCategoryDto | null;
 }
@@ -140,6 +167,12 @@ export class GroupStatementDto {
 
   @ApiProperty({ type: GroupStatementLinkDto })
   link: GroupStatementLinkDto;
+
+  @ApiProperty({
+    type: [GroupCategoryDto],
+    description: 'The group’s categories (for editing the link)',
+  })
+  groupCategories: GroupCategoryDto[];
 
   @ApiProperty({ example: 300000, description: 'Group expenses in the month' })
   expenseCents: number;

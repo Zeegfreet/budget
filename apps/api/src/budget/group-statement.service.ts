@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import {
+  groupCategoryOrder,
+  groupCategorySelect,
+} from '../groups/group-category.service.js';
 import { computeGroupBalance, isShareSettled } from '../groups/settlement.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -48,7 +52,23 @@ export class GroupStatementService {
         id: true,
         groupId: true,
         leftAt: true,
-        group: { select: { id: true, name: true } },
+        group: {
+          select: {
+            id: true,
+            name: true,
+            categories: {
+              orderBy: groupCategoryOrder,
+              select: groupCategorySelect,
+            },
+          },
+        },
+        categoryLinks: {
+          orderBy: { groupCategoryId: 'asc' },
+          select: {
+            groupCategory: { select: { id: true, name: true } },
+            category: { select: categorySelect },
+          },
+        },
         expenseCategory: { select: categorySelect },
         incomeCategory: { select: categorySelect },
         paymentMethod: { select: { id: true, name: true, dueDay: true } },
@@ -72,6 +92,7 @@ export class GroupStatementService {
           seriesId: true,
           dueDay: true,
           paymentUrl: true,
+          category: { select: { id: true, name: true } },
           shares: {
             select: { memberId: true, amountCents: true, settledAt: true },
           },
@@ -107,9 +128,22 @@ export class GroupStatementService {
           .map((m) => m.id),
       );
       const mine = balance.members.find((m) => m.memberId === me.id);
-      const categories = {
-        EXPENSE: me.expenseCategory,
-        INCOME: me.incomeCategory,
+      const categories = new Map<number, CategoryRow>(
+        [
+          me.expenseCategory,
+          me.incomeCategory,
+          ...me.categoryLinks.map((l) => l.category),
+        ]
+          .filter((c): c is CategoryRow => c !== null)
+          .map((c) => [c.id, c]),
+      );
+      const link = {
+        expenseCategoryId: me.expenseCategory?.id ?? null,
+        incomeCategoryId: me.incomeCategory?.id ?? null,
+        categoryLinks: me.categoryLinks.map((l) => ({
+          groupCategoryId: l.groupCategory.id,
+          categoryId: l.category.id,
+        })),
       };
 
       let expenseShareCents = 0;
@@ -119,10 +153,11 @@ export class GroupStatementService {
         if (!share) return [];
         if (t.kind === 'EXPENSE') expenseShareCents += share.amountCents;
         else incomeShareCents += share.amountCents;
-        const categoryId = linkedCategoryId(t.kind, {
-          expenseCategoryId: me.expenseCategory?.id ?? null,
-          incomeCategoryId: me.incomeCategory?.id ?? null,
-        });
+        const categoryId = linkedCategoryId(
+          t.kind,
+          link,
+          t.category?.id ?? null,
+        );
         return [
           {
             transactionId: t.id,
@@ -143,7 +178,9 @@ export class GroupStatementService {
                 ? null
                 : (nameOf.get(t.paidByMemberId) ?? null),
             series: (t.seriesId && series.get(t.seriesId)?.get(t.id)) || null,
-            category: categoryId === null ? null : categories[t.kind],
+            groupCategory: t.category,
+            category:
+              categoryId === null ? null : (categories.get(categoryId) ?? null),
           },
         ];
       });
@@ -153,14 +190,20 @@ export class GroupStatementService {
           a.transactionId - b.transactionId,
       );
 
+      const { categories: groupCategories, ...group } = me.group;
       return {
-        group: me.group,
+        group,
+        groupCategories,
         active: me.leftAt === null,
         memberId: me.id,
         link: {
           expenseCategory: linkRef(me.expenseCategory),
           incomeCategory: linkRef(me.incomeCategory),
           paymentMethod: me.paymentMethod,
+          categoryLinks: me.categoryLinks.map((l) => ({
+            groupCategory: l.groupCategory,
+            category: linkRef(l.category)!,
+          })),
         },
         expenseCents: balance.expenseCents,
         incomeCents: balance.incomeCents,

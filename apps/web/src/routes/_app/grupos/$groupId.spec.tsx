@@ -17,6 +17,9 @@ import {
 import { ApiError } from '@/lib/api/client'
 import {
   groupBalance,
+  makeGroup,
+  makeGroupCategory,
+  makeGroupTransaction,
   makeSplitMethod,
   octoberGroupTransactions,
   rentTransaction,
@@ -324,6 +327,86 @@ describe('Group route (/grupos/$groupId)', () => {
           7,
           waterTransaction.id,
           { description: 'Água', amountCents: 10000, splitMethodId: 1, dueDay: null },
+          'ONE',
+        ),
+      )
+    })
+  })
+
+  describe('categories', () => {
+    const categories = [
+      makeGroupCategory(20, 'Aluguel'),
+      makeGroupCategory(21, 'Antiga', { active: false }),
+      makeGroupCategory(23, 'Sublocação', { kind: 'INCOME' }),
+    ]
+
+    it('shows the category of the launches that have one', async () => {
+      stubGroupsApi({
+        group: makeGroup({ categories }),
+        transactions: [{ ...rentTransaction, category: { id: 20, name: 'Aluguel' } }, waterTransaction],
+      })
+      await openGroup()
+
+      expect(within(row('Aluguel')).getByLabelText('Categoria: Aluguel')).toBeInTheDocument()
+      expect(within(row('Água')).queryByLabelText(/Categoria:/)).not.toBeInTheDocument()
+    })
+
+    it('launches with an active category of the kind', async () => {
+      stubGroupsApi({ group: makeGroup({ categories }) })
+      await openGroup()
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Nova despesa' })[0])
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa do grupo' })
+      const select = within(dialog).getByLabelText('Categoria do grupo (opcional)')
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Sem categoria', 'Aluguel'])
+      await userEvent.type(within(dialog).getByLabelText('Descrição'), 'Aluguel')
+      await userEvent.type(within(dialog).getByLabelText('Valor (R$)'), '100')
+      await userEvent.selectOptions(select, 'Aluguel')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+
+      await waitFor(() =>
+        expect(createGroupTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ categoryId: 20 })),
+      )
+    })
+
+    it('hides the field without categories of the kind', async () => {
+      stubGroupsApi({ group: makeGroup({ categories: [makeGroupCategory(23, 'Sublocação', { kind: 'INCOME' })] }) })
+      await openGroup()
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Nova despesa' })[0])
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa do grupo' })
+      expect(within(dialog).queryByLabelText('Categoria do grupo (opcional)')).not.toBeInTheDocument()
+    })
+
+    it('sends the category on edit only when it changed, keeping an inactive one', async () => {
+      const old = makeGroupTransaction(15, { description: 'Velha', category: { id: 21, name: 'Antiga' } })
+      stubGroupsApi({ group: makeGroup({ categories }), transactions: [old] })
+      await openGroup()
+
+      await rowAction('Velha', 'Editar')
+      let dialog = await screen.findByRole('dialog', { name: 'Editar lançamento do grupo' })
+      const select = within(dialog).getByLabelText('Categoria do grupo (opcional)')
+      expect(select).toHaveValue('21')
+      expect(within(select).getByRole('option', { name: 'Antiga (inativa)' })).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() =>
+        expect(updateGroupTransaction).toHaveBeenLastCalledWith(
+          7,
+          15,
+          { description: 'Velha', amountCents: 10000, splitMethodId: 1 },
+          'ONE',
+        ),
+      )
+
+      await rowAction('Velha', 'Editar')
+      dialog = await screen.findByRole('dialog', { name: 'Editar lançamento do grupo' })
+      await userEvent.selectOptions(within(dialog).getByLabelText('Categoria do grupo (opcional)'), 'Sem categoria')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() =>
+        expect(updateGroupTransaction).toHaveBeenLastCalledWith(
+          7,
+          15,
+          { description: 'Velha', amountCents: 10000, splitMethodId: 1, categoryId: null },
           'ONE',
         ),
       )

@@ -19,6 +19,7 @@ import type {
   UpdateGroupTransactionDto,
 } from './dto/group-transaction.dto.js';
 import { activeMembers, assertMember } from './group-access.js';
+import { assertUsableGroupCategory } from './group-category-access.js';
 import { computeGroupBalance } from './settlement.js';
 import { computeShares, type MemberShare, SplitRuleError } from './split.js';
 
@@ -35,6 +36,7 @@ const groupTransactionSelect = {
   seriesId: true,
   dueDay: true,
   paymentUrl: true,
+  category: { select: { id: true, name: true } },
   splitMethod: { select: { id: true, name: true, type: true } },
   paidBy: memberName,
   shares: {
@@ -104,9 +106,13 @@ export class GroupTransactionService {
       repeatMonths = 1,
       dueDay = null,
       paymentUrl = null,
+      categoryId = null,
     }: CreateGroupTransactionDto,
   ): Promise<GroupTransactionDto[]> {
     await assertMember(this.prisma, userId, groupId);
+    if (categoryId !== null) {
+      await assertUsableGroupCategory(this.prisma, groupId, categoryId, kind);
+    }
     const shares = await this.shares(groupId, splitMethodId, amountCents);
     if (paidByMemberId !== null) {
       await this.assertActiveMember(groupId, paidByMemberId);
@@ -128,6 +134,7 @@ export class GroupTransactionService {
             seriesId,
             dueDay,
             paymentUrl,
+            categoryId,
             shares: { create: shares },
           },
           select: groupTransactionSelect,
@@ -153,10 +160,27 @@ export class GroupTransactionService {
       splitMethodId,
       dueDay,
       paymentUrl,
+      categoryId,
     }: UpdateGroupTransactionDto,
   ): Promise<GroupTransactionDto> {
     await assertMember(this.prisma, userId, groupId);
     const current = await this.find(groupId, id);
+    // The category must match the launch's kind, the new one or the kept one
+    const nextCategoryId =
+      categoryId === undefined ? (current.category?.id ?? null) : categoryId;
+    if (
+      nextCategoryId !== null &&
+      (categoryId !== undefined ||
+        (kind !== undefined && kind !== current.kind))
+    ) {
+      await assertUsableGroupCategory(
+        this.prisma,
+        groupId,
+        nextCategoryId,
+        kind ?? current.kind,
+        current.category?.id ?? null,
+      );
+    }
     let shares: MemberShare[] | undefined;
     if (amountCents !== undefined || splitMethodId !== undefined) {
       const methodId = splitMethodId ?? current.splitMethod?.id;
@@ -184,6 +208,7 @@ export class GroupTransactionService {
           splitMethodId,
           dueDay,
           paymentUrl,
+          categoryId,
         },
       });
       if (shares) {
@@ -271,6 +296,7 @@ export class GroupTransactionService {
             splitMethodId: template.splitMethodId,
             dueDay: template.dueDay,
             paymentUrl: template.paymentUrl,
+            categoryId: template.categoryId,
             createdById: userId,
             seriesId,
             shares: { create: template.shares },

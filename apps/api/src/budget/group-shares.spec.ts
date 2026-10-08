@@ -2,19 +2,22 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import {
   linkedCategoryId,
   linkedShareCells,
+  type ShareLink,
   sumLinkedShares,
 } from './group-shares.js';
 
-const link: {
-  expenseCategoryId: number | null;
-  incomeCategoryId: number | null;
-} = { expenseCategoryId: 3, incomeCategoryId: 4 };
+const link: ShareLink = {
+  expenseCategoryId: 3,
+  incomeCategoryId: 4,
+  categoryLinks: [],
+};
 const share = (
   amountCents: number,
   kind: 'INCOME' | 'EXPENSE',
   month = '2026-10',
   member = link,
-) => ({ amountCents, member, transaction: { kind, month } });
+  categoryId: number | null = null,
+) => ({ amountCents, member, transaction: { kind, month, categoryId } });
 
 describe('group shares', () => {
   it('picks the linked category of the share’s kind', () => {
@@ -23,6 +26,39 @@ describe('group shares', () => {
     expect(
       linkedCategoryId('INCOME', { ...link, incomeCategoryId: null }),
     ).toBeNull();
+  });
+
+  it('prefers the category mapped to the group category, else the default', () => {
+    const mapped = {
+      ...link,
+      categoryLinks: [{ groupCategoryId: 20, categoryId: 9 }],
+    };
+    expect(linkedCategoryId('EXPENSE', mapped, 20)).toBe(9);
+    expect(linkedCategoryId('EXPENSE', mapped, 21)).toBe(3);
+    expect(linkedCategoryId('EXPENSE', mapped, null)).toBe(3);
+    expect(
+      linkedCategoryId('EXPENSE', { ...mapped, expenseCategoryId: null }, 20),
+    ).toBe(9);
+    expect(
+      linkedCategoryId('EXPENSE', { ...mapped, expenseCategoryId: null }, 21),
+    ).toBeNull();
+  });
+
+  it('splits shares by the mapped categories', () => {
+    const mapped = {
+      ...link,
+      categoryLinks: [{ groupCategoryId: 20, categoryId: 9 }],
+    };
+    expect(
+      sumLinkedShares([
+        share(1500, 'EXPENSE', '2026-10', mapped, 20),
+        share(400, 'EXPENSE', '2026-10', mapped, 21),
+        share(100, 'EXPENSE', '2026-10', mapped),
+      ]),
+    ).toEqual([
+      { categoryId: 9, month: '2026-10', amountCents: 1500 },
+      { categoryId: 3, month: '2026-10', amountCents: 500 },
+    ]);
   });
 
   it('sums linked shares per category and month and skips unlinked ones', () => {
@@ -63,6 +99,7 @@ describe('group shares', () => {
             OR: [
               { expenseCategoryId: { not: null } },
               { incomeCategoryId: { not: null } },
+              { categoryLinks: { some: {} } },
             ],
           },
           transaction: { month: { lt: '2026-10' } },

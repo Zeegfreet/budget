@@ -14,11 +14,13 @@ import { toast } from 'sonner'
 import { EmptyState, MonthSwitcher } from '@/components/molecules'
 import {
   GroupBalancePanel,
+  GroupCategoriesPanel,
   GroupDialogs,
   GroupMembersPanel,
   GroupTransactionDialogs,
   GroupTransactionList,
   SplitMethodsPanel,
+  type GroupCategoryAction,
   type GroupDialog,
   type GroupTransactionAction,
   type GroupTransactionDialog,
@@ -38,6 +40,7 @@ import type { Month } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import {
   useGroupActions,
+  useGroupCategoryActions,
   useGroupTransactionActions,
   useInvitationActions,
   useSplitMethodActions,
@@ -49,7 +52,7 @@ import { ApiError } from '@/lib/api/client'
 import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
-const TABS = ['lancamentos', 'balanco', 'membros', 'rateio'] as const
+const TABS = ['lancamentos', 'balanco', 'membros', 'rateio', 'categorias'] as const
 type GroupTab = (typeof TABS)[number]
 
 interface GroupSearch {
@@ -100,6 +103,7 @@ function GroupPage() {
   const invitationActions = useInvitationActions()
   const ruleActions = useSplitMethodActions(id)
   const transactionActions = useGroupTransactionActions(id)
+  const categoryActions = useGroupCategoryActions(id)
   const [dialog, setDialog] = useState<GroupDialog>(null)
   const linkMethods = usePaymentMethodOptions(month, dialog?.type === 'link')
   // The user's categories, only once the link dialog opens
@@ -128,6 +132,22 @@ function GroupPage() {
         return setTransactionDialog({ type: hasFollowing(transaction) ? 'delete-scope' : 'delete', transaction })
       default:
         setTransactionDialog({ type, transaction })
+    }
+  }
+
+  async function handleCategoryAction(action: GroupCategoryAction) {
+    switch (action.type) {
+      case 'create':
+        return setDialog({ type: 'create-category', kind: action.kind })
+      case 'toggle':
+        try {
+          await categoryActions.update(action.category.id, { active: !action.category.active })
+        } catch (error) {
+          toast.error(groupErrorMessage(error, 'Não foi possível alterar a categoria.'))
+        }
+        return
+      default:
+        setDialog({ type: `${action.type}-category`, category: action.category })
     }
   }
 
@@ -206,12 +226,16 @@ function GroupPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(value) => setSearch({ tab: value as GroupTab })} className="gap-6">
-        <TabsList className="w-full sm:w-fit">
-          <TabsTrigger value="lancamentos">Lançamentos</TabsTrigger>
-          <TabsTrigger value="balanco">Balanço</TabsTrigger>
-          <TabsTrigger value="membros">Membros</TabsTrigger>
-          <TabsTrigger value="rateio">Rateio</TabsTrigger>
-        </TabsList>
+        {/* Five tabs don't fit a phone: the bar scrolls sideways there */}
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <TabsList className="w-max min-w-full sm:min-w-0">
+            <TabsTrigger value="lancamentos">Lançamentos</TabsTrigger>
+            <TabsTrigger value="balanco">Balanço</TabsTrigger>
+            <TabsTrigger value="membros">Membros</TabsTrigger>
+            <TabsTrigger value="rateio">Rateio</TabsTrigger>
+            <TabsTrigger value="categorias">Categorias</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="lancamentos" className="flex flex-col gap-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -251,6 +275,10 @@ function GroupPage() {
             }
           />
         </TabsContent>
+
+        <TabsContent value="categorias">
+          <GroupCategoriesPanel categories={group.categories} onAction={handleCategoryAction} />
+        </TabsContent>
       </Tabs>
 
       <GroupDialogs
@@ -272,6 +300,7 @@ function GroupPage() {
         onSetLink={(link) => groupActions.setLink(id, link)}
         invitations={invitationActions}
         rules={ruleActions}
+        categoryActions={categoryActions}
       />
       <GroupTransactionDialogs
         dialog={transactionDialog}

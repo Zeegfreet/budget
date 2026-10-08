@@ -61,12 +61,13 @@ export function GroupTransactionDialogs({
 
   async function saveEdit(
     t: GroupTransaction,
-    { description, amountCents, splitMethodId, dueDay, paymentUrl }: GroupTransactionFormValues,
+    { description, amountCents, splitMethodId, dueDay, paymentUrl, categoryId }: GroupTransactionFormValues,
   ) {
     const patch: GroupTransactionPatch = { description, amountCents, splitMethodId }
     // Sent only when they change, so editing other fields keeps them as they are
     if (dueDay !== t.dueDay) patch.dueDay = dueDay
     if (paymentUrl !== t.paymentUrl) patch.paymentUrl = paymentUrl
+    if (categoryId !== (t.category?.id ?? null)) patch.categoryId = categoryId
     if (hasFollowing(t)) {
       afterEdit.current = { type: 'update-scope', transaction: t, patch }
       return
@@ -83,7 +84,8 @@ export function GroupTransactionDialogs({
         month={month}
         members={group.members}
         splitMethods={splitMethods}
-        onSubmit={({ repeatMonths, paidByMemberId, dueDay, paymentUrl, ...values }) =>
+        categories={group.categories}
+        onSubmit={({ repeatMonths, paidByMemberId, dueDay, paymentUrl, categoryId, ...values }) =>
           actions.create({
             ...values,
             kind: dialog?.type === 'create' ? dialog.kind : 'EXPENSE',
@@ -91,6 +93,7 @@ export function GroupTransactionDialogs({
             ...(paidByMemberId !== null ? { paidByMemberId } : {}),
             ...(dueDay !== null ? { dueDay } : {}),
             ...(paymentUrl !== null ? { paymentUrl } : {}),
+            ...(categoryId !== null ? { categoryId } : {}),
             ...(repeatMonths > 1 ? { repeatMonths } : {}),
           })
         }
@@ -103,6 +106,7 @@ export function GroupTransactionDialogs({
         month={transaction?.month ?? month}
         members={group.members}
         splitMethods={splitMethods}
+        categories={group.categories}
         initial={
           transaction
             ? {
@@ -111,6 +115,7 @@ export function GroupTransactionDialogs({
                 splitMethodId: transaction.splitMethod?.id ?? null,
                 dueDay: transaction.dueDay,
                 paymentUrl: transaction.paymentUrl,
+                categoryId: transaction.category?.id ?? null,
               }
             : undefined
         }

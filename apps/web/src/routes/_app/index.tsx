@@ -33,7 +33,7 @@ import { buildBudgetTable, lineTarget } from '@/features/budget/rows'
 import type { GroupStatement } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import { useGroupActions } from '@/features/groups/hooks'
-import { statementLink } from '@/features/groups/link'
+import { EMPTY_LINK, statementLink } from '@/features/groups/link'
 import { knownPaymentMethodMessage } from '@/features/payment-methods/errors'
 import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 import { ApiError } from '@/lib/api/client'
@@ -250,7 +250,8 @@ function DashboardPage() {
         groupName={linking?.group.name ?? ''}
         categories={groups}
         paymentMethods={linkMethods}
-        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null }}
+        groupCategories={linking?.groupCategories ?? []}
+        initial={linking ? statementLink(linking) : EMPTY_LINK}
         onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
         errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />

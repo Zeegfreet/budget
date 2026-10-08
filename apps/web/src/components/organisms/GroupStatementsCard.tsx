@@ -60,7 +60,8 @@ function GroupSummary({
   detailed: boolean
   onLink: () => void
 }) {
-  const linked = s.link.expenseCategory || s.link.incomeCategory
+  const mappings = s.link.categoryLinks.length
+  const linked = s.link.expenseCategory || s.link.incomeCategory || mappings > 0
   const owes = s.transfers.filter((t) => t.fromMemberId === s.memberId)
   const receives = s.transfers.filter((t) => t.toMemberId === s.memberId)
 
@@ -128,6 +129,9 @@ function GroupSummary({
                 )}
                 {item.dueDay !== null && <DueDayBadge day={item.dueDay} className="px-1 py-0" />}
                 <span className="truncate">{item.description}</span>
+                {item.groupCategory && (
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{item.groupCategory.name}</span>
+                )}
                 {item.kind === 'INCOME' && <Badge variant="secondary">Receita</Badge>}
                 {item.paymentUrl && (
                   <PaymentLinkButton href={item.paymentUrl} title={item.description} className="-my-1 size-7" />
@@ -151,7 +155,12 @@ function GroupSummary({
             <>
               No seu orçamento: despesas em{' '}
               <span className="font-medium text-foreground">{s.link.expenseCategory?.name ?? '—'}</span>, receitas em{' '}
-              <span className="font-medium text-foreground">{s.link.incomeCategory?.name ?? '—'}</span>.
+              <span className="font-medium text-foreground">{s.link.incomeCategory?.name ?? '—'}</span>
+              {mappings > 0 &&
+                (mappings === 1
+                  ? ', exceto 1 categoria do grupo com vínculo próprio'
+                  : `, exceto ${mappings} categorias do grupo com vínculo próprio`)}
+              .
             </>
           ) : (
             'Não entra no seu orçamento: escolha uma categoria para somar sua parte ao seu balanço.'

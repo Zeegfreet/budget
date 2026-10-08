@@ -133,6 +133,7 @@ function ShareRow({ share: { group, item } }: { share: StatementShare }) {
               {item.series && <SeriesBadge series={item.series} title={item.description} />}
             </div>
             <p className="truncate text-xs text-muted-foreground">
+              {item.groupCategory && `${item.groupCategory.name} → `}
               {item.category.name} · {status}
             </p>
           </div>

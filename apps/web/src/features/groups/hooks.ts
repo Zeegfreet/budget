@@ -4,10 +4,12 @@ import {
   acceptInvitation,
   cancelInvitation,
   createGroup,
+  createGroupCategory,
   createGroupTransaction,
   createSplitMethod,
   declineInvitation,
   deleteGroup,
+  deleteGroupCategory,
   deleteGroupTransaction,
   deleteSplitMethod,
   inviteMember,
@@ -19,6 +21,7 @@ import {
   setSettlement,
   unpayGroupTransaction,
   updateGroup,
+  updateGroupCategory,
   updateGroupTransaction,
   updateSplitMethod,
 } from './api'
@@ -26,6 +29,7 @@ import { budgetQueries } from '@/features/budget/queries'
 import type { Month } from '@/features/budget/types'
 import { groupQueries, invitationQueries } from './queries'
 import type {
+  GroupCategoryInput,
   GroupInput,
   GroupLink,
   GroupTransactionInput,
@@ -171,6 +175,39 @@ export function useSplitMethodActions(groupId: number) {
       await deleteSplitMethod(groupId, id)
       await refresh()
       toast.success('Regra excluída')
+    },
+  }
+}
+
+/**
+ * The group's own categories. They come with the group, and the user's shares
+ * follow them into the budget, so changes refresh both.
+ */
+export function useGroupCategoryActions(groupId: number) {
+  const queryClient = useQueryClient()
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: groupQueries.detail(groupId).queryKey }),
+      queryClient.invalidateQueries({ queryKey: budgetQueries.all() }),
+    ])
+
+  return {
+    async create(input: GroupCategoryInput) {
+      await createGroupCategory(groupId, input)
+      await refresh()
+      toast.success('Categoria criada')
+    },
+    async update(id: number, input: { name?: string; active?: boolean }) {
+      await updateGroupCategory(groupId, id, input)
+      await refresh()
+      toast.success(
+        input.active === undefined ? 'Categoria alterada' : input.active ? 'Categoria ativada' : 'Categoria inativada',
+      )
+    },
+    async remove(id: number) {
+      await deleteGroupCategory(groupId, id)
+      await refresh()
+      toast.success('Categoria excluída')
     },
   }
 }

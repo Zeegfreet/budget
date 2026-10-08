@@ -58,7 +58,7 @@ describe('buildStatement', () => {
   it('carries the payment method of the expense shares only', () => {
     const card = { id: 5, name: 'Nubank', dueDay: 15 }
     const statement = makeGroupStatement({
-      link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: { id: 4, name: 'Salário' }, paymentMethod: card },
+      link: { expenseCategory: { id: 1, name: 'Moradia' }, incomeCategory: { id: 4, name: 'Salário' }, paymentMethod: card, categoryLinks: [] },
       items: [
         makeStatementItem(10),
         makeStatementItem(12, { kind: 'INCOME', category: categories.salary }),

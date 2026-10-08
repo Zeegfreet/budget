@@ -1,3 +1,5 @@
+import { GroupCategoryController } from './group-category.controller.js';
+import type { GroupCategoryService } from './group-category.service.js';
 import { GroupTransactionController } from './group-transaction.controller.js';
 import type { GroupTransactionService } from './group-transaction.service.js';
 import { GroupController } from './group.controller.js';
@@ -102,6 +104,29 @@ describe('group controllers', () => {
     expect(service.list).toHaveBeenCalledWith(7, 5);
     expect(service.create).toHaveBeenCalledWith(7, 5, body);
     expect(service.update).toHaveBeenCalledWith(7, 5, 3, { name: 'X' });
+    expect(service.remove).toHaveBeenCalledWith(7, 5, 3);
+  });
+
+  it('GroupCategoryController scopes every call by the authenticated user', async () => {
+    const service = {
+      list: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn(),
+    };
+    const controller = new GroupCategoryController(
+      service as unknown as GroupCategoryService,
+    );
+    const body = { kind: 'EXPENSE' as const, name: 'Aluguel' };
+
+    await controller.list(user, 5);
+    await controller.create(user, 5, body);
+    await controller.update(user, 5, 3, { active: false });
+    await controller.remove(user, 5, 3);
+
+    expect(service.list).toHaveBeenCalledWith(7, 5);
+    expect(service.create).toHaveBeenCalledWith(7, 5, body);
+    expect(service.update).toHaveBeenCalledWith(7, 5, 3, { active: false });
     expect(service.remove).toHaveBeenCalledWith(7, 5, 3);
   });
 

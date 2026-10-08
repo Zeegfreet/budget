@@ -13,7 +13,14 @@ describe('GroupService', () => {
   const prisma = {
     groupMember: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     category: { findMany: vi.fn() },
+    groupCategory: { findMany: vi.fn() },
+    groupMemberCategoryLink: {
+      findMany: vi.fn(),
+      deleteMany: vi.fn(),
+      createMany: vi.fn(),
+    },
     paymentMethod: { findFirst: vi.fn() },
+    $transaction: vi.fn(),
     financeGroup: {
       create: vi.fn(),
       findUniqueOrThrow: vi.fn(),
@@ -35,10 +42,15 @@ describe('GroupService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    prisma.$transaction.mockImplementation((run: (tx: unknown) => unknown) =>
+      run(prisma),
+    );
+    prisma.groupMemberCategoryLink.findMany.mockResolvedValue([]);
     prisma.financeGroup.findUniqueOrThrow.mockResolvedValue({
       id: 5,
       name: 'República',
       description: null,
+      categories: [{ id: 20, kind: 'EXPENSE', name: 'Aluguel', active: true }],
       members: [
         {
           id: 1,
@@ -97,6 +109,8 @@ describe('GroupService', () => {
       role: 'OWNER',
       memberId: 1,
       memberCount: 1,
+      link: { categoryLinks: [] },
+      categories: [{ id: 20, kind: 'EXPENSE', name: 'Aluguel' }],
       members: [{ id: 1, name: 'Ana', email: 'ana@example.com' }],
     });
   });
@@ -203,7 +217,67 @@ describe('GroupService', () => {
         expenseCategoryId: null,
         incomeCategoryId: null,
         paymentMethodId: null,
+        categoryLinks: [],
       });
+      // Omitted overrides stay as they are
+      expect(prisma.groupMemberCategoryLink.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('replaces the overrides of group categories, checking kinds', async () => {
+      prisma.groupMember.findFirst.mockResolvedValue(owner);
+      prisma.groupCategory.findMany.mockResolvedValue([
+        { id: 20, kind: 'EXPENSE' },
+      ]);
+      prisma.category.findMany.mockResolvedValue([categories[0]]);
+      const body = {
+        expenseCategoryId: null,
+        incomeCategoryId: null,
+        categoryLinks: [{ groupCategoryId: 20, categoryId: 3 }],
+      };
+
+      await service.setLink(7, 5, body);
+
+      expect(prisma.groupCategory.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { groupId: 5, id: { in: [20] } } }),
+      );
+      expect(prisma.groupMemberCategoryLink.deleteMany).toHaveBeenCalledWith({
+        where: { memberId: 1 },
+      });
+      expect(prisma.groupMemberCategoryLink.createMany).toHaveBeenCalledWith({
+        data: [{ memberId: 1, groupCategoryId: 20, categoryId: 3 }],
+      });
+
+      // An income category for an expense group category
+      prisma.category.findMany.mockResolvedValue([categories[1]]);
+      await expect(
+        service.setLink(7, 5, {
+          ...body,
+          categoryLinks: [{ groupCategoryId: 20, categoryId: 4 }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a repeated or foreign group category', async () => {
+      prisma.groupMember.findFirst.mockResolvedValue(owner);
+      const clear = { expenseCategoryId: null, incomeCategoryId: null };
+      await expect(
+        service.setLink(7, 5, {
+          ...clear,
+          categoryLinks: [
+            { groupCategoryId: 20, categoryId: 3 },
+            { groupCategoryId: 20, categoryId: 5 },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      prisma.groupCategory.findMany.mockResolvedValue([]);
+      await expect(
+        service.setLink(7, 5, {
+          ...clear,
+          categoryLinks: [{ groupCategoryId: 99, categoryId: 3 }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.groupMember.update).not.toHaveBeenCalled();
     });
 
     it('keeps a linked category even after it was inactivated', async () => {

@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch'
 import { addMonths, formatMonthLabel, formatMonthLong } from '@/features/budget/months'
 import type { EntryKind, Month } from '@/features/budget/types'
 import { previewShares, ruleError } from '@/features/groups/split'
-import type { GroupMember, SplitMethod } from '@/features/groups/types'
+import type { GroupCategory, GroupMember, SplitMethod } from '@/features/groups/types'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
 import { parseWhole } from '@/lib/numbers'
 import { INVALID_PAYMENT_URL, MAX_PAYMENT_URL_LENGTH, parsePaymentUrl } from '@/lib/payment-url'
@@ -31,6 +31,8 @@ export interface GroupTransactionFormValues {
   dueDay: number | null
   /** Link to the bill (boleto) or payment portal; `null` = none */
   paymentUrl: string | null
+  /** The group's category; `null` = none */
+  categoryId: number | null
   /** `null` while pending */
   paidByMemberId: number | null
   /** 1 when not recurring */
@@ -46,6 +48,8 @@ interface GroupTransactionFormDialogProps {
   members: GroupMember[]
   /** The group's rules; only active ones are offered */
   splitMethods: SplitMethod[]
+  /** The group's categories; active ones of the kind are offered (plus the current one) */
+  categories: GroupCategory[]
   /** Editing: the current values, and no payer or recurrence fields */
   initial?: {
     description: string
@@ -53,6 +57,7 @@ interface GroupTransactionFormDialogProps {
     splitMethodId: number | null
     dueDay: number | null
     paymentUrl: string | null
+    categoryId: number | null
   }
   /** Rejects to show `errorMessage(error)` */
   onSubmit: (values: GroupTransactionFormValues) => Promise<void>
@@ -81,6 +86,7 @@ function GroupTransactionForm({
   month,
   members,
   splitMethods,
+  categories,
   initial,
   onSubmit,
   errorMessage,
@@ -95,6 +101,10 @@ function GroupTransactionForm({
   const [ruleId, setRuleId] = useState(initialRule?.id.toString() ?? '')
   const [dueDay, setDueDay] = useState(initial?.dueDay?.toString() ?? '')
   const [link, setLink] = useState(initial?.paymentUrl ?? '')
+  const [categoryId, setCategoryId] = useState(initial?.categoryId?.toString() ?? '')
+  const categoryOptions = categories.filter(
+    (c) => c.kind === kind && (c.active || c.id === initial?.categoryId),
+  )
   const [payer, setPayer] = useState('')
   const [repeat, setRepeat] = useState(false)
   const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
@@ -139,6 +149,7 @@ function GroupTransactionForm({
         splitMethodId: rule!.id,
         dueDay: day ?? null,
         paymentUrl: paymentUrl ?? null,
+        categoryId: categoryId ? Number(categoryId) : null,
         paidByMemberId: payer ? Number(payer) : null,
         repeatMonths: repeat ? times : 1,
       })
@@ -214,6 +225,25 @@ function GroupTransactionForm({
         )}
         {errors.splitMethodId && <FieldError>{errors.splitMethodId}</FieldError>}
       </Field>
+
+      {categoryOptions.length > 0 && (
+        <Field>
+          <FieldLabel htmlFor={`${id}-category`}>Categoria do grupo (opcional)</FieldLabel>
+          <NativeSelect
+            id={`${id}-category`}
+            className="w-full"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+          >
+            <NativeSelectOption value="">Sem categoria</NativeSelectOption>
+            {categoryOptions.map((c) => (
+              <NativeSelectOption key={c.id} value={c.id}>
+                {c.active ? c.name : `${c.name} (inativa)`}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </Field>
+      )}
 
       <FormField
         label="Dia de vencimento (opcional)"
