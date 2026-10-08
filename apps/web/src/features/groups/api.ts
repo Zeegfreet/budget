@@ -4,6 +4,8 @@ import type {
   FinanceGroup,
   FinanceGroupSummary,
   GroupBalance,
+  GroupCategory,
+  GroupCategoryInput,
   GroupInput,
   GroupInvitation,
   GroupLink,
@@ -104,6 +106,24 @@ export async function updateSplitMethod(
 
 export async function deleteSplitMethod(groupId: number, id: number): Promise<void> {
   await api.delete(`/groups/${groupId}/split-methods/${id}`)
+}
+
+export async function createGroupCategory(groupId: number, input: GroupCategoryInput): Promise<GroupCategory> {
+  const { data } = await api.post<GroupCategory>(`/groups/${groupId}/categories`, input)
+  return data
+}
+
+export async function updateGroupCategory(
+  groupId: number,
+  id: number,
+  input: { name?: string; active?: boolean },
+): Promise<GroupCategory> {
+  const { data } = await api.patch<GroupCategory>(`/groups/${groupId}/categories/${id}`, input)
+  return data
+}
+
+export async function deleteGroupCategory(groupId: number, id: number): Promise<void> {
+  await api.delete(`/groups/${groupId}/categories/${id}`)
 }
 
 export async function fetchGroupTransactions(groupId: number, month: Month): Promise<GroupTransaction[]> {

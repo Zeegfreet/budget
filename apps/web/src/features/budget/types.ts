@@ -1,3 +1,5 @@
+import type { GroupCategory } from '@/features/groups/types'
+
 export type EntryKind = 'INCOME' | 'EXPENSE'
 
 /** A month as `YYYY-MM`, matching the API */
@@ -129,7 +131,9 @@ export interface GroupStatementItem {
   groupPaid: boolean
   paidByName: string | null
   series: SeriesPosition | null
-  /** Where it counts in the budget (the group's link for its kind); `null` = not counted */
+  /** The group's own category of the transaction */
+  groupCategory: { id: number; name: string } | null
+  /** Where it counts in the budget (the one mapped to its group category, or else the link of its kind); `null` = not counted */
   category: ShareCategory | null
 }
 
@@ -153,7 +157,11 @@ export interface GroupStatement {
     incomeCategory: { id: number; name: string } | null
     /** Where the expense shares are paid */
     paymentMethod: { id: number; name: string; dueDay: number | null } | null
+    /** Per group category overrides of the categories above */
+    categoryLinks: { groupCategory: { id: number; name: string }; category: { id: number; name: string } }[]
   }
+  /** The group's categories (to edit the link) */
+  groupCategories: GroupCategory[]
   /** The group's totals in the month */
   expenseCents: number
   incomeCents: number
@@ -168,4 +176,38 @@ export interface GroupStatement {
   /** Suggested transfers the user is part of */
   transfers: GroupStatementTransfer[]
   items: GroupStatementItem[]
+}
+
+/** A launch created by a plan; `categoryId` may be a ref (negative) of a category created by it */
+export interface PlanLineInput {
+  ref: number
+  categoryId: number
+  month: Month
+  description?: string | null
+  plannedCents: number
+  repeatMonths?: number
+  dueDay?: number | null
+  paymentUrl?: string | null
+  paymentMethodId?: number | null
+}
+
+/**
+ * Body of `PUT /budget/plan`: every change of the dashboard's planning table,
+ * saved all or nothing. Items created here carry a negative `ref`, used by
+ * later items in place of an id.
+ */
+export interface PlanRequest {
+  createGroups?: { ref: number; kind: EntryKind; name: string; goalPercent?: number }[]
+  updateGroups?: ({ id: number } & GroupPatch)[]
+  deleteGroups?: number[]
+  createCategories?: { ref: number; groupId: number; name: string }[]
+  updateCategories?: ({ id: number } & CategoryPatch)[]
+  deleteCategories?: number[]
+  createLines?: PlanLineInput[]
+  /** From this occurrence on (`FOLLOWING`); `categoryId` may be a ref */
+  updateLines?: ({ transactionId: number } & Partial<Omit<PlanLineInput, 'ref' | 'month' | 'repeatMonths'>>)[]
+  /** Each with the later pending occurrences of its series */
+  deleteLines?: number[]
+  /** `anchorId` may be the ref of a launch created by the plan */
+  cells?: LineCellChange[]
 }

@@ -33,12 +33,37 @@ export interface GroupMember {
   joinedAt: string
 }
 
-/** The personal categories that receive the user's shares; `null` keeps them out of the budget */
+/** A group's own category (one level, by kind) */
+export interface GroupCategory {
+  id: number
+  kind: EntryKind
+  name: string
+  /** Off: can't be picked for new launches; history stays */
+  active: boolean
+}
+
+export interface GroupCategoryInput {
+  kind: EntryKind
+  name: string
+}
+
+/** One group category mapped to one of the user's categories */
+export interface GroupCategoryLink {
+  groupCategoryId: number
+  categoryId: number
+}
+
+/**
+ * The personal categories that receive the user's shares; `null` keeps them
+ * out of the budget. `categoryLinks` override them per group category (none =
+ * one category for everything); the other items use the default of their kind.
+ */
 export interface GroupLink {
   expenseCategoryId: number | null
   incomeCategoryId: number | null
   /** The user's payment method for their expense shares (its invoice shows them) */
   paymentMethodId: number | null
+  categoryLinks: GroupCategoryLink[]
 }
 
 export interface FinanceGroup extends FinanceGroupSummary {
@@ -46,6 +71,8 @@ export interface FinanceGroup extends FinanceGroupSummary {
   memberId: number
   /** Where the current user's shares land in their budget */
   link: GroupLink
+  /** The group's categories, expenses first, by name */
+  categories: GroupCategory[]
   /** Active members, oldest first */
   members: GroupMember[]
 }
@@ -125,6 +152,8 @@ export interface GroupTransaction {
   dueDay: number | null
   /** Link to the bill (boleto) or the portal where it is paid (http/https) */
   paymentUrl: string | null
+  /** The group's own category */
+  category: { id: number; name: string } | null
   /** `null` once the rule was deleted */
   splitMethod: { id: number; name: string; type: SplitType } | null
   /** Who paid (expense) or received (income); `null` while pending */
@@ -144,10 +173,15 @@ export interface GroupTransactionInput {
   repeatMonths?: number
   dueDay?: number | null
   paymentUrl?: string | null
+  /** A category of the group with the same kind */
+  categoryId?: number | null
 }
 
 export type GroupTransactionPatch = Partial<
-  Pick<GroupTransactionInput, 'description' | 'amountCents' | 'splitMethodId' | 'dueDay' | 'paymentUrl'>
+  Pick<
+    GroupTransactionInput,
+    'kind' | 'description' | 'amountCents' | 'splitMethodId' | 'dueDay' | 'paymentUrl' | 'categoryId'
+  >
 >
 
 export interface MemberBalance {

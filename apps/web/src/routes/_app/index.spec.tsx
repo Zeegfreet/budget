@@ -7,7 +7,7 @@ import {
   fetchEntries,
   fetchLines,
   fetchSummary,
-  saveLines,
+  savePlan,
   updateInitialBalance,
 } from '@/features/budget/api'
 import { UNSAVED_CHANGES_MESSAGE } from '@/features/budget/hooks'
@@ -38,7 +38,7 @@ const fetchCategoriesMock = vi.mocked(fetchCategories)
 const fetchEntriesMock = vi.mocked(fetchEntries)
 const fetchLinesMock = vi.mocked(fetchLines)
 const fetchSummaryMock = vi.mocked(fetchSummary)
-const saveLinesMock = vi.mocked(saveLines)
+const savePlanMock = vi.mocked(savePlan)
 const updateInitialBalanceMock = vi.mocked(updateInitialBalance)
 
 const unauthorized = new ApiError(401, ['Unauthorized'])
@@ -293,7 +293,7 @@ describe('Dashboard route (/)', () => {
       expect(within(card('Despesas do mês')).getByText(/2\.700,00/)).toBeInTheDocument()
       expect(within(card('Saldo acumulado')).getByText(/4\.800,00/)).toBeInTheDocument()
       expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('1 alteração não salva')
-      expect(saveLinesMock).not.toHaveBeenCalled()
+      expect(savePlanMock).not.toHaveBeenCalled()
     })
 
     // Many typed cells in two expanded categories: slow when every spec file runs in parallel
@@ -325,10 +325,12 @@ describe('Dashboard route (/)', () => {
       fetchEntriesMock.mockResolvedValue(entriesOf(saved))
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
 
-      expect(saveLinesMock).toHaveBeenCalledWith([
-        { anchorId: 101, month: '2026-10', amountCents: 200000 },
-        { anchorId: 301, month: '2026-11', amountCents: 15050 },
-      ])
+      expect(savePlanMock).toHaveBeenCalledWith({
+        cells: [
+          { anchorId: 101, month: '2026-10', amountCents: 200000 },
+          { anchorId: 301, month: '2026-11', amountCents: 15050 },
+        ],
+      })
       await waitFor(() =>
         expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument(),
       )
@@ -338,13 +340,15 @@ describe('Dashboard route (/)', () => {
     }, 15_000)
 
     it('keeps the draft and shows the error when saving fails', async () => {
-      saveLinesMock.mockRejectedValue(new ApiError(404, ['Transaction not found']))
+      savePlanMock.mockRejectedValue(new ApiError(404, ['Transaction not found']))
       await openDashboard('Moradia')
       await typeInCell(ALUGUEL_OUT, '10')
 
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível salvar: Transaction not found')
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Não foi possível salvar: algum item não existe mais. Atualize a página.',
+      )
       expect(cell(ALUGUEL_OUT)).toHaveValue('10,00')
       expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toBeInTheDocument()
     })
@@ -388,7 +392,7 @@ describe('Dashboard route (/)', () => {
       expect(cell('Mercado em outubro de 2026')).toHaveFocus()
       expect(cell(ALUGUEL_OUT)).toHaveValue('')
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
-      expect(saveLinesMock).toHaveBeenCalledWith([{ anchorId: 101, month: '2026-10', amountCents: 0 }])
+      expect(savePlanMock).toHaveBeenCalledWith({ cells: [{ anchorId: 101, month: '2026-10', amountCents: 0 }] })
     })
 
     it('replicates a value to every following month from the cell menu', async () => {
@@ -441,7 +445,7 @@ describe('Dashboard route (/)', () => {
       expect(rowCells('Despesas')[0]).toBe('R$ 700,00')
     })
 
-    it('launches a new expense in a category right away, with its due day', async () => {
+    it('plans a new expense in a category, saved with the grid', async () => {
       await openDashboard('Lazer')
 
       await userEvent.click(screen.getByRole('button', { name: 'Novo lançamento em Lazer' }))
@@ -454,16 +458,65 @@ describe('Dashboard route (/)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(createTransaction).toHaveBeenCalledWith({
-        categoryId: 3,
-        description: 'Netflix',
-        plannedCents: 5590,
-        month: '2026-10',
-        repeatMonths: 12,
-        dueDay: 5,
+      // Only in the plan: shown in every month of the window, nothing sent yet
+      expect(createTransaction).not.toHaveBeenCalled()
+      const row = screen.getByRole('rowheader', { name: 'Netflix' })
+      expect(row).toHaveTextContent('Vence dia 5')
+      expect(row).toHaveTextContent('Não salvo')
+      expect(cell('Netflix em outubro de 2026')).toHaveValue('55,90')
+      expect(cell('Netflix em setembro de 2027')).toHaveValue('55,90')
+      expect(rowCells('Lazer')[0]).toBe('R$ 55,90')
+      expect(screen.getByRole('region', { name: 'Alterações não salvas' })).toHaveTextContent('1 alteração não salva')
+
+      // A value typed on the new launch goes with it
+      await typeInCell('Netflix em novembro de 2026', '60')
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+      expect(savePlanMock).toHaveBeenCalledWith({
+        createLines: [
+          {
+            ref: -1,
+            categoryId: 3,
+            description: 'Netflix',
+            plannedCents: 5590,
+            month: '2026-10',
+            repeatMonths: 12,
+            dueDay: 5,
+          },
+        ],
+        cells: [{ anchorId: -1, month: '2026-11', amountCents: 6000 }],
       })
-      // The grid and the statement read it back
-      expect(fetchLinesMock).toHaveBeenCalledTimes(2)
+      await waitFor(() =>
+        expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument(),
+      )
+    })
+
+    it('edits and deletes a launch that is not saved yet', async () => {
+      await openDashboard('Lazer')
+      await userEvent.click(screen.getByRole('button', { name: 'Novo lançamento em Lazer' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Cinema')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '40')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+      // Not in the statement yet
+      await userEvent.click(screen.getByRole('button', { name: 'Opções de Cinema' }))
+      expect(screen.queryByRole('menuitem', { name: 'Ver no extrato' })).not.toBeInTheDocument()
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Editar' }))
+      const edit = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      const amount = within(edit).getByRole('textbox', { name: 'Valor previsto (R$)' })
+      await userEvent.clear(amount)
+      await userEvent.type(amount, '45')
+      await userEvent.click(within(edit).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(cell('Cinema em outubro de 2026')).toHaveValue('45,00')
+
+      await rowAction('Cinema', 'Excluir')
+      await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Excluir' }))
+
+      await waitFor(() => expect(screen.queryByRole('rowheader', { name: 'Cinema' })).not.toBeInTheDocument())
+      expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument()
     })
 
     it('also launches from the category menu', async () => {
@@ -501,7 +554,36 @@ describe('Dashboard route (/)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(updateTransaction).toHaveBeenCalledWith(101, { dueDay: 15 }, 'FOLLOWING')
+      expect(updateTransaction).not.toHaveBeenCalled()
+      const row = screen.getByRole('rowheader', { name: 'Aluguel' })
+      expect(row).toHaveTextContent('Vence dia 15')
+      expect(row).toHaveTextContent('Não salvo')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+      expect(savePlanMock).toHaveBeenCalledWith({ updateLines: [{ transactionId: 101, dueDay: 15 }] })
+    })
+
+    it('changes the amount of a launch from its first pending month on, dropping typed values', async () => {
+      const [rent, ...others] = budgetLines
+      stubBudgetApi({
+        lines: [{ ...rent, cells: [{ ...rent.cells[0], realizedCents: 180000 }, rent.cells[1]] }, ...others],
+      })
+      await openDashboard('Moradia')
+      await typeInCell('Aluguel em novembro de 2026', '1.900')
+
+      await rowAction('Aluguel', 'Editar')
+      const dialog = await screen.findByRole('dialog', { name: 'Editar lançamento' })
+      const amount = within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' })
+      await userEvent.clear(amount)
+      await userEvent.type(amount, '2.000')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+      // October is realized and stays; November takes the new amount
+      expect(screen.getByRole('link', { name: `${ALUGUEL_OUT}, realizado, ver no extrato` })).toHaveTextContent('1.800,00')
+      expect(cell('Aluguel em novembro de 2026')).toHaveValue('2.000,00')
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+      expect(savePlanMock).toHaveBeenCalledWith({ updateLines: [{ transactionId: 102, plannedCents: 200000 }] })
     })
 
     it('starts editing after the realized months', async () => {
@@ -518,7 +600,9 @@ describe('Dashboard route (/)', () => {
       await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Aluguel novo')
       await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
-      await waitFor(() => expect(updateTransaction).toHaveBeenCalledWith(102, { description: 'Aluguel novo' }, 'FOLLOWING'))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+      expect(savePlanMock).toHaveBeenCalledWith({ updateLines: [{ transactionId: 102, description: 'Aluguel novo' }] })
     })
 
     it('deletes a launch from its first pending month on, after confirming', async () => {
@@ -529,7 +613,11 @@ describe('Dashboard route (/)', () => {
       expect(dialog).toHaveTextContent('Excluir Aluguel de outubro de 2026 em diante?')
       await userEvent.click(within(dialog).getByRole('button', { name: 'Excluir' }))
 
-      await waitFor(() => expect(deleteTransaction).toHaveBeenCalledWith(101, 'FOLLOWING'))
+      await waitFor(() => expect(screen.queryByRole('rowheader', { name: 'Aluguel' })).not.toBeInTheDocument())
+      expect(deleteTransaction).not.toHaveBeenCalled()
+      expect(rowCells('Moradia')[0]).toBe('R$ 0,00')
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+      expect(savePlanMock).toHaveBeenCalledWith({ deleteLines: [101] })
     })
 
     it('shows the realized amount of a realized month, read-only, linking to the statement', async () => {
@@ -580,9 +668,10 @@ describe('Dashboard route (/)', () => {
       )
       expect(cell('Aluguel em dezembro de 2026')).toHaveValue('2.000,00')
       await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
-      await waitFor(() => expect(saveLinesMock).toHaveBeenCalled())
-      expect(saveLinesMock.mock.calls[0][0]).not.toContainEqual(expect.objectContaining({ month: '2026-11' }))
-      expect(saveLinesMock.mock.calls[0][0]).toHaveLength(11)
+      await waitFor(() => expect(savePlanMock).toHaveBeenCalled())
+      const { cells } = savePlanMock.mock.calls[0][0]
+      expect(cells).not.toContainEqual(expect.objectContaining({ month: '2026-11' }))
+      expect(cells).toHaveLength(11)
     })
 
     it('opens a launch in the statement', async () => {

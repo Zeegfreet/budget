@@ -30,6 +30,7 @@ import {
 } from '../../budget/dto/transaction.dto.js';
 import { MAX_REPEAT_MONTHS, MONTH_PATTERN } from '../../budget/month.js';
 import { EntryKind, SplitType } from '../../prisma/generated/enums.js';
+import { GroupCategoryRefDto } from './group-category.dto.js';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -94,6 +95,17 @@ export class CreateGroupTransactionDto {
 
   @IsPaymentUrl()
   paymentUrl?: string | null;
+
+  @ApiPropertyOptional({
+    example: 3,
+    nullable: true,
+    description:
+      'An active category of the group with the same kind, repeated in every occurrence',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  categoryId?: number | null;
 }
 
 /**
@@ -139,6 +151,17 @@ export class UpdateGroupTransactionDto {
 
   @IsPaymentUrl()
   paymentUrl?: string | null;
+
+  @ApiPropertyOptional({
+    example: 3,
+    nullable: true,
+    description:
+      'A category of the group with the same kind; `null` removes it',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  categoryId?: number | null;
 
   @ApiPropertyOptional({
     enum: RECURRENCE_SCOPES,
@@ -258,6 +281,13 @@ export class GroupTransactionDto {
     description: 'Link to the bill or payment portal',
   })
   paymentUrl: string | null;
+
+  @ApiProperty({
+    type: GroupCategoryRefDto,
+    nullable: true,
+    description: 'The group category; `null` without one',
+  })
+  category: GroupCategoryRefDto | null;
 
   @ApiProperty({
     type: TransactionSplitMethodDto,

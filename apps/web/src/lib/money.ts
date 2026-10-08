@@ -15,6 +15,16 @@ export function formatCents(
   )
 }
 
+/** Short amount for chart axes: 1250000 → "R$ 12,5 mil". Display only. */
+export function formatCentsCompact(cents: number, locale = 'pt-BR', currency = 'BRL'): string {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(cents / 100)
+}
+
 /** Cents as a plain pt-BR number for inputs: 180000 → "1.800,00" (no currency). */
 export function formatAmount(cents: number, locale = 'pt-BR'): string {
   return new Intl.NumberFormat(locale, {

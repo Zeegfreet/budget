@@ -22,6 +22,7 @@ import {
   type JwtUser,
 } from '../auth/decorators/current-user.decorator.js';
 import { BudgetService } from './budget.service.js';
+import { PlanService } from './plan.service.js';
 import {
   BudgetLineDto,
   BudgetSummaryDto,
@@ -31,6 +32,7 @@ import {
 import { InitialBalanceDto } from './dto/initial-balance.dto.js';
 import { MonthRangeQueryDto } from './dto/month-range-query.dto.js';
 import { SaveLinesDto } from './dto/save-lines.dto.js';
+import { SavePlanDto } from './dto/save-plan.dto.js';
 import { SummaryQueryDto } from './dto/summary-query.dto.js';
 
 @ApiTags('budget')
@@ -38,7 +40,10 @@ import { SummaryQueryDto } from './dto/summary-query.dto.js';
 @ApiUnauthorizedResponse()
 @Controller('budget')
 export class BudgetController {
-  constructor(private readonly budgetService: BudgetService) {}
+  constructor(
+    private readonly budgetService: BudgetService,
+    private readonly planService: PlanService,
+  ) {}
 
   @Get('categories')
   @ApiOkResponse({ type: [CategoryGroupDto] })
@@ -79,6 +84,28 @@ export class BudgetController {
     @Body() { cells }: SaveLinesDto,
   ): Promise<void> {
     return this.budgetService.saveLines(user.id, cells);
+  }
+
+  @Put('plan')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({
+    description: 'Every change saved, in one transaction',
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid body, unknown reference or inactive item',
+  })
+  @ApiNotFoundResponse({
+    description: 'A type, category, launch or payment method is not the user’s',
+  })
+  @ApiConflictResponse({
+    description:
+      'Duplicate name, or a row with several transactions in the month',
+  })
+  savePlan(
+    @CurrentUser() user: JwtUser,
+    @Body() plan: SavePlanDto,
+  ): Promise<void> {
+    return this.planService.save(user.id, plan);
   }
 
   @Get('summary')

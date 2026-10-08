@@ -1,11 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   addMonths,
   currentMonth,
+  defaultRange,
   endOfYear,
   formatMonthLabel,
   formatMonthLong,
+  isWithinReach,
+  lastMonths,
+  monthsBetween,
   monthWindow,
+  orderedRange,
+  parseRange,
+  yearMonths,
+  yearOf,
+  yearRange,
 } from './months'
 
 describe('months', () => {
@@ -39,5 +48,60 @@ describe('months', () => {
   it('finds December of the same year', () => {
     expect(endOfYear('2026-10')).toBe('2026-12')
     expect(endOfYear('2026-12')).toBe('2026-12')
+  })
+
+  describe('period', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('defaults to the current month and the 11 after it', () => {
+      expect(defaultRange('2026-10')).toEqual({ from: '2026-10', to: '2027-09' })
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
+      expect(defaultRange()).toEqual({ from: '2026-10', to: '2027-09' })
+    })
+
+    it('keeps a valid period of up to 24 months', () => {
+      expect(parseRange({ from: '2026-01', to: '2026-01' })).toEqual({ from: '2026-01', to: '2026-01' })
+      expect(parseRange({ from: '2025-10', to: '2027-09' })).toEqual({ from: '2025-10', to: '2027-09' })
+    })
+
+    it('falls back to the default period otherwise', () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 15, 12) })
+      const standard = { from: '2026-10', to: '2027-09' }
+      expect(parseRange({})).toEqual(standard)
+      expect(parseRange({ from: '2026-01' })).toEqual(standard)
+      expect(parseRange({ from: '2026-13', to: '2027-01' })).toEqual(standard)
+      expect(parseRange({ from: 202601, to: '2027-01' })).toEqual(standard)
+      // Inverted, or longer than the API answers
+      expect(parseRange({ from: '2027-01', to: '2026-12' })).toEqual(standard)
+      expect(parseRange({ from: '2025-10', to: '2027-10' })).toEqual(standard)
+    })
+
+    it('lists every month of a period', () => {
+      expect(monthsBetween('2026-11', '2027-02')).toEqual(['2026-11', '2026-12', '2027-01', '2027-02'])
+      expect(monthsBetween('2026-10', '2026-10')).toEqual(['2026-10'])
+      expect(monthsBetween('2026-10', '2026-09')).toEqual([])
+    })
+  })
+
+  describe('period picking', () => {
+    it('orders two months as a period', () => {
+      expect(orderedRange('2026-10', '2027-03')).toEqual({ from: '2026-10', to: '2027-03' })
+      expect(orderedRange('2027-03', '2026-10')).toEqual({ from: '2026-10', to: '2027-03' })
+      expect(orderedRange('2026-10', '2026-10')).toEqual({ from: '2026-10', to: '2026-10' })
+    })
+
+    it('reaches up to 24 months either way', () => {
+      expect(isWithinReach('2026-10', '2028-09')).toBe(true)
+      expect(isWithinReach('2026-10', '2028-10')).toBe(false)
+      expect(isWithinReach('2026-10', '2024-11')).toBe(true)
+      expect(isWithinReach('2026-10', '2024-10')).toBe(false)
+    })
+
+    it('lists a year and builds the shortcuts', () => {
+      expect(yearMonths(2027)).toEqual(monthWindow('2027-01', 12))
+      expect(lastMonths(12, '2026-10')).toEqual({ from: '2025-11', to: '2026-10' })
+      expect(yearRange('2026-10')).toEqual({ from: '2026-01', to: '2026-12' })
+      expect(yearOf('2026-10')).toBe(2026)
+    })
   })
 })

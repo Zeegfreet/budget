@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { endOfYear, formatMonthLabel, formatMonthLong } from '@/features/budget/months'
+import { isUnsaved } from '@/features/budget/plan'
 import type { BudgetTable, CategoryRow, GroupRow, LineRow } from '@/features/budget/rows'
 import type { EntryKind, Month } from '@/features/budget/types'
 import { cn } from '@/lib/utils'
@@ -50,6 +51,8 @@ interface BudgetGridProps {
   onChange: (anchorId: number, month: Month, cents: number) => void
   onFill: (anchorId: number, month: Month, scope: FillScope) => void
   onAction: (action: GridAction) => void
+  /** A type, category or launch row is new or changed and not saved yet */
+  isPending?: (level: 'group' | 'category' | 'line', id: number) => boolean
 }
 
 const STICKY = 'sticky left-0 z-10'
@@ -110,6 +113,11 @@ function TotalCells({ values, total, className }: { values: number[]; total: num
   )
 }
 
+/** Marks a row the plan created or changed */
+function PendingTag() {
+  return <Tag className="border-primary/40 text-primary">Não salvo</Tag>
+}
+
 const toggleAction = (active: boolean, onSelect: () => void): RowAction =>
   active
     ? { label: 'Inativar', icon: EyeOffIcon, onSelect }
@@ -156,6 +164,7 @@ export function BudgetGrid({
   onChange,
   onFill,
   onAction,
+  isPending = () => false,
 }: BudgetGridProps) {
   // Sections and types start open, categories closed
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -177,7 +186,8 @@ export function BudgetGrid({
     ...(group.active
       ? [{ label: 'Nova categoria', icon: PlusIcon, onSelect: () => onAction({ type: 'create-category', group }) }]
       : []),
-    toggleAction(group.active, () => onAction({ type: 'toggle-group', group })),
+    // A type that isn't saved yet can just be deleted
+    ...(isUnsaved(group.id) ? [] : [toggleAction(group.active, () => onAction({ type: 'toggle-group', group }))]),
     {
       label: 'Excluir',
       icon: Trash2Icon,
@@ -198,7 +208,9 @@ export function BudgetGrid({
         ]
       : []),
     { label: 'Editar', icon: PencilIcon, onSelect: () => onAction({ type: 'edit-category', category }) },
-    toggleAction(category.active, () => onAction({ type: 'toggle-category', category })),
+    ...(isUnsaved(category.id)
+      ? []
+      : [toggleAction(category.active, () => onAction({ type: 'toggle-category', category }))]),
     {
       label: 'Excluir',
       icon: Trash2Icon,
@@ -212,7 +224,10 @@ export function BudgetGrid({
     ...(editable
       ? [{ label: 'Editar', icon: PencilIcon, onSelect: () => onAction({ type: 'edit-line', line, kind }) }]
       : []),
-    { label: 'Ver no extrato', icon: ExternalLinkIcon, onSelect: () => onAction({ type: 'open-line', line, kind }) },
+    // Not in the statement until saved
+    ...(isUnsaved(line.line.anchorId)
+      ? []
+      : [{ label: 'Ver no extrato', icon: ExternalLinkIcon, onSelect: () => onAction({ type: 'open-line', line, kind }) }]),
     {
       label: 'Excluir',
       icon: Trash2Icon,
@@ -240,6 +255,7 @@ export function BudgetGrid({
             <div className="flex min-w-0 items-center gap-1.5">
               <span className={cn('truncate', line.line.description === null && 'italic')}>{line.label}</span>
               {line.dueDay !== null && <Tag>Vence dia {line.dueDay}</Tag>}
+              {isPending('line', anchorId) && <PendingTag />}
             </div>
           </RowActions>
         </TableHead>
@@ -342,6 +358,7 @@ export function BudgetGrid({
                 </Tag>
               )}
               {!category.active && <Tag>Inativa</Tag>}
+              {isPending('category', category.id) && <PendingTag />}
             </div>
           </RowActions>
         </TableHead>
@@ -384,6 +401,7 @@ export function BudgetGrid({
               <ToggleLabel label={group.name} expanded={groupOpen} onToggle={() => toggle(groupId)} />
               {group.goalPercent !== null && <Tag>Meta {group.goalPercent}%</Tag>}
               {!group.active && <Tag>Inativo</Tag>}
+              {isPending('group', group.id) && <PendingTag />}
             </div>
           </RowActions>
         </TableHead>

@@ -13,6 +13,8 @@ export type StatementAction = TransactionRowAction
 interface StatementListProps {
   statement: Statement
   onAction: (action: StatementAction) => void
+  /** The list only shows what is pending (changes the empty message) */
+  pendingOnly?: boolean
 }
 
 /**
@@ -20,7 +22,7 @@ interface StatementListProps {
  * types' titles. The user's linked group shares follow the transactions of
  * their type, read-only (they are managed in the group).
  */
-export function StatementList({ statement, onAction }: StatementListProps) {
+export function StatementList({ statement, onAction, pendingOnly = false }: StatementListProps) {
   return (
     <div className="flex flex-col gap-8">
       {statement.sections.map((section) => (
@@ -38,7 +40,8 @@ export function StatementList({ statement, onAction }: StatementListProps) {
           </header>
           {section.groups.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Nenhuma {section.kind === 'INCOME' ? 'receita' : 'despesa'} neste mês.
+              Nenhuma {section.kind === 'INCOME' ? 'receita' : 'despesa'}
+              {pendingOnly && ' pendente'} neste mês.
             </p>
           ) : (
             section.groups.map((group) => <StatementGroupList key={group.id} group={group} onAction={onAction} />)
@@ -67,12 +70,13 @@ function StatementGroupList({
         <MoneyText cents={group.effectiveCents} className="shrink-0 text-muted-foreground" />
       </div>
       <ul aria-labelledby={headingId} className="divide-y overflow-hidden rounded-xl border bg-card">
-        {group.transactions.map((t) => (
-          <TransactionRow key={t.id} transaction={t} onAction={onAction} />
-        ))}
-        {group.shares.map((share) => (
-          <ShareRow key={`share:${share.item.transactionId}`} share={share} />
-        ))}
+        {group.items.map((item) =>
+          item.kind === 'transaction' ? (
+            <TransactionRow key={item.transaction.id} transaction={item.transaction} onAction={onAction} />
+          ) : (
+            <ShareRow key={`share:${item.share.item.transactionId}`} share={item.share} />
+          ),
+        )}
       </ul>
     </div>
   )
@@ -129,6 +133,7 @@ function ShareRow({ share: { group, item } }: { share: StatementShare }) {
               {item.series && <SeriesBadge series={item.series} title={item.description} />}
             </div>
             <p className="truncate text-xs text-muted-foreground">
+              {item.groupCategory && `${item.groupCategory.name} → `}
               {item.category.name} · {status}
             </p>
           </div>

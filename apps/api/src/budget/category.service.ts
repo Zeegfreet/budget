@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Db } from '../prisma/db.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { categorySelect, groupSelect } from './budget.service.js';
@@ -22,6 +23,8 @@ import type {
  * Edits the category tree: types (`CategoryGroup`) and their categories.
  * The Receitas/Despesas level is the fixed `EntryKind`. Everything is scoped by
  * the owner; another user's item is a 404. Deleting removes its values too.
+ * Every write takes an optional `db` to run inside a larger transaction (the
+ * dashboard's plan, see `PlanService`).
  */
 @Injectable()
 export class CategoryService {
@@ -30,16 +33,17 @@ export class CategoryService {
   async createGroup(
     userId: number,
     { kind, name, goalPercent }: CreateGroupDto,
+    db: Db = this.prisma,
   ): Promise<CategoryGroupDto> {
     if (goalPercent != null && kind !== 'EXPENSE') {
       throw new BadRequestException('Only expense types can have a goal');
     }
-    const last = await this.prisma.categoryGroup.aggregate({
+    const last = await db.categoryGroup.aggregate({
       where: { userId, kind },
       _max: { position: true },
     });
     return this.unique(
-      this.prisma.categoryGroup.create({
+      db.categoryGroup.create({
         data: {
           userId,
           kind,
@@ -56,13 +60,14 @@ export class CategoryService {
     userId: number,
     id: number,
     { name, active, goalPercent }: UpdateGroupDto,
+    db: Db = this.prisma,
   ): Promise<CategoryGroupDto> {
-    const group = await this.findGroup(userId, id);
+    const group = await this.findGroup(db, userId, id);
     if (goalPercent != null && group.kind !== 'EXPENSE') {
       throw new BadRequestException('Only expense types can have a goal');
     }
     return this.unique(
-      this.prisma.categoryGroup.update({
+      db.categoryGroup.update({
         where: { id },
         data: { name, active, goalPercent },
         select: groupSelect,
@@ -70,29 +75,34 @@ export class CategoryService {
     );
   }
 
-  async deleteGroup(userId: number, id: number): Promise<void> {
-    await this.findGroup(userId, id);
+  async deleteGroup(
+    userId: number,
+    id: number,
+    db: Db = this.prisma,
+  ): Promise<void> {
+    await this.findGroup(db, userId, id);
     // Categories and their values go with it (onDelete: Cascade)
-    await this.prisma.categoryGroup.delete({ where: { id } });
+    await db.categoryGroup.delete({ where: { id } });
   }
 
   async createCategory(
     userId: number,
     groupId: number,
     { name }: CreateCategoryDto,
+    db: Db = this.prisma,
   ): Promise<CategoryDto> {
-    const group = await this.findGroup(userId, groupId);
+    const group = await this.findGroup(db, userId, groupId);
     if (!group.active) {
       throw new BadRequestException(
         'Cannot add categories to an inactive type',
       );
     }
-    const last = await this.prisma.category.aggregate({
+    const last = await db.category.aggregate({
       where: { userId, groupId },
       _max: { position: true },
     });
     return this.unique(
-      this.prisma.category.create({
+      db.category.create({
         data: {
           userId,
           groupId,
@@ -108,10 +118,11 @@ export class CategoryService {
     userId: number,
     id: number,
     { name, active }: UpdateCategoryDto,
+    db: Db = this.prisma,
   ): Promise<CategoryDto> {
-    await this.findCategory(userId, id);
+    await this.findCategory(db, userId, id);
     return this.unique(
-      this.prisma.category.update({
+      db.category.update({
         where: { id },
         data: { name, active },
         select: categorySelect,
@@ -119,13 +130,17 @@ export class CategoryService {
     );
   }
 
-  async deleteCategory(userId: number, id: number): Promise<void> {
-    await this.findCategory(userId, id);
-    await this.prisma.category.delete({ where: { id } });
+  async deleteCategory(
+    userId: number,
+    id: number,
+    db: Db = this.prisma,
+  ): Promise<void> {
+    await this.findCategory(db, userId, id);
+    await db.category.delete({ where: { id } });
   }
 
-  private async findGroup(userId: number, id: number) {
-    const group = await this.prisma.categoryGroup.findFirst({
+  private async findGroup(db: Db, userId: number, id: number) {
+    const group = await db.categoryGroup.findFirst({
       where: { id, userId },
       select: { kind: true, active: true },
     });
@@ -133,8 +148,8 @@ export class CategoryService {
     return group;
   }
 
-  private async findCategory(userId: number, id: number) {
-    const category = await this.prisma.category.findFirst({
+  private async findCategory(db: Db, userId: number, id: number) {
+    const category = await db.category.findFirst({
       where: { id, userId },
       select: { id: true },
     });

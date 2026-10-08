@@ -39,6 +39,10 @@ interface GroupStatement {
     expenseCategory: { id: number; name: string } | null;
     incomeCategory: { id: number; name: string } | null;
     paymentMethod: { id: number; name: string; dueDay: number | null } | null;
+    categoryLinks: {
+      groupCategory: { id: number; name: string };
+      category: { id: number; name: string };
+    }[];
   };
   expenseCents: number;
   incomeCents: number;
@@ -68,6 +72,7 @@ interface GroupStatement {
     paidByName: string | null;
     category: { id: number; name: string } | null;
   }[];
+  groupCategories: { id: number; name: string }[];
 }
 
 const MONTH = '2026-10';
@@ -165,6 +170,7 @@ describe('Groups in the personal budget (e2e)', () => {
         expenseCategoryId: moradia,
         incomeCategoryId: extra,
         paymentMethodId: null,
+        categoryLinks: [],
       });
       // Only Ana's membership changes
       const forBruno = await bruno.get(`/groups/${group.id}`).expect(200);
@@ -172,6 +178,7 @@ describe('Groups in the personal budget (e2e)', () => {
         expenseCategoryId: null,
         incomeCategoryId: null,
         paymentMethodId: null,
+        categoryLinks: [],
       });
 
       const cleared = await link(ana, {
@@ -182,6 +189,7 @@ describe('Groups in the personal budget (e2e)', () => {
         expenseCategoryId: null,
         incomeCategoryId: null,
         paymentMethodId: null,
+        categoryLinks: [],
       });
     });
 
@@ -491,6 +499,228 @@ describe('Groups in the personal budget (e2e)', () => {
     });
   });
 
+  describe('category × category', () => {
+    /** Creates a category in the group, as Ana */
+    const groupCategory = (name: string, kind = 'EXPENSE') =>
+      ana
+        .post(`/groups/${group.id}/categories`)
+        .send({ kind, name })
+        .expect(201)
+        .then((res) => (res.body as { id: number }).id);
+
+    it('puts each group category’s shares in the mapped personal category', async () => {
+      const aluguel = await groupCategory('Aluguel');
+      const mercado = await groupCategory('Mercado');
+      const internet = await groupCategory('Internet');
+      const moradia = await category(ana, 'Moradia');
+      const alimentacao = await category(ana, 'Alimentação');
+
+      const res = await link(ana, {
+        expenseCategoryId: moradia,
+        incomeCategoryId: null,
+        categoryLinks: [{ groupCategoryId: mercado, categoryId: alimentacao }],
+      }).expect(200);
+      expect(res.body.link.categoryLinks).toEqual([
+        { groupCategoryId: mercado, categoryId: alimentacao },
+      ]);
+
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Aluguel',
+        amountCents: 3000,
+        categoryId: aluguel,
+      });
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Feira',
+        amountCents: 800,
+        categoryId: mercado,
+      });
+      // Unmapped group category and no category: the default one
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Fibra',
+        amountCents: 200,
+        categoryId: internet,
+      });
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Gás',
+        amountCents: 100,
+      });
+
+      const cells = (await entries(ana)).filter((e) => e.groupCents > 0);
+      expect(cells).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ categoryId: moradia, groupCents: 1650 }),
+          expect.objectContaining({ categoryId: alimentacao, groupCents: 400 }),
+        ]),
+      );
+      expect(cells).toHaveLength(2);
+      expect((await summary(ana)).expenseCents).toBe(2050);
+
+      const [statement] = await statements(ana);
+      expect(
+        statement.items.map((i) => [i.description, i.category?.name]),
+      ).toEqual([
+        ['Aluguel', 'Moradia'],
+        ['Feira', 'Alimentação'],
+        ['Fibra', 'Moradia'],
+        ['Gás', 'Moradia'],
+      ]);
+      expect(statement.link.categoryLinks).toEqual([
+        {
+          groupCategory: { id: mercado, name: 'Mercado' },
+          category: { id: alimentacao, name: 'Alimentação' },
+        },
+      ]);
+      expect(statement.groupCategories).toHaveLength(3);
+
+      // Back to a single category: everything joins again
+      await link(ana, {
+        expenseCategoryId: moradia,
+        incomeCategoryId: null,
+        categoryLinks: [],
+      }).expect(200);
+      expect((await entries(ana)).filter((e) => e.groupCents > 0)).toEqual([
+        expect.objectContaining({ categoryId: moradia, groupCents: 2050 }),
+      ]);
+    });
+
+    it('counts mapped shares even without a default category', async () => {
+      const mercado = await groupCategory('Mercado');
+      const alimentacao = await category(ana, 'Alimentação');
+      await link(ana, {
+        expenseCategoryId: null,
+        incomeCategoryId: null,
+        categoryLinks: [{ groupCategoryId: mercado, categoryId: alimentacao }],
+      }).expect(200);
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Feira',
+        amountCents: 800,
+        categoryId: mercado,
+      });
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Gás',
+        amountCents: 100,
+      });
+
+      expect((await entries(ana)).filter((e) => e.groupCents > 0)).toEqual([
+        expect.objectContaining({ categoryId: alimentacao, groupCents: 400 }),
+      ]);
+      const [statement] = await statements(ana);
+      expect(statement.items.map((i) => i.category?.name ?? null)).toEqual([
+        'Alimentação',
+        null,
+      ]);
+    });
+
+    it('validates the overrides', async () => {
+      const mercado = await groupCategory('Mercado');
+      const aluguelIncome = await groupCategory('Sublocação', 'INCOME');
+      const alimentacao = await category(ana, 'Alimentação');
+      const extra = await category(ana, 'Renda extra');
+      const base = { expenseCategoryId: null, incomeCategoryId: null };
+
+      // Wrong kind for the group category
+      await link(ana, {
+        ...base,
+        categoryLinks: [{ groupCategoryId: mercado, categoryId: extra }],
+      }).expect(400);
+      await link(ana, {
+        ...base,
+        categoryLinks: [
+          { groupCategoryId: aluguelIncome, categoryId: alimentacao },
+        ],
+      }).expect(400);
+      // Repeated, invalid shape, unknown field
+      await link(ana, {
+        ...base,
+        categoryLinks: [
+          { groupCategoryId: mercado, categoryId: alimentacao },
+          { groupCategoryId: mercado, categoryId: alimentacao },
+        ],
+      }).expect(400);
+      await link(ana, {
+        ...base,
+        categoryLinks: [{ groupCategoryId: mercado }],
+      }).expect(400);
+      await link(ana, {
+        ...base,
+        categoryLinks: [
+          { groupCategoryId: mercado, categoryId: alimentacao, memberId: 1 },
+        ],
+      }).expect(400);
+      // Inactive personal category
+      await ana
+        .patch(`/budget/categories/${alimentacao}`)
+        .send({ active: false })
+        .expect(200);
+      await link(ana, {
+        ...base,
+        categoryLinks: [{ groupCategoryId: mercado, categoryId: alimentacao }],
+      }).expect(400);
+    });
+
+    it('returns 404 for another group’s category or another user’s category', async () => {
+      const mercado = await groupCategory('Mercado');
+      const other = await createGroup(carla, 'Outro');
+      const foreign = (
+        await carla
+          .post(`/groups/${other.id}/categories`)
+          .send({ kind: 'EXPENSE', name: 'Mercado' })
+          .expect(201)
+      ).body.id as number;
+      const alimentacao = await category(ana, 'Alimentação');
+      const brunoAlimentacao = await category(bruno, 'Alimentação');
+      const base = { expenseCategoryId: null, incomeCategoryId: null };
+
+      await link(ana, {
+        ...base,
+        categoryLinks: [{ groupCategoryId: foreign, categoryId: alimentacao }],
+      }).expect(404);
+      await link(ana, {
+        ...base,
+        categoryLinks: [
+          { groupCategoryId: mercado, categoryId: brunoAlimentacao },
+        ],
+      }).expect(404);
+      // Bruno's own link is untouched by Ana's
+      await link(ana, {
+        ...base,
+        categoryLinks: [{ groupCategoryId: mercado, categoryId: alimentacao }],
+      }).expect(200);
+      const forBruno = await bruno.get(`/groups/${group.id}`).expect(200);
+      expect(forBruno.body.link.categoryLinks).toEqual([]);
+    });
+
+    it('falls back to the default when a mapped category is deleted', async () => {
+      const mercado = await groupCategory('Mercado');
+      const moradia = await category(ana, 'Moradia');
+      const alimentacao = await category(ana, 'Alimentação');
+      await link(ana, {
+        expenseCategoryId: moradia,
+        incomeCategoryId: null,
+        categoryLinks: [{ groupCategoryId: mercado, categoryId: alimentacao }],
+      }).expect(200);
+      await createTransaction({
+        kind: 'EXPENSE',
+        description: 'Feira',
+        amountCents: 800,
+        categoryId: mercado,
+      });
+
+      await ana.delete(`/budget/categories/${alimentacao}`).expect(204);
+      const res = await ana.get(`/groups/${group.id}`).expect(200);
+      expect(res.body.link.categoryLinks).toEqual([]);
+      expect((await entries(ana)).filter((e) => e.groupCents > 0)).toEqual([
+        expect.objectContaining({ categoryId: moradia, groupCents: 400 }),
+      ]);
+    });
+  });
+
   describe('payment link', () => {
     it('shows the group transaction’s link on each member’s item', async () => {
       const bill = 'https://imobiliaria.com.br/boleto/42';
@@ -594,6 +824,7 @@ describe('Groups in the personal budget (e2e)', () => {
         expenseCategory: null,
         incomeCategory: null,
         paymentMethod: null,
+        categoryLinks: [],
       });
       expect(await entries(bruno)).toEqual([]);
     });

@@ -3,6 +3,7 @@ import * as groupsApi from '@/features/groups/api'
 import type {
   FinanceGroup,
   GroupBalance,
+  GroupCategory,
   GroupInvitation,
   GroupMember,
   GroupTransaction,
@@ -38,10 +39,19 @@ export const makeGroup = (extra: Partial<FinanceGroup> = {}): FinanceGroup => {
     memberId: ana.id,
     memberCount: members.length,
     members,
-    link: { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null },
+    link: { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null, categoryLinks: [] },
+    categories: [],
     ...extra,
   }
 }
+
+export const makeGroupCategory = (id: number, name: string, extra: Partial<GroupCategory> = {}): GroupCategory => ({
+  id,
+  kind: 'EXPENSE',
+  name,
+  active: true,
+  ...extra,
+})
 
 export const makeSplitMethod = (id: number, extra: Partial<SplitMethod> = {}): SplitMethod => ({
   id,
@@ -71,6 +81,7 @@ export const makeGroupTransaction = (id: number, extra: Partial<GroupTransaction
   amountCents: 10000,
   dueDay: null,
   paymentUrl: null,
+  category: null,
   splitMethod: { id: equalRule.id, name: equalRule.name, type: 'EQUAL' },
   paidBy: null,
   series: null,
@@ -181,6 +192,9 @@ export function stubGroupsApi({
   vi.mocked(groupsApi.createSplitMethod).mockResolvedValue(splitMethods[0])
   vi.mocked(groupsApi.updateSplitMethod).mockResolvedValue(splitMethods[0])
   vi.mocked(groupsApi.deleteSplitMethod).mockResolvedValue()
+  vi.mocked(groupsApi.createGroupCategory).mockResolvedValue(makeGroupCategory(90, 'Nova'))
+  vi.mocked(groupsApi.updateGroupCategory).mockResolvedValue(makeGroupCategory(90, 'Nova'))
+  vi.mocked(groupsApi.deleteGroupCategory).mockResolvedValue()
   vi.mocked(groupsApi.fetchGroupTransactions).mockResolvedValue(transactions)
   vi.mocked(groupsApi.createGroupTransaction).mockResolvedValue(transactions.slice(0, 1))
   vi.mocked(groupsApi.updateGroupTransaction).mockResolvedValue(transactions[0])

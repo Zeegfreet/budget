@@ -162,7 +162,7 @@ describe('Payment methods in the statement (/extrato)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
     await waitFor(() =>
-      expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null, paymentMethodId: 1 }),
+      expect(setGroupLink).toHaveBeenCalledWith(7, { expenseCategoryId: 1, incomeCategoryId: null, paymentMethodId: 1, categoryLinks: [] }),
     )
   })
 })

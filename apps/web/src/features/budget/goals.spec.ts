@@ -12,13 +12,19 @@ describe('goalUsage', () => {
     expect(goalUsage(300000, 500000, 50)).toMatchObject({ permille: 600, status: 'over' })
   })
 
+  it('turns the goal into an amount of the income, rounded to the cent', () => {
+    expect(goalUsage(0, 500000, 50).targetCents).toBe(250000)
+    expect(goalUsage(0, 333, 50).targetCents).toBe(167)
+    expect(goalUsage(0, 0, 50).targetCents).toBe(0)
+  })
+
   it('warns from 90% of the goal on', () => {
     expect(goalUsage(44999, 100000, 50).status).toBe('ok')
     expect(goalUsage(45000, 100000, 50).status).toBe('warning')
   })
 
   it('has no share without income: spending is over, nothing is ok', () => {
-    expect(goalUsage(100, 0, 50)).toEqual({ spentCents: 100, incomeCents: 0, permille: null, status: 'over' })
+    expect(goalUsage(100, 0, 50)).toEqual({ spentCents: 100, incomeCents: 0, targetCents: 0, permille: null, status: 'over' })
     expect(goalUsage(0, 0, 50)).toMatchObject({ permille: null, status: 'ok' })
   })
 })
@@ -36,12 +42,17 @@ describe('leftoverUsage', () => {
     expect(leftoverUsage(-1, 500000, 0)).toMatchObject({ status: 'over' })
   })
 
+  it('turns the minimum into an amount of the income', () => {
+    expect(leftoverUsage(100000, 500000, 20).targetCents).toBe(100000)
+    expect(leftoverUsage(100000, 500000, 0).targetCents).toBe(0)
+  })
+
   it('with a zero minimum, any leftover is ok', () => {
     expect(leftoverUsage(0, 500000, 0).status).toBe('ok')
   })
 
   it('has no share without income', () => {
-    expect(leftoverUsage(0, 0, 20)).toEqual({ spentCents: 0, incomeCents: 0, permille: null, status: 'ok' })
+    expect(leftoverUsage(0, 0, 20)).toEqual({ spentCents: 0, incomeCents: 0, targetCents: 0, permille: null, status: 'ok' })
     expect(leftoverUsage(-100, 0, 20)).toMatchObject({ permille: null, status: 'over' })
   })
 })

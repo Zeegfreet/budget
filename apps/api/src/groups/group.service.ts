@@ -15,6 +15,10 @@ import type {
   UpdateFinanceGroupDto,
 } from './dto/group.dto.js';
 import { assertMember, assertOwner } from './group-access.js';
+import {
+  groupCategoryOrder,
+  groupCategorySelect,
+} from './group-category.service.js';
 import { endMembership } from './membership.js';
 
 /** Name of the rule every group starts with: equal split among all members. */
@@ -76,6 +80,10 @@ export class GroupService {
         id: true,
         name: true,
         description: true,
+        categories: {
+          orderBy: groupCategoryOrder,
+          select: groupCategorySelect,
+        },
         members: {
           where: { leftAt: null },
           orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
@@ -99,7 +107,13 @@ export class GroupService {
         expenseCategoryId: me.expenseCategoryId,
         incomeCategoryId: me.incomeCategoryId,
         paymentMethodId: me.paymentMethodId,
+        categoryLinks: await this.prisma.groupMemberCategoryLink.findMany({
+          where: { memberId: me.id },
+          orderBy: { groupCategoryId: 'asc' },
+          select: { groupCategoryId: true, categoryId: true },
+        }),
       },
+      categories: group.categories,
       memberCount: group.members.length,
       members: group.members.map(({ user, ...member }) => ({
         ...member,
@@ -123,14 +137,21 @@ export class GroupService {
 
   /**
    * Sets the user's own categories that receive their shares of the group's
-   * expenses and incomes in the personal budget (`null` keeps them out).
-   * Each must be the user's (404) and of the matching kind (400); a new one
-   * must also be active (400), while keeping a now inactive one is fine.
+   * expenses and incomes in the personal budget (`null` keeps them out) and,
+   * optionally, per group category overrides of them. Each category must be
+   * the user's (404) and of the matching kind (400); a new one must also be
+   * active (400), while keeping a now inactive one is fine. Each overridden
+   * category must be the group's (404), at most once (400).
    */
   async setLink(
     userId: number,
     id: number,
-    { expenseCategoryId, incomeCategoryId, paymentMethodId }: GroupLinkDto,
+    {
+      expenseCategoryId,
+      incomeCategoryId,
+      paymentMethodId,
+      categoryLinks,
+    }: GroupLinkDto,
   ): Promise<FinanceGroupDto> {
     const me = await assertMember(this.prisma, userId, id);
     // A new method must be the user's and active; keeping an inactive one is fine
@@ -141,14 +162,29 @@ export class GroupService {
     ) {
       await assertUsablePaymentMethod(this.prisma, userId, paymentMethodId);
     }
-    const wanted: [number | null, EntryKind][] = [
-      [expenseCategoryId, 'EXPENSE'],
-      [incomeCategoryId, 'INCOME'],
+    const groupKinds = await this.groupCategoryKinds(id, categoryLinks ?? []);
+    const wanted: [number | null, EntryKind, string][] = [
+      [expenseCategoryId, 'EXPENSE', 'expenseCategoryId'],
+      [incomeCategoryId, 'INCOME', 'incomeCategoryId'],
+      ...(categoryLinks ?? []).map((l): [number, EntryKind, string] => [
+        l.categoryId,
+        groupKinds.get(l.groupCategoryId)!,
+        'categoryLinks.categoryId',
+      ]),
     ];
     const ids = wanted.flatMap(([categoryId]) =>
       categoryId === null ? [] : [categoryId],
     );
-    const current = [me.expenseCategoryId, me.incomeCategoryId];
+    const current = [
+      me.expenseCategoryId,
+      me.incomeCategoryId,
+      ...(
+        await this.prisma.groupMemberCategoryLink.findMany({
+          where: { memberId: me.id },
+          select: { categoryId: true },
+        })
+      ).map((l) => l.categoryId),
+    ];
     await assertWritableCategories(
       this.prisma,
       userId,
@@ -163,20 +199,51 @@ export class GroupService {
       throw new NotFoundException('Category not found');
     }
     const kindOf = new Map(kinds.map((c) => [c.id, c.group.kind]));
-    for (const [categoryId, kind] of wanted) {
+    for (const [categoryId, kind, field] of wanted) {
       if (categoryId !== null && kindOf.get(categoryId) !== kind) {
         throw new BadRequestException(
-          kind === 'EXPENSE'
-            ? 'expenseCategoryId must be an expense category'
-            : 'incomeCategoryId must be an income category',
+          `${field} must be ${kind === 'EXPENSE' ? 'an expense' : 'an income'} category`,
         );
       }
     }
-    await this.prisma.groupMember.update({
-      where: { id: me.id },
-      data: { expenseCategoryId, incomeCategoryId, paymentMethodId },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.groupMember.update({
+        where: { id: me.id },
+        data: { expenseCategoryId, incomeCategoryId, paymentMethodId },
+      });
+      if (categoryLinks === undefined) return;
+      await tx.groupMemberCategoryLink.deleteMany({
+        where: { memberId: me.id },
+      });
+      await tx.groupMemberCategoryLink.createMany({
+        data: categoryLinks.map(({ groupCategoryId, categoryId }) => ({
+          memberId: me.id,
+          groupCategoryId,
+          categoryId,
+        })),
+      });
     });
     return this.get(userId, id);
+  }
+
+  /** Kind of each overridden group category (404 outside the group, 400 repeated). */
+  private async groupCategoryKinds(
+    groupId: number,
+    links: { groupCategoryId: number }[],
+  ): Promise<Map<number, EntryKind>> {
+    const ids = links.map((l) => l.groupCategoryId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('Each group category can be linked once');
+    }
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.groupCategory.findMany({
+      where: { groupId, id: { in: ids } },
+      select: { id: true, kind: true },
+    });
+    if (rows.length !== ids.length) {
+      throw new NotFoundException('Group category not found');
+    }
+    return new Map(rows.map((r) => [r.id, r.kind]));
   }
 
   /** Deletes the group with everything in it. */

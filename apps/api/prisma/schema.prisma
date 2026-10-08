@@ -12,14 +12,14 @@ datasource db {
 }
 
 model User {
-  id                  Int               @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   /// Always stored trimmed and lowercased
-  email               String            @unique
+  email               String               @unique
   /// For a pre-registration, the nickname given by whoever invited them
   name                String
   /// Pre-registration created by a group invitation: can't sign in and has no
   /// password or profile until the person signs up with this e-mail
-  pending             Boolean           @default(false)
+  pending             Boolean              @default(false)
   /// `null` while `pending`, and for an account created by GitHub/Google
   /// sign-in (until a password is set)
   passwordHash        String?
@@ -35,20 +35,20 @@ model User {
   /// GitHub/Google sign-in); `null` = not activated, can't sign in with a
   /// password
   emailVerifiedAt     DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   /// Balance the user had before the first month in the budget (may be negative)
-  initialBalanceCents Int               @default(0)
+  initialBalanceCents Int                  @default(0)
   /// Set once the default categories were created, so deleting them all
   /// doesn't bring the defaults back
-  budgetSeeded        Boolean           @default(false)
+  budgetSeeded        Boolean              @default(false)
   sessions            Session[]
   categoryGroups      CategoryGroup[]
   categories          Category[]
   transactions        Transaction[]
   groupMemberships    GroupMember[]
-  invitationsSent     GroupInvitation[] @relation("InvitationInviter")
-  invitationsReceived GroupInvitation[] @relation("InvitationInvitee")
+  invitationsSent     GroupInvitation[]    @relation("InvitationInviter")
+  invitationsReceived GroupInvitation[]    @relation("InvitationInvitee")
   paymentMethods      PaymentMethod[]
   oauthAccounts       OAuthAccount[]
   activationTokens    ActivationToken[]
@@ -152,21 +152,23 @@ model CategoryGroup {
 
 /// Leaf category that holds the monthly values (e.g. Moradia under Despesas Básicas).
 model Category {
-  id                Int           @id @default(autoincrement())
+  id                 Int                       @id @default(autoincrement())
   /// Denormalized owner so every query can be scoped by user
-  userId            Int
-  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId           Int
-  group             CategoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  name              String
-  position          Int           @default(0)
+  userId             Int
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId            Int
+  group              CategoryGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name               String
+  position           Int                       @default(0)
   /// Inactive categories are hidden from the grid and not editable; their values still count
-  active            Boolean       @default(true)
-  transactions      Transaction[]
+  active             Boolean                   @default(true)
+  transactions       Transaction[]
   /// Group memberships whose expense shares land here
-  groupExpenseLinks GroupMember[] @relation("MemberExpenseCategory")
+  groupExpenseLinks  GroupMember[]             @relation("MemberExpenseCategory")
   /// Group memberships whose income shares land here
-  groupIncomeLinks  GroupMember[] @relation("MemberIncomeCategory")
+  groupIncomeLinks   GroupMember[]             @relation("MemberIncomeCategory")
+  /// Group categories some membership maps here
+  groupCategoryLinks GroupMemberCategoryLink[]
 
   @@unique([groupId, name])
   @@index([userId])
@@ -269,34 +271,37 @@ model FinanceGroup {
   invitations  GroupInvitation[]
   splitMethods SplitMethod[]
   transactions GroupTransaction[]
+  categories   GroupCategory[]
 }
 
 /// A user's membership. Leaving sets `leftAt` (history keeps pointing to it);
 /// accepting a new invitation reactivates the same row.
 model GroupMember {
-  id                Int                     @id @default(autoincrement())
+  id                Int                       @id @default(autoincrement())
   groupId           Int
-  group             FinanceGroup            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group             FinanceGroup              @relation(fields: [groupId], references: [id], onDelete: Cascade)
   userId            Int
-  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role              GroupRole               @default(MEMBER)
-  joinedAt          DateTime                @default(now())
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              GroupRole                 @default(MEMBER)
+  joinedAt          DateTime                  @default(now())
   /// `null` while active; only active members can access the group
   leftAt            DateTime?
   /// The member's own category that receives their share of the group's
   /// expenses in the personal budget; `null` keeps them out of it
   expenseCategoryId Int?
-  expenseCategory   Category?               @relation("MemberExpenseCategory", fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  expenseCategory   Category?                 @relation("MemberExpenseCategory", fields: [expenseCategoryId], references: [id], onDelete: SetNull)
   /// Same for the incomes
   incomeCategoryId  Int?
-  incomeCategory    Category?               @relation("MemberIncomeCategory", fields: [incomeCategoryId], references: [id], onDelete: SetNull)
+  incomeCategory    Category?                 @relation("MemberIncomeCategory", fields: [incomeCategoryId], references: [id], onDelete: SetNull)
   /// The member's own payment method for their expense shares (its invoice
   /// shows them); `null` keeps them out of every invoice
   paymentMethodId   Int?
-  paymentMethod     PaymentMethod?          @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  paymentMethod     PaymentMethod?            @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   splitShares       SplitMethodShare[]
   paid              GroupTransaction[]
   shares            GroupTransactionShare[]
+  /// Per group category overrides of the default categories above
+  categoryLinks     GroupMemberCategoryLink[]
 
   @@unique([groupId, userId])
   @@index([userId])
@@ -368,6 +373,9 @@ model GroupTransaction {
   dueDay         Int?
   /// Link to the bill (boleto) or the portal where it is paid (http/https)
   paymentUrl     String?
+  /// The group's own category (same kind)
+  categoryId     Int?
+  category       GroupCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   /// Snapshot of each member's share; always adds up to `amountCents`
@@ -375,6 +383,7 @@ model GroupTransaction {
 
   @@index([groupId, month])
   @@index([seriesId])
+  @@index([categoryId])
 }
 
 model GroupTransactionShare {
@@ -389,4 +398,35 @@ model GroupTransactionShare {
 
   @@id([transactionId, memberId])
   @@index([memberId])
+}
+
+/// A group's own category (one level, e.g. Aluguel, Mercado).
+model GroupCategory {
+  id           Int                       @id @default(autoincrement())
+  groupId      Int
+  group        FinanceGroup              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  kind         EntryKind
+  name         String
+  /// Inactive categories can't be picked for new launches; their history stays
+  active       Boolean                   @default(true)
+  createdAt    DateTime                  @default(now())
+  transactions GroupTransaction[]
+  memberLinks  GroupMemberCategoryLink[]
+
+  @@unique([groupId, kind, name])
+}
+
+/// Where a member's shares of one group category land in their budget,
+/// overriding the membership's default category of that kind.
+model GroupMemberCategoryLink {
+  memberId        Int
+  member          GroupMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  groupCategoryId Int
+  groupCategory   GroupCategory @relation(fields: [groupCategoryId], references: [id], onDelete: Cascade)
+  /// The member's own category, same kind
+  categoryId      Int
+  category        Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([memberId, groupCategoryId])
+  @@index([categoryId])
 }

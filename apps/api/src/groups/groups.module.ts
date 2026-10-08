@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ActivationModule } from '../activation/activation.module.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { UserModule } from '../user/user.module.js';
+import { GroupCategoryController } from './group-category.controller.js';
+import { GroupCategoryService } from './group-category.service.js';
 import { GroupTransactionController } from './group-transaction.controller.js';
 import { GroupTransactionService } from './group-transaction.service.js';
 import { GroupController } from './group.controller.js';
@@ -21,12 +23,14 @@ import { SplitMethodService } from './split-method.service.js';
     GroupInvitationController,
     InvitationController,
     SplitMethodController,
+    GroupCategoryController,
     GroupTransactionController,
   ],
   providers: [
     GroupService,
     InvitationService,
     SplitMethodService,
+    GroupCategoryService,
     GroupTransactionService,
   ],
 })

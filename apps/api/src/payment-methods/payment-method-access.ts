@@ -1,12 +1,12 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { PrismaService } from '../prisma/prisma.service.js';
+import type { Db } from '../prisma/db.js';
 
 /**
  * Ensures the payment method is the user's (404 otherwise, no existence leak)
  * and can take new launches: it is active (400 otherwise).
  */
 export async function assertUsablePaymentMethod(
-  prisma: PrismaService,
+  prisma: Db,
   userId: number,
   id: number,
 ): Promise<void> {

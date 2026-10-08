@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { EntryKind, Prisma } from '../prisma/generated/client.js';
+import { type Db, runWrites } from '../prisma/db.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type BudgetSummary, computeSummary, sumByKind } from './balance.js';
@@ -209,11 +210,17 @@ export class BudgetService {
    * transaction, deletes it (`0`) or creates it as a new occurrence of the
    * row (a copy of its anchor; a plain launch becomes a series). All or
    * nothing: an anchor that isn't the user's fails with 404 and writing to an
-   * inactive category (or type) with 400; deleting is always allowed.
+   * inactive category (or type) with 400; deleting is always allowed. `tx`
+   * runs it inside a larger transaction (the dashboard's plan).
    */
-  async saveLines(userId: number, cells: LineCellDto[]): Promise<void> {
+  async saveLines(
+    userId: number,
+    cells: LineCellDto[],
+    tx?: Db,
+  ): Promise<void> {
+    const db = tx ?? this.prisma;
     const anchorIds = [...new Set(cells.map((c) => c.anchorId))];
-    const anchors = await this.prisma.transaction.findMany({
+    const anchors = await db.transaction.findMany({
       where: { userId, id: { in: anchorIds } },
       select: {
         id: true,
@@ -236,7 +243,7 @@ export class BudgetService {
     const latest = [...new Map(cells.map((c) => [key(c), c])).values()];
 
     const seriesIds = anchors.flatMap((a) => (a.seriesId ? [a.seriesId] : []));
-    const occurrences = await this.prisma.transaction.findMany({
+    const occurrences = await db.transaction.findMany({
       where: {
         userId,
         OR: [
@@ -259,7 +266,7 @@ export class BudgetService {
     };
 
     await assertWritableCategories(
-      this.prisma,
+      db,
       userId,
       latest.flatMap((c) =>
         c.amountCents === 0
@@ -272,59 +279,61 @@ export class BudgetService {
     );
 
     const newSeries = new Map<number, string>();
-    const writes = latest.flatMap(
-      ({ anchorId, month, amountCents }): Prisma.PrismaPromise<unknown>[] => {
-        const found = existing(anchorId, month);
-        if (amountCents === 0) {
-          return found.length === 0
-            ? []
-            : [
-                this.prisma.transaction.deleteMany({
-                  where: { userId, id: { in: found.map((o) => o.id) } },
-                }),
-              ];
-        }
-        if (found.length > 1) {
-          throw new ConflictException(
-            'The row has several transactions in the month; edit them in the statement',
-          );
-        }
-        if (found.length === 1) {
+    const writes = (w: Db) =>
+      latest.flatMap(
+        ({ anchorId, month, amountCents }): Prisma.PrismaPromise<unknown>[] => {
+          const found = existing(anchorId, month);
+          if (amountCents === 0) {
+            return found.length === 0
+              ? []
+              : [
+                  w.transaction.deleteMany({
+                    where: { userId, id: { in: found.map((o) => o.id) } },
+                  }),
+                ];
+          }
+          if (found.length > 1) {
+            throw new ConflictException(
+              'The row has several transactions in the month; edit them in the statement',
+            );
+          }
+          if (found.length === 1) {
+            return [
+              w.transaction.update({
+                where: { id: found[0].id },
+                data: { plannedCents: amountCents },
+              }),
+            ];
+          }
+          const { id: _id, seriesId, ...fields } = anchorOf.get(anchorId)!;
+          let series = seriesId ?? newSeries.get(anchorId);
+          const joins: Prisma.PrismaPromise<unknown>[] = [];
+          if (!series) {
+            series = randomUUID();
+            newSeries.set(anchorId, series);
+            joins.push(
+              w.transaction.update({
+                where: { id: anchorId },
+                data: { seriesId: series },
+              }),
+            );
+          }
           return [
-            this.prisma.transaction.update({
-              where: { id: found[0].id },
-              data: { plannedCents: amountCents },
+            ...joins,
+            w.transaction.create({
+              data: {
+                userId,
+                ...fields,
+                month,
+                plannedCents: amountCents,
+                seriesId: series,
+              },
             }),
           ];
-        }
-        const { id: _id, seriesId, ...fields } = anchorOf.get(anchorId)!;
-        let series = seriesId ?? newSeries.get(anchorId);
-        const joins: Prisma.PrismaPromise<unknown>[] = [];
-        if (!series) {
-          series = randomUUID();
-          newSeries.set(anchorId, series);
-          joins.push(
-            this.prisma.transaction.update({
-              where: { id: anchorId },
-              data: { seriesId: series },
-            }),
-          );
-        }
-        return [
-          ...joins,
-          this.prisma.transaction.create({
-            data: {
-              userId,
-              ...fields,
-              month,
-              plannedCents: amountCents,
-              seriesId: series,
-            },
-          }),
-        ];
-      },
-    );
-    if (writes.length > 0) await this.prisma.$transaction(writes);
+        },
+      );
+    // Built inside the callback: a cell that can't be saved throws before any write
+    await runWrites(this.prisma, tx, writes);
   }
 
   /** Balances from the effective amounts plus the user's linked group shares. */

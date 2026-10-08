@@ -3,7 +3,13 @@ import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { PlusIcon, TagsIcon, WalletIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { EmptyState, GroupLinkDialog, InitialBalanceDialog, MonthSwitcher } from '@/components/molecules'
+import {
+  EmptyState,
+  GroupLinkDialog,
+  InitialBalanceDialog,
+  MonthSwitcher,
+  StatementToolbar,
+} from '@/components/molecules'
 import {
   BudgetDialogs,
   CategoryManager,
@@ -23,11 +29,13 @@ import { budgetQueries } from '@/features/budget/queries'
 import type { GroupStatement, Month } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
 import { useGroupActions } from '@/features/groups/hooks'
-import { statementLink } from '@/features/groups/link'
+import { EMPTY_LINK, statementLink } from '@/features/groups/link'
 import { transactionErrorMessage } from '@/features/transactions/errors'
 import { useTransactionActions } from '@/features/transactions/hooks'
+import { useStatementView } from '@/features/transactions/preferences'
 import { transactionQueries } from '@/features/transactions/queries'
 import { buildStatement, hasFollowing } from '@/features/transactions/statement'
+import { viewStatement } from '@/features/transactions/view'
 import { usePaymentMethodOptions } from '@/features/payment-methods/hooks'
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -70,6 +78,13 @@ function StatementPage() {
     groupStatements,
   )
   const hasShares = statement.sections.some((s) => s.shares.length > 0)
+  // The list's filter and ordering; the summary keeps the whole month
+  const { pendingOnly, setPendingOnly, sort, setSort } = useStatementView()
+  const view = viewStatement(statement, {
+    pendingOnly,
+    sort,
+    categoryOrder: groups.flatMap((g) => g.categories.map((c) => c.id)),
+  })
   const actions = useTransactionActions()
   const groupActions = useGroupActions()
   const [dialog, setDialog] = useState<TransactionDialog>(null)
@@ -81,7 +96,7 @@ function StatementPage() {
   const saveInitialBalance = useInitialBalance()
   const [categoryDialog, setCategoryDialog] = useState<BudgetDialog>(null)
   // No unsaved values on this page, so nothing to forget
-  const categoryActions = useCategoryActions(() => {})
+  const categoryActions = useCategoryActions()
   const { toggleGroup, toggleCategory } = useCategoryToggle(categoryActions)
 
   function handleCategoryAction(action: CategoryAction) {
@@ -164,7 +179,15 @@ function StatementPage() {
           action={newButtons}
         />
       ) : (
-        <StatementList statement={statement} onAction={handleAction} />
+        <div className="flex flex-col gap-4">
+          <StatementToolbar
+            pendingOnly={pendingOnly}
+            onPendingOnlyChange={setPendingOnly}
+            sort={sort}
+            onSortChange={setSort}
+          />
+          <StatementList statement={view} onAction={handleAction} pendingOnly={pendingOnly} />
+        </div>
       )}
 
       {groupStatements.length > 0 && (
@@ -196,7 +219,8 @@ function StatementPage() {
         groupName={linking?.group.name ?? ''}
         categories={groups}
         paymentMethods={linkMethods}
-        initial={linking ? statementLink(linking) : { expenseCategoryId: null, incomeCategoryId: null, paymentMethodId: null }}
+        groupCategories={linking?.groupCategories ?? []}
+        initial={linking ? statementLink(linking) : EMPTY_LINK}
         onSubmit={(link) => groupActions.setLink(linking!.group.id, link)}
         errorMessage={(error) => groupErrorMessage(error, 'Não foi possível salvar o vínculo.')}
       />

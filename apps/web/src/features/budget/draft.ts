@@ -13,8 +13,6 @@ export type DraftAction =
   | { type: 'set'; anchorId: number; month: Month; amountCents: number }
   | { type: 'fill'; anchorId: number; months: Month[]; amountCents: number }
   | { type: 'discard' }
-  /** Drops the edits of rows that can no longer be saved (category inactivated or deleted) */
-  | { type: 'forget'; anchorIds: number[] }
 
 export function draftReducer(edits: Edits, action: DraftAction): Edits {
   switch (action.type) {
@@ -29,10 +27,6 @@ export function draftReducer(edits: Edits, action: DraftAction): Edits {
     }
     case 'discard':
       return new Map()
-    case 'forget': {
-      const ids = new Set(action.anchorIds.map(String))
-      return new Map([...edits].filter(([key]) => !ids.has(key.split(':')[0])))
-    }
   }
 }
 

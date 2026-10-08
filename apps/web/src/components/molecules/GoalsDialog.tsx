@@ -74,7 +74,7 @@ function GoalsForm({
       if (changes.length > 0) await onSubmit(changes)
       onDone()
     } catch (e) {
-      setError(categoryErrorMessage(e, 'Não foi possível salvar as metas.'))
+      setError(categoryErrorMessage(e, 'Não foi possível aplicar as metas.'))
     } finally {
       setPending(false)
     }
@@ -86,7 +86,7 @@ function GoalsForm({
         <DialogTitle>Metas por tipo de despesa</DialogTitle>
         <DialogDescription>
           Quanto das receitas cada tipo pode consumir, em %. Ex.: 50% para Despesas Básicas. Deixe em branco para
-          não ter meta.
+          não ter meta. As metas entram no planejamento e só são gravadas ao clicar em Salvar.
         </DialogDescription>
       </DialogHeader>
       {groups.length === 0 ? (
@@ -126,7 +126,7 @@ function GoalsForm({
         </Button>
         <Button type="submit" disabled={pending}>
           {pending && <Spinner />}
-          Salvar metas
+          Aplicar metas
         </Button>
       </DialogFooter>
     </form>

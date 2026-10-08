@@ -88,6 +88,11 @@ function GroupTransactionRow({
             <div className="flex min-w-0 items-center gap-1.5">
               <span className="truncate">{t.description}</span>
               {t.series && <SeriesBadge series={t.series} title={t.description} onClick={action('series')} />}
+              {t.category && (
+                <Badge variant="secondary" className="shrink-0" aria-label={`Categoria: ${t.category.name}`}>
+                  {t.category.name}
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               <span className="font-medium">{t.splitMethod?.name ?? 'Regra excluída'}</span>

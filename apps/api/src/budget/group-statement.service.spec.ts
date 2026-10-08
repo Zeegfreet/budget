@@ -19,7 +19,8 @@ describe('GroupStatementService', () => {
     id: 1,
     groupId: 5,
     leftAt: null,
-    group: { id: 5, name: 'República' },
+    group: { id: 5, name: 'República', categories: [] },
+    categoryLinks: [],
     expenseCategory: moradia,
     incomeCategory: null,
   };
@@ -48,6 +49,60 @@ describe('GroupStatementService', () => {
       }),
     );
     expect(prisma.groupTransaction.findMany).not.toHaveBeenCalled();
+  });
+
+  it('puts each item in the category mapped to its group category', async () => {
+    const mercado = { ...moradia, id: 6, name: 'Mercado' };
+    const aluguel = { id: 20, name: 'Aluguel' };
+    const feira = { id: 21, name: 'Feira' };
+    prisma.groupMember.findMany
+      .mockResolvedValueOnce([
+        {
+          ...me,
+          group: {
+            ...me.group,
+            categories: [
+              { ...aluguel, kind: 'EXPENSE', active: true },
+              { ...feira, kind: 'EXPENSE', active: true },
+            ],
+          },
+          categoryLinks: [{ groupCategory: feira, category: mercado }],
+        },
+      ])
+      .mockResolvedValueOnce(members);
+    const tx = (id: number, category: typeof aluguel | null) => ({
+      id,
+      groupId: 5,
+      kind: 'EXPENSE',
+      description: `#${id}`,
+      month: '2026-10',
+      amountCents: 200,
+      paidByMemberId: null,
+      seriesId: null,
+      dueDay: null,
+      category,
+      shares: [{ memberId: 1, amountCents: 200, settledAt: null }],
+    });
+    prisma.groupTransaction.findMany.mockResolvedValueOnce([
+      tx(10, aluguel),
+      tx(11, feira),
+      tx(12, null),
+    ]);
+
+    const [statement] = await service.list(7, '2026-10');
+
+    expect(
+      statement.items.map((i) => [i.groupCategory?.name, i.category?.name]),
+    ).toEqual([
+      ['Aluguel', 'Moradia'],
+      ['Feira', 'Mercado'],
+      [undefined, 'Moradia'],
+    ]);
+    expect(statement.link.categoryLinks).toEqual([
+      { groupCategory: feira, category: { id: 6, name: 'Mercado' } },
+    ]);
+    expect(statement.groupCategories).toHaveLength(2);
+    expect(statement.group).toEqual({ id: 5, name: 'República' });
   });
 
   it('summarizes the month from the user’s side', async () => {

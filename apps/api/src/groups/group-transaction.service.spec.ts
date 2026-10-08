@@ -20,6 +20,7 @@ describe('GroupTransactionService', () => {
     ),
     groupMember: { findFirst: vi.fn(), findMany: vi.fn() },
     splitMethod: { findFirst: vi.fn() },
+    groupCategory: { findFirst: vi.fn() },
     groupTransaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -533,6 +534,71 @@ describe('GroupTransactionService', () => {
         NotFoundException,
       );
       expect(prisma.groupTransaction.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('group categories', () => {
+    it('stores a category of the same kind in every occurrence', async () => {
+      prisma.groupCategory.findFirst.mockResolvedValue({
+        kind: 'EXPENSE',
+        active: true,
+      });
+
+      await service.create(7, 5, { ...body, categoryId: 20, repeatMonths: 2 });
+
+      expect(prisma.groupCategory.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 20, groupId: 5 } }),
+      );
+      const data = prisma.groupTransaction.create.mock.calls.map(
+        ([args]) => args.data.categoryId,
+      );
+      expect(data).toEqual([20, 20]);
+    });
+
+    it('rejects another group’s, another kind’s or an inactive category', async () => {
+      prisma.groupCategory.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.create(7, 5, { ...body, categoryId: 99 }),
+      ).rejects.toThrow(NotFoundException);
+
+      prisma.groupCategory.findFirst.mockResolvedValueOnce({
+        kind: 'INCOME',
+        active: true,
+      });
+      await expect(
+        service.create(7, 5, { ...body, categoryId: 20 }),
+      ).rejects.toThrow(BadRequestException);
+
+      prisma.groupCategory.findFirst.mockResolvedValueOnce({
+        kind: 'EXPENSE',
+        active: false,
+      });
+      await expect(
+        service.create(7, 5, { ...body, categoryId: 20 }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.groupTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it('checks the kept category when only the kind changes', async () => {
+      prisma.groupTransaction.findFirst.mockResolvedValue(
+        row(1, { category: { id: 20, name: 'Aluguel' } }),
+      );
+      prisma.groupCategory.findFirst.mockResolvedValue({
+        kind: 'EXPENSE',
+        active: false,
+      });
+
+      await expect(service.update(7, 5, 1, { kind: 'INCOME' })).rejects.toThrow(
+        BadRequestException,
+      );
+
+      // Keeping an inactive category on edit is fine
+      await service.update(7, 5, 1, { description: 'X', categoryId: 20 });
+      expect(tx.groupTransaction.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ categoryId: 20 }),
+        }),
+      );
     });
   });
 });

@@ -316,6 +316,7 @@ describe('Group split methods, transactions and balance (e2e)', () => {
           amountCents: 200000,
           dueDay: null,
           paymentUrl: null,
+          category: null,
           splitMethod: {
             id: percent.id,
             name: 'Aluguel 30/70',

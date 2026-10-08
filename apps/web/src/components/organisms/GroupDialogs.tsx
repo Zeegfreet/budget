@@ -1,15 +1,21 @@
 import {
+  CategoryFormDialog,
   ConfirmDialog,
   GroupFormDialog,
   GroupLinkDialog,
   InviteMemberDialog,
   SplitMethodFormDialog,
 } from '@/components/molecules'
-import type { CategoryGroup } from '@/features/budget/types'
+import type { CategoryGroup, EntryKind } from '@/features/budget/types'
 import { groupErrorMessage } from '@/features/groups/errors'
-import type { useInvitationActions, useSplitMethodActions } from '@/features/groups/hooks'
+import type {
+  useGroupCategoryActions,
+  useInvitationActions,
+  useSplitMethodActions,
+} from '@/features/groups/hooks'
 import type {
   FinanceGroup,
+  GroupCategory,
   GroupInput,
   GroupInvitation,
   GroupLink,
@@ -24,6 +30,8 @@ export type GroupDialog =
   | { type: 'remove-member'; member: GroupMember }
   | { type: 'cancel-invitation'; invitation: GroupInvitation }
   | { type: 'edit-rule' | 'delete-rule'; method: SplitMethod }
+  | { type: 'create-category'; kind: EntryKind }
+  | { type: 'edit-category' | 'delete-category'; category: GroupCategory }
   | null
 
 interface GroupDialogsProps {
@@ -42,13 +50,14 @@ interface GroupDialogsProps {
   onSetLink: (link: GroupLink) => Promise<void>
   invitations: ReturnType<typeof useInvitationActions>
   rules: ReturnType<typeof useSplitMethodActions>
+  categoryActions: ReturnType<typeof useGroupCategoryActions>
 }
 
 const message = (fallback: string) => (error: unknown) => groupErrorMessage(error, fallback)
 
 /**
  * Rename, delete and leave the group; link it to the user's budget; invite and
- * remove members; create, edit and delete rules.
+ * remove members; create, edit and delete rules and the group's categories.
  */
 export function GroupDialogs({
   dialog,
@@ -63,6 +72,7 @@ export function GroupDialogs({
   onSetLink,
   invitations,
   rules,
+  categoryActions,
 }: GroupDialogsProps) {
   const close = (open: boolean) => {
     if (!open) onDialogChange(null)
@@ -71,6 +81,8 @@ export function GroupDialogs({
   const invitation = dialog?.type === 'cancel-invitation' ? dialog.invitation : null
   const method = dialog?.type === 'edit-rule' || dialog?.type === 'delete-rule' ? dialog.method : null
   const lastMember = group.memberCount === 1
+  const newKind = dialog?.type === 'create-category' ? dialog.kind : null
+  const category = dialog?.type === 'edit-category' || dialog?.type === 'delete-category' ? dialog.category : null
 
   return (
     <>
@@ -86,6 +98,7 @@ export function GroupDialogs({
         onOpenChange={close}
         groupName={group.name}
         categories={categories}
+        groupCategories={group.categories}
         paymentMethods={paymentMethods}
         initial={group.link}
         onSubmit={onSetLink}
@@ -186,6 +199,35 @@ export function GroupDialogs({
         confirmLabel="Excluir"
         onConfirm={() => rules.remove(method!.id)}
         errorMessage={message('Não foi possível excluir a regra.')}
+      />
+      <CategoryFormDialog
+        open={newKind !== null}
+        onOpenChange={close}
+        title={newKind === 'INCOME' ? 'Nova categoria de receita' : 'Nova categoria de despesa'}
+        description="Uma categoria do grupo, para organizar os lançamentos."
+        submitLabel="Criar"
+        onSubmit={({ name }) => categoryActions.create({ kind: newKind!, name })}
+      />
+      <CategoryFormDialog
+        open={dialog?.type === 'edit-category'}
+        onOpenChange={close}
+        title="Renomear categoria"
+        initial={{ name: category?.name }}
+        onSubmit={({ name }) => categoryActions.update(category!.id, { name })}
+      />
+      <ConfirmDialog
+        open={dialog?.type === 'delete-category'}
+        onOpenChange={close}
+        title="Excluir categoria"
+        description={
+          <>
+            Excluir <strong>{category?.name}</strong>? Os lançamentos dela ficam sem categoria e, no orçamento de cada
+            membro, passam para a categoria padrão do vínculo.
+          </>
+        }
+        confirmLabel="Excluir"
+        onConfirm={() => categoryActions.remove(category!.id)}
+        errorMessage={message('Não foi possível excluir a categoria.')}
       />
     </>
   )

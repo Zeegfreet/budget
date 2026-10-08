@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsDefined,
   IsInt,
   IsOptional,
@@ -10,6 +12,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import {
   IsPresent,
@@ -19,6 +22,10 @@ import {
 } from '../../budget/dto/category.dto.js';
 import { MONTH_PATTERN } from '../../budget/month.js';
 import { GroupRole } from '../../prisma/generated/enums.js';
+import { GroupCategoryDto } from './group-category.dto.js';
+
+/** Most per-category links one request may send. */
+export const MAX_CATEGORY_LINKS = 200;
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -108,6 +115,22 @@ export class GroupMemberDto {
   joinedAt: Date;
 }
 
+/** One group category mapped to one of the member's own categories. */
+export class GroupCategoryLinkDto {
+  @ApiProperty({ example: 3, description: 'A category of the group' })
+  @IsInt()
+  @Min(1)
+  groupCategoryId: number;
+
+  @ApiProperty({
+    example: 4,
+    description: 'Own active category of the same kind',
+  })
+  @IsInt()
+  @Min(1)
+  categoryId: number;
+}
+
 /**
  * Body of `PUT /groups/:id/link` and the current member's link in the group:
  * the personal categories that receive their shares (`null` = not counted)
@@ -149,6 +172,18 @@ export class GroupLinkDto {
   @IsInt()
   @Min(1)
   paymentMethodId?: number | null;
+
+  @ApiPropertyOptional({
+    type: [GroupCategoryLinkDto],
+    description:
+      'Per group category overrides of the categories above (items without a category, or of an unmapped one, use those). Omitted in the body keeps the current ones, `[]` removes them; always present in responses.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_CATEGORY_LINKS)
+  @ValidateNested({ each: true })
+  @Type(() => GroupCategoryLinkDto)
+  categoryLinks?: GroupCategoryLinkDto[];
 }
 
 export class FinanceGroupDto extends FinanceGroupSummaryDto {
@@ -160,6 +195,12 @@ export class FinanceGroupDto extends FinanceGroupSummaryDto {
     description: 'Where the current user’s shares land in their budget',
   })
   link: GroupLinkDto;
+
+  @ApiProperty({
+    type: [GroupCategoryDto],
+    description: 'The group’s categories, expenses first, by name',
+  })
+  categories: GroupCategoryDto[];
 
   @ApiProperty({
     type: [GroupMemberDto],

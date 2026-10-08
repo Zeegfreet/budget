@@ -72,14 +72,4 @@ describe('budget draft', () => {
     const edits = draftReducer(none, { type: 'set', anchorId: 1, month: '2026-10', amountCents: 5 })
     expect(draftReducer(edits, { type: 'discard' }).size).toBe(0)
   })
-
-  it('forgets the edits of the given rows only', () => {
-    let edits = draftReducer(none, { type: 'fill', anchorId: 1, months: ['2026-10', '2026-11'], amountCents: 5 })
-    edits = draftReducer(edits, { type: 'set', anchorId: 12, month: '2026-10', amountCents: 7 })
-    edits = draftReducer(edits, { type: 'set', anchorId: 2, month: '2026-10', amountCents: 9 })
-
-    edits = draftReducer(edits, { type: 'forget', anchorIds: [1, 2] })
-
-    expect([...edits.keys()]).toEqual([cellKey(12, '2026-10')])
-  })
 })
