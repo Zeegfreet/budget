@@ -11,6 +11,46 @@ export const authUserSelect = {
   name: true,
 } satisfies Prisma.UserSelect;
 
+/** Sign-up data the user can see and edit (`/users/me`); dates as `YYYY-MM-DD`. */
+export interface Profile extends AuthUser {
+  birthDate: string;
+  cep: string;
+  city: string;
+  state: string;
+}
+
+export interface ProfileChanges {
+  name?: string;
+  /** `YYYY-MM-DD` */
+  birthDate?: string;
+  cep?: string;
+  city?: string;
+  state?: string;
+}
+
+export const profileSelect = {
+  ...authUserSelect,
+  birthDate: true,
+  cep: true,
+  city: true,
+  state: true,
+} satisfies Prisma.UserSelect;
+
+type ProfileRow = Prisma.UserGetPayload<{ select: typeof profileSelect }>;
+
+/** Only a registered user (never a pre-registration) has these fields set. */
+export function toProfile(row: ProfileRow): Profile {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    birthDate: row.birthDate?.toISOString().slice(0, 10) ?? '',
+    cep: row.cep ?? '',
+    city: row.city ?? '',
+    state: row.state ?? '',
+  };
+}
+
 @Injectable()
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
@@ -75,5 +115,38 @@ export class UserService {
       where: { id },
       select: authUserSelect,
     });
+  }
+
+  /** The user's profile; `null` for an unknown id or a pre-registration. */
+  async findProfile(id: number): Promise<Profile | null> {
+    const row = await this.prisma.user.findFirst({
+      where: { id, pending: false },
+      select: profileSelect,
+    });
+    return row && toProfile(row);
+  }
+
+  /**
+   * Updates the given fields of the user's profile (the e-mail never changes).
+   * `null` for an unknown id or a pre-registration.
+   */
+  async updateProfile(
+    id: number,
+    { birthDate, ...changes }: ProfileChanges,
+  ): Promise<Profile | null> {
+    const data: Prisma.UserUpdateManyMutationInput = {
+      ...changes,
+      ...(birthDate && { birthDate: new Date(`${birthDate}T00:00:00.000Z`) }),
+    };
+    // An empty update matches no row in SQLite: just read the profile
+    if (Object.values(data).every((value) => value === undefined)) {
+      return this.findProfile(id);
+    }
+    const { count } = await this.prisma.user.updateMany({
+      where: { id, pending: false },
+      data,
+    });
+    if (count === 0) return null;
+    return this.findProfile(id);
   }
 }

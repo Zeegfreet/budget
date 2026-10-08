@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { authUserSelect, UserService } from './user.service.js';
+import {
+  authUserSelect,
+  profileSelect,
+  toProfile,
+  UserService,
+} from './user.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 describe('UserService', () => {
@@ -8,6 +13,7 @@ describe('UserService', () => {
     user: {
       create: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       updateMany: vi.fn(),
     },
   };
@@ -119,6 +125,67 @@ describe('UserService', () => {
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: 1 },
       select: authUserSelect,
+    });
+  });
+
+  describe('profile', () => {
+    const row = {
+      id: 1,
+      email: 'ana@example.com',
+      name: 'Ana Souza',
+      birthDate: new Date('1990-05-20T00:00:00.000Z'),
+      cep: '01001000',
+      city: 'São Paulo',
+      state: 'SP',
+    };
+    const profile = { ...row, birthDate: '1990-05-20' };
+
+    it('formats the birth date as YYYY-MM-DD', () => {
+      expect(toProfile(row)).toEqual(profile);
+    });
+
+    it('finds only a registered user by id', async () => {
+      prisma.user.findFirst.mockResolvedValueOnce(row);
+      await expect(service.findProfile(1)).resolves.toEqual(profile);
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: 1, pending: false },
+        select: profileSelect,
+      });
+
+      prisma.user.findFirst.mockResolvedValueOnce(null);
+      await expect(service.findProfile(2)).resolves.toBeNull();
+    });
+
+    it('updates the given fields, the birth date at midnight UTC', async () => {
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
+      prisma.user.findFirst.mockResolvedValue({ ...row, name: 'Ana Lima' });
+
+      await expect(
+        service.updateProfile(1, { name: 'Ana Lima', birthDate: '1991-02-03' }),
+      ).resolves.toEqual({ ...profile, name: 'Ana Lima' });
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 1, pending: false },
+        data: {
+          name: 'Ana Lima',
+          birthDate: new Date('1991-02-03T00:00:00.000Z'),
+        },
+      });
+    });
+
+    it('only reads the profile when there is nothing to change', async () => {
+      prisma.user.findFirst.mockResolvedValue(row);
+
+      await expect(service.updateProfile(1, {})).resolves.toEqual(profile);
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('returns null when nothing was updated', async () => {
+      prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.updateProfile(9, { city: 'Recife' }),
+      ).resolves.toBeNull();
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
     });
   });
 });

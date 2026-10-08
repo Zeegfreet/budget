@@ -15,6 +15,7 @@ export { GroupTransactionList, type GroupTransactionAction } from './GroupTransa
 export { InvitationList } from './InvitationList'
 export { LoginCard } from './LoginCard'
 export { LoginForm } from './LoginForm'
+export { ProfileForm } from './ProfileForm'
 export { PaymentMethodDialogs, type PaymentMethodDialog } from './PaymentMethodDialogs'
 export { PaymentMethodInvoice } from './PaymentMethodInvoice'
 export { PAYMENT_METHOD_ICONS, PaymentMethodList, type PaymentMethodAction } from './PaymentMethodList'

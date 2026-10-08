@@ -1,21 +1,20 @@
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { UserIcon } from 'lucide-react'
-import { EmptyState } from '@/components/molecules'
+import { ProfileForm } from '@/components/organisms'
+import { profileQueries } from '@/features/profile/queries'
 
 export const Route = createFileRoute('/_app/settings/profile')({
+  loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(profileQueries.me()),
   component: ProfilePage,
 })
 
-// Placeholder until the API supports it
 function ProfilePage() {
+  const { data: profile } = useSuspenseQuery(profileQueries.me())
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Editar perfil</h1>
-      <EmptyState
-        icon={UserIcon}
-        title="Em breve"
-        description="A edição do nome e dos dados de cadastro ainda não está disponível."
-      />
+      <ProfileForm profile={profile} />
     </div>
   )
 }

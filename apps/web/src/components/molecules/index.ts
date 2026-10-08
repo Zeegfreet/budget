@@ -1,3 +1,4 @@
+export { AddressFields } from './AddressFields'
 export { BudgetCell, type FillScope } from './BudgetCell'
 export { BudgetGridToolbar } from './BudgetGridToolbar'
 export { CategoryFormDialog, type CategoryFormValues } from './CategoryFormDialog'

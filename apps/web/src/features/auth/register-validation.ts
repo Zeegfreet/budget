@@ -64,16 +64,50 @@ function validateBirthDate(value: string, today: Date) {
   return undefined
 }
 
+function validateName(name: string) {
+  if (!name) return 'Informe seu nome.'
+  if (name.length < 2) return 'Informe seu nome completo.'
+  if (name.length > 100) return 'Use no máximo 100 caracteres.'
+  return undefined
+}
+
+export interface PersonalData {
+  name: string
+  /** `YYYY-MM-DD` */
+  birthDate: string
+  cep: string
+  city: string
+  state: string
+}
+
+export type PersonalDataErrors = Partial<Record<keyof PersonalData, string>>
+
+/**
+ * Name, birth date and address, shared by the sign-up and profile forms.
+ * Expects `name` and `city` already trimmed.
+ */
+export function validatePersonalData(values: PersonalData, today = new Date()): PersonalDataErrors {
+  const errors: PersonalDataErrors = {}
+  const nameError = validateName(values.name)
+  if (nameError) errors.name = nameError
+
+  const birthDateError = validateBirthDate(values.birthDate, today)
+  if (birthDateError) errors.birthDate = birthDateError
+
+  if (!values.cep) errors.cep = 'Informe seu CEP.'
+  else if (!isCompleteCep(values.cep)) errors.cep = 'O CEP deve ter 8 dígitos.'
+  if (!values.city) errors.city = 'Informe sua cidade.'
+  if (!values.state) errors.state = 'Informe a UF.'
+  else if (!isBrazilianState(values.state)) errors.state = 'UF inválida.'
+  return errors
+}
+
 /**
  * Client-side checks for the sign-up form. Expects `name`, `email` and `city`
  * already trimmed. The API must validate everything again.
  */
 export function validateRegister(values: RegisterValues, today = new Date()): RegisterFieldErrors {
-  const errors: RegisterFieldErrors = {}
-
-  if (!values.name) errors.name = 'Informe seu nome.'
-  else if (values.name.length < 2) errors.name = 'Informe seu nome completo.'
-  else if (values.name.length > 100) errors.name = 'Use no máximo 100 caracteres.'
+  const errors: RegisterFieldErrors = validatePersonalData(values, today)
 
   if (!values.email) errors.email = 'Informe seu e-mail.'
   else if (!EMAIL_PATTERN.test(values.email)) errors.email = 'Informe um e-mail válido.'
@@ -82,20 +116,10 @@ export function validateRegister(values: RegisterValues, today = new Date()): Re
   else if (values.password.length < MIN_PASSWORD_LENGTH) {
     errors.password = `Use pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`
   }
+
   if (!values.passwordConfirmation) errors.passwordConfirmation = 'Confirme sua senha.'
   else if (values.password !== values.passwordConfirmation) {
     errors.passwordConfirmation = 'As senhas não coincidem.'
   }
-
-  const birthDateError = validateBirthDate(values.birthDate, today)
-  if (birthDateError) errors.birthDate = birthDateError
-
-  if (!values.cep) errors.cep = 'Informe seu CEP.'
-  else if (!isCompleteCep(values.cep)) errors.cep = 'O CEP deve ter 8 dígitos.'
-
-  if (!values.city) errors.city = 'Informe sua cidade.'
-  if (!values.state) errors.state = 'Informe a UF.'
-  else if (!isBrazilianState(values.state)) errors.state = 'UF inválida.'
-
   return errors
 }
