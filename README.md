@@ -588,6 +588,8 @@ pnpm test:e2e                                                  # e2e no budget_t
 # Web
 cd apps/web
 pnpm test
+# Cada teste tem até 20 s (testTimeout); com CI=true, findBy*/waitFor esperam até 5 s (1 s localmente),
+# porque os runners do CI são bem mais lentos que uma máquina de dev
 ```
 
 ## CI/CD
