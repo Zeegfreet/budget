@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  Equals,
   IsIn,
   IsInt,
   IsOptional,
@@ -9,6 +10,8 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { EntryKind, PaymentMethodType } from '../../prisma/generated/enums.js';
 import { MAX_REPEAT_MONTHS, MONTH_PATTERN } from '../month.js';
@@ -29,6 +32,33 @@ export class TransactionMonthQueryDto {
   @ApiProperty({ example: '2026-10' })
   @Matches(MONTH_PATTERN, { message: 'month must be a month as YYYY-MM' })
   month: string;
+}
+
+/** Scheduled adjustment of a recurring launch (e.g. +5% every 12 months). */
+export class AdjustmentDto {
+  @ApiProperty({
+    example: 500,
+    description: 'Raise in basis points (500 = 5%), 1–10000',
+  })
+  @IsInt()
+  @Min(1)
+  @Max(10_000)
+  percentBp: number;
+
+  @ApiProperty({ example: 12, description: 'Months between adjustments' })
+  @IsInt()
+  @Min(1)
+  @Max(MAX_REPEAT_MONTHS)
+  everyMonths: number;
+
+  @ApiPropertyOptional({
+    example: '2027-03',
+    description:
+      'First month adjusted (default: the first occurrence plus `everyMonths`)',
+  })
+  @IsOptional()
+  @Matches(MONTH_PATTERN, { message: 'firstMonth must be a month as YYYY-MM' })
+  firstMonth?: string;
 }
 
 /** Body of `POST /budget/transactions`. */
@@ -68,6 +98,25 @@ export class CreateTransactionDto {
   @Min(1)
   @Max(MAX_REPEAT_MONTHS)
   repeatMonths?: number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Repeats every month with no end (occurrences are created ahead as months are read); not with `repeatMonths`',
+  })
+  @IsOptional()
+  @Equals(true, { message: 'openEnded must be true when sent' })
+  openEnded?: boolean;
+
+  @ApiPropertyOptional({
+    type: AdjustmentDto,
+    description:
+      'Scheduled adjustment of a recurring launch (`repeatMonths > 1` or `openEnded`)',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdjustmentDto)
+  adjustment?: AdjustmentDto;
 
   @ApiPropertyOptional({
     example: 10,
@@ -167,12 +216,26 @@ export class RecurrenceScopeQueryDto {
 /** Body of `PUT /budget/transactions/:id/series` (and of the group's). */
 export class SeriesEndDto {
   @ApiProperty({
+    type: String,
+    nullable: true,
     example: '2027-09',
     description:
-      'New last month: later months are created (copies of the last occurrence) or their pending occurrences deleted',
+      'New last month: later months are created (copies of the last occurrence) or their pending occurrences deleted; `null` = no end',
   })
+  @ValidateIf((o: SeriesEndDto) => o.untilMonth !== null)
   @Matches(MONTH_PATTERN, { message: 'untilMonth must be a month as YYYY-MM' })
-  untilMonth: string;
+  untilMonth: string | null;
+
+  @ApiPropertyOptional({
+    type: AdjustmentDto,
+    nullable: true,
+    description:
+      'Scheduled adjustment; omitted keeps it, `null` removes it. Changing it recalculates the pending occurrences after the current month',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdjustmentDto)
+  adjustment?: AdjustmentDto | null;
 }
 
 /** Body of `PUT /budget/transactions/:id/realization`. */
@@ -232,6 +295,30 @@ export class TransactionPaymentMethodDto {
   active: boolean;
 }
 
+export class AdjustmentInfoDto {
+  @ApiProperty({ example: 500 })
+  percentBp: number;
+
+  @ApiProperty({ example: 12 })
+  everyMonths: number;
+
+  @ApiProperty({ example: '2027-03' })
+  firstMonth: string;
+}
+
+export class SeriesRecurrenceDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: null,
+    description: 'Last month; `null` = no end',
+  })
+  endMonth: string | null;
+
+  @ApiProperty({ type: AdjustmentInfoDto, nullable: true })
+  adjustment: AdjustmentInfoDto | null;
+}
+
 export class SeriesPositionDto {
   @ApiProperty({ example: 3, description: '1-based position by month' })
   index: number;
@@ -242,8 +329,19 @@ export class SeriesPositionDto {
   @ApiProperty({ example: '2026-10', description: 'Month of the first one' })
   firstMonth: string;
 
-  @ApiProperty({ example: '2027-09', description: 'Month of the last one' })
+  @ApiProperty({
+    example: '2027-09',
+    description: 'Month of the last one (created so far, when it has no end)',
+  })
   lastMonth: string;
+
+  @ApiProperty({
+    type: SeriesRecurrenceDto,
+    nullable: true,
+    description:
+      'Rule of a series with no end or a scheduled adjustment; `null` for a plain series',
+  })
+  recurrence: SeriesRecurrenceDto | null;
 }
 
 export class TransactionDto {

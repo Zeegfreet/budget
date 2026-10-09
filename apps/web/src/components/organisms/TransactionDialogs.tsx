@@ -13,6 +13,7 @@ import { seriesErrorMessage, transactionErrorMessage } from '@/features/transact
 import type { useTransactionActions } from '@/features/transactions/hooks'
 import { hasFollowing, transactionTitle } from '@/features/transactions/statement'
 import type { Transaction, TransactionPatch } from '@/features/transactions/types'
+import { recurrenceRequest, scopeNote } from '@/features/transactions/recurrence'
 
 /** The dialog open on the statement, if any */
 export type TransactionDialog =
@@ -83,11 +84,11 @@ export function TransactionDialogs({
         groups={groups}
         month={month}
         paymentMethods={paymentMethods}
-        onSubmit={({ repeatMonths, dueDay, paymentUrl, paymentMethodId, ...values }) =>
+        onSubmit={({ repeatMonths, openEnded, adjustment, dueDay, paymentUrl, paymentMethodId, ...values }) =>
           actions.create({
             ...values,
             month,
-            ...(repeatMonths > 1 ? { repeatMonths } : {}),
+            ...recurrenceRequest({ repeatMonths, openEnded, adjustment }),
             ...(dueDay !== null ? { dueDay } : {}),
             ...(paymentUrl !== null ? { paymentUrl } : {}),
             ...(paymentMethodId !== null ? { paymentMethodId } : {}),
@@ -146,13 +147,22 @@ export function TransactionDialogs({
         title={transaction ? transactionTitle(transaction) : ''}
         series={transaction?.series ?? null}
         settledLabel="realizados"
-        onSubmit={(untilMonth) => actions.setSeriesEnd(transaction!.id, untilMonth)}
+        onSubmit={(change) => actions.setSeriesEnd(transaction!.id, change)}
         errorMessage={seriesErrorMessage}
       />
       <RecurrenceScopeDialog
         open={dialog?.type === 'update-scope'}
         onOpenChange={close}
         action="update"
+        note={
+          dialog?.type === 'update-scope'
+            ? scopeNote(
+                dialog.transaction.series,
+                'update',
+                dialog.patch.plannedCents !== dialog.transaction.plannedCents,
+              )
+            : undefined
+        }
         onChoose={(scope) =>
           dialog?.type === 'update-scope'
             ? actions.update(dialog.transaction.id, dialog.patch, scope)
@@ -164,6 +174,7 @@ export function TransactionDialogs({
         open={dialog?.type === 'delete-scope'}
         onOpenChange={close}
         action="delete"
+        note={scopeNote(transaction?.series, 'delete')}
         onChoose={(scope) => actions.remove(transaction!.id, scope)}
         errorMessage={message('Não foi possível excluir.')}
       />

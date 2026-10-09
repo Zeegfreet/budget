@@ -46,6 +46,7 @@ model User {
   categoryGroups      CategoryGroup[]
   categories          Category[]
   transactions        Transaction[]
+  recurrences         Recurrence[]
   groupMemberships    GroupMember[]
   invitationsSent     GroupInvitation[]    @relation("InvitationInviter")
   invitationsReceived GroupInvitation[]    @relation("InvitationInvitee")
@@ -271,6 +272,7 @@ model FinanceGroup {
   invitations  GroupInvitation[]
   splitMethods SplitMethod[]
   transactions GroupTransaction[]
+  recurrences  GroupRecurrence[]
   categories   GroupCategory[]
 }
 
@@ -429,4 +431,41 @@ model GroupMemberCategoryLink {
 
   @@id([memberId, groupCategoryId])
   @@index([categoryId])
+}
+
+/// Rule of an open-ended (or scheduled-adjustment) recurring series: its
+/// occurrences are created on demand, up to a moving horizon, copying the last
+/// one. Keyed by the `seriesId` it feeds; it never stores the amount.
+model Recurrence {
+  id                Int     @id @default(autoincrement())
+  userId            Int
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seriesId          String  @unique
+  /// Last month of the series; `null` = no end
+  endMonth          String?
+  /// Last month already created (only moves forward)
+  generatedUntil    String
+  /// Scheduled adjustment in basis points (500 = 5%)
+  adjustPercentBp   Int?
+  /// Months between adjustments (e.g. 12)
+  adjustEveryMonths Int?
+  /// First month the adjustment applies; then every `adjustEveryMonths`
+  adjustFirstMonth  String?
+
+  @@index([userId])
+}
+
+/// A group's `Recurrence` (same fields, owned by the group).
+model GroupRecurrence {
+  id                Int          @id @default(autoincrement())
+  groupId           Int
+  group             FinanceGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  seriesId          String       @unique
+  endMonth          String?
+  generatedUntil    String
+  adjustPercentBp   Int?
+  adjustEveryMonths Int?
+  adjustFirstMonth  String?
+
+  @@index([groupId])
 }

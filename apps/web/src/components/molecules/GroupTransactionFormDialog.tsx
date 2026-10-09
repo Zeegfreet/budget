@@ -10,18 +10,22 @@ import {
 } from '@/components/ui/dialog'
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import { Switch } from '@/components/ui/switch'
-import { addMonths, formatMonthLabel, formatMonthLong } from '@/features/budget/months'
+import { formatMonthLong } from '@/features/budget/months'
 import type { EntryKind, Month } from '@/features/budget/types'
 import { previewShares, ruleError } from '@/features/groups/split'
 import type { GroupCategory, GroupMember, SplitMethod } from '@/features/groups/types'
+import {
+  type AdjustmentInput,
+  EMPTY_RECURRENCE,
+  parseRecurrence,
+  type RecurrenceErrors,
+} from '@/features/transactions/recurrence'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
 import { parseWhole } from '@/lib/numbers'
 import { INVALID_PAYMENT_URL, MAX_PAYMENT_URL_LENGTH, parsePaymentUrl } from '@/lib/payment-url'
 import { FormField } from './FormField'
-import { MAX_REPEAT_MONTHS, MAX_TRANSACTION_DESCRIPTION_LENGTH } from './TransactionFormDialog'
-
-const DEFAULT_REPEAT_MONTHS = 12
+import { RecurrenceFields } from './RecurrenceFields'
+import { MAX_TRANSACTION_DESCRIPTION_LENGTH } from './TransactionFormDialog'
 
 export interface GroupTransactionFormValues {
   description: string
@@ -35,8 +39,12 @@ export interface GroupTransactionFormValues {
   categoryId: number | null
   /** `null` while pending */
   paidByMemberId: number | null
-  /** 1 when not recurring */
+  /** 1 when not recurring (or open-ended) */
   repeatMonths: number
+  /** Repeats every month with no end */
+  openEnded: boolean
+  /** Scheduled adjustment (not with a FIXED rule) */
+  adjustment: AdjustmentInput | null
 }
 
 interface GroupTransactionFormDialogProps {
@@ -66,9 +74,9 @@ interface GroupTransactionFormDialogProps {
 
 const KIND_LABEL = { INCOME: 'receita', EXPENSE: 'despesa' } as const
 
-type Errors = Partial<
-  Record<'description' | 'amount' | 'splitMethodId' | 'dueDay' | 'paymentUrl' | 'repeatMonths', string>
->
+type Errors = Partial<Record<'description' | 'amount' | 'splitMethodId' | 'dueDay' | 'paymentUrl', string>> & {
+  recurrence?: RecurrenceErrors
+}
 
 /** Launches an income or expense of the group, split by one of its rules, or edits one. */
 export function GroupTransactionFormDialog({ open, onOpenChange, ...props }: GroupTransactionFormDialogProps) {
@@ -106,8 +114,7 @@ function GroupTransactionForm({
     (c) => c.kind === kind && (c.active || c.id === initial?.categoryId),
   )
   const [payer, setPayer] = useState('')
-  const [repeat, setRepeat] = useState(false)
-  const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
+  const [recurrence, setRecurrence] = useState(EMPTY_RECURRENCE)
   const [errors, setErrors] = useState<Errors>({})
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -121,8 +128,6 @@ function GroupTransactionForm({
     rule && cents !== null && cents > 0 && !fitError
       ? previewShares(cents, rule.type, rule.shares, members.map((m) => m.id))
       : []
-  const times = /^\d+$/.test(repeatMonths.trim()) ? Number(repeatMonths) : NaN
-  const validTimes = times >= 2 && times <= MAX_REPEAT_MONTHS
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -136,7 +141,11 @@ function GroupTransactionForm({
     if (day === undefined) next.dueDay = 'Informe um dia entre 1 e 31.'
     const paymentUrl = parsePaymentUrl(link)
     if (paymentUrl === undefined) next.paymentUrl = INVALID_PAYMENT_URL
-    if (repeat && !validTimes) next.repeatMonths = `Informe de 2 a ${MAX_REPEAT_MONTHS} meses.`
+    const repeat = parseRecurrence(recurrence, month)
+    if (!editing && !repeat.values) next.recurrence = repeat.errors
+    else if (!editing && repeat.values?.adjustment && rule?.type === 'FIXED') {
+      next.recurrence = { percent: 'Uma regra de valores fixos não tem reajuste automático.' }
+    }
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
@@ -151,7 +160,9 @@ function GroupTransactionForm({
         paymentUrl: paymentUrl ?? null,
         categoryId: categoryId ? Number(categoryId) : null,
         paidByMemberId: payer ? Number(payer) : null,
-        repeatMonths: repeat ? times : 1,
+        repeatMonths: repeat.values?.repeatMonths ?? 1,
+        openEnded: repeat.values?.openEnded ?? false,
+        adjustment: repeat.values?.adjustment ?? null,
       })
       onDone()
     } catch (e) {
@@ -282,27 +293,13 @@ function GroupTransactionForm({
             </NativeSelect>
           </Field>
 
-          <div className="flex flex-col gap-3 rounded-lg border p-3">
-            <div className="flex items-center gap-3">
-              <Switch id={`${id}-repeat`} checked={repeat} onCheckedChange={setRepeat} />
-              <FieldLabel htmlFor={`${id}-repeat`}>Repetir nos próximos meses</FieldLabel>
-            </div>
-            {repeat && (
-              <FormField
-                label="Quantidade de meses"
-                description={
-                  validTimes
-                    ? `De ${formatMonthLabel(month)} a ${formatMonthLabel(addMonths(month, times - 1))}. Só este mês sai como pago.`
-                    : `De 2 a ${MAX_REPEAT_MONTHS} meses, contando este mês.`
-                }
-                inputMode="numeric"
-                value={repeatMonths}
-                onChange={(e) => setRepeatMonths(e.target.value)}
-                error={errors.repeatMonths}
-                className="w-24"
-              />
-            )}
-          </div>
+          <RecurrenceFields
+            month={month}
+            value={recurrence}
+            onChange={setRecurrence}
+            errors={errors.recurrence ?? {}}
+            note="Só este mês sai como pago."
+          />
         </>
       )}
 

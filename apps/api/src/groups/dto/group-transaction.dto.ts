@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  Equals,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -24,6 +25,7 @@ import {
 import { IsPaymentUrl } from '../../budget/dto/payment-url.js';
 import { MAX_AMOUNT_CENTS } from '../../budget/dto/save-lines.dto.js';
 import {
+  AdjustmentDto,
   RECURRENCE_SCOPES,
   SeriesPositionDto,
   type RecurrenceScope,
@@ -82,6 +84,25 @@ export class CreateGroupTransactionDto {
   @Min(1)
   @Max(MAX_REPEAT_MONTHS)
   repeatMonths?: number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Repeats every month with no end (occurrences are created ahead as months are read); not with `repeatMonths`',
+  })
+  @IsOptional()
+  @Equals(true, { message: 'openEnded must be true when sent' })
+  openEnded?: boolean;
+
+  @ApiPropertyOptional({
+    type: AdjustmentDto,
+    description:
+      'Scheduled adjustment of a recurring launch (`repeatMonths > 1` or `openEnded`); not with a FIXED rule',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdjustmentDto)
+  adjustment?: AdjustmentDto;
 
   @ApiPropertyOptional({
     example: 10,

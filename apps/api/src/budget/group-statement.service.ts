@@ -6,12 +6,13 @@ import {
 import { computeGroupBalance, isShareSettled } from '../groups/settlement.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RecurrenceService } from '../recurrence/recurrence.service.js';
 import type {
   GroupStatementDto,
   GroupStatementItemDto,
 } from './dto/group-statement.dto.js';
 import { linkedCategoryId } from './group-shares.js';
-import { seriesPositions } from './series.js';
+import { recurrencesBySeries, seriesPositions } from './series.js';
 
 const categorySelect = {
   id: true,
@@ -36,9 +37,13 @@ const linkRef = (c: CategoryRow | null) =>
  */
 @Injectable()
 export class GroupStatementService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recurrences: RecurrenceService,
+  ) {}
 
   async list(userId: number, month: string): Promise<GroupStatementDto[]> {
+    await this.recurrences.ensureForUser(userId, month);
     const memberships = await this.prisma.groupMember.findMany({
       where: {
         userId,
@@ -228,11 +233,16 @@ export class GroupStatementService {
   /** Position of each occurrence in its series (e.g. 3 of 12), by series and id. */
   private async seriesPositions(seriesIds: string[]) {
     if (seriesIds.length === 0) return seriesPositions([]);
-    return seriesPositions(
-      await this.prisma.groupTransaction.findMany({
-        where: { seriesId: { in: [...new Set(seriesIds)] } },
+    const ids = [...new Set(seriesIds)];
+    const [occurrences, rules] = await Promise.all([
+      this.prisma.groupTransaction.findMany({
+        where: { seriesId: { in: ids } },
         select: { id: true, seriesId: true, month: true },
       }),
-    );
+      this.prisma.groupRecurrence.findMany({
+        where: { seriesId: { in: ids } },
+      }),
+    ]);
+    return seriesPositions(occurrences, recurrencesBySeries(rules));
   }
 }

@@ -12,9 +12,36 @@ describe('seriesPositions', () => {
     ]);
 
     expect([...positions.get('s')!.entries()]).toEqual([
-      [1, { index: 1, count: 3, firstMonth: '2026-10', lastMonth: '2026-12' }],
-      [2, { index: 2, count: 3, firstMonth: '2026-10', lastMonth: '2026-12' }],
-      [3, { index: 3, count: 3, firstMonth: '2026-10', lastMonth: '2026-12' }],
+      [
+        1,
+        {
+          index: 1,
+          count: 3,
+          firstMonth: '2026-10',
+          lastMonth: '2026-12',
+          recurrence: null,
+        },
+      ],
+      [
+        2,
+        {
+          index: 2,
+          count: 3,
+          firstMonth: '2026-10',
+          lastMonth: '2026-12',
+          recurrence: null,
+        },
+      ],
+      [
+        3,
+        {
+          index: 3,
+          count: 3,
+          firstMonth: '2026-10',
+          lastMonth: '2026-12',
+          recurrence: null,
+        },
+      ],
     ]);
     expect(positions.has('alone')).toBe(false);
   });

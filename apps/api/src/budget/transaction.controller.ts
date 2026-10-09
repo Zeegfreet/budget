@@ -103,9 +103,9 @@ export class TransactionController {
   setSeriesEnd(
     @CurrentUser() user: JwtUser,
     @Param('id', ParseIntPipe) id: number,
-    @Body() { untilMonth }: SeriesEndDto,
+    @Body() body: SeriesEndDto,
   ): Promise<TransactionDto[]> {
-    return this.transactionService.setSeriesEnd(user.id, id, untilMonth);
+    return this.transactionService.setSeriesEnd(user.id, id, body);
   }
 
   @Put(':id/realization')

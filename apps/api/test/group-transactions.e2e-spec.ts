@@ -424,6 +424,7 @@ describe('Group split methods, transactions and balance (e2e)', () => {
         count: 12,
         firstMonth: '2026-11',
         lastMonth: '2027-10',
+        recurrence: null,
       });
     });
 

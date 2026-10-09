@@ -26,7 +26,8 @@ import {
   updateSplitMethod,
 } from './api'
 import { budgetQueries } from '@/features/budget/queries'
-import type { Month } from '@/features/budget/types'
+import { seriesToast } from '@/features/transactions/recurrence'
+import type { SeriesChange } from '@/features/transactions/types'
 import { groupQueries, invitationQueries } from './queries'
 import type {
   GroupCategoryInput,
@@ -240,10 +241,10 @@ export function useGroupTransactionActions(groupId: number) {
       await refresh()
       toast.success(scope === 'FOLLOWING' ? 'Lançamentos excluídos' : 'Lançamento excluído')
     },
-    async setSeriesEnd(id: number, untilMonth: Month) {
-      const series = await setGroupTransactionSeriesEnd(groupId, id, untilMonth)
+    async setSeriesEnd(id: number, change: SeriesChange) {
+      const series = await setGroupTransactionSeriesEnd(groupId, id, change)
       await refresh()
-      toast.success(`Recorrência ajustada: ${series.length} ${series.length === 1 ? 'lançamento' : 'lançamentos'}`)
+      toast.success(seriesToast(change, series.length))
     },
     async pay(id: number, memberId: number) {
       await payGroupTransaction(groupId, id, memberId)

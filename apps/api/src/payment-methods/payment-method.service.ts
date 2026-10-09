@@ -10,6 +10,7 @@ import { isShareSettled } from '../groups/settlement.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RecurrenceService } from '../recurrence/recurrence.service.js';
 import type {
   CreatePaymentMethodDto,
   InvoiceDto,
@@ -45,6 +46,7 @@ export class PaymentMethodService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly transactions: TransactionService,
+    private readonly recurrences: RecurrenceService,
   ) {}
 
   /** Every method (inactive ones too), by name, with its invoice of `month`. */
@@ -52,6 +54,7 @@ export class PaymentMethodService {
     userId: number,
     month: string,
   ): Promise<PaymentMethodSummaryDto[]> {
+    await this.recurrences.ensureForUser(userId, month);
     const methods = await this.prisma.paymentMethod.findMany({
       where: { userId },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -111,6 +114,7 @@ export class PaymentMethodService {
     month: string,
   ): Promise<InvoiceDto> {
     const paymentMethod = await this.find(userId, id);
+    await this.recurrences.ensureForUser(userId, month);
     const [transactions, shares] = await Promise.all([
       this.transactions.listByPaymentMethod(userId, id, month),
       this.shareRows(userId, [id], { equals: month }),
@@ -149,6 +153,7 @@ export class PaymentMethodService {
       );
     }
     await this.find(userId, id);
+    await this.recurrences.ensureForUser(userId, to);
     const { transactions, shares } = await this.items(userId, [id], {
       gte: from,
       lte: to,
@@ -171,6 +176,7 @@ export class PaymentMethodService {
    */
   async pay(userId: number, id: number, month: string): Promise<InvoiceDto> {
     await this.find(userId, id);
+    await this.recurrences.ensureForUser(userId, month);
     const pending = await this.prisma.transaction.findMany({
       where: { userId, paymentMethodId: id, month, realizedCents: null },
       select: { id: true, plannedCents: true },

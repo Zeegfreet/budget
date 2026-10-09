@@ -454,7 +454,7 @@ describe('Dashboard route (/)', () => {
       await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Netflix')
       await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '55,90')
       await userEvent.type(within(dialog).getByRole('textbox', { name: 'Dia de vencimento (opcional)' }), '5')
-      await userEvent.click(within(dialog).getByRole('switch', { name: 'Repetir nos próximos meses' }))
+      await userEvent.selectOptions(within(dialog).getByLabelText('Repetir'), 'Por alguns meses')
       await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -489,6 +489,43 @@ describe('Dashboard route (/)', () => {
       await waitFor(() =>
         expect(screen.queryByRole('region', { name: 'Alterações não salvas' })).not.toBeInTheDocument(),
       )
+    })
+
+    it('plans an open-ended launch with a scheduled adjustment', async () => {
+      await openDashboard('Lazer')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Novo lançamento em Lazer' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Descrição (opcional)' }), 'Academia')
+      await userEvent.type(within(dialog).getByRole('textbox', { name: 'Valor previsto (R$)' }), '100')
+      await userEvent.selectOptions(within(dialog).getByLabelText('Repetir'), 'Todo mês, sem data de término')
+      await userEvent.click(within(dialog).getByRole('switch', { name: 'Reajuste automático' }))
+      await userEvent.type(within(dialog).getByLabelText('Percentual (%)'), '10')
+      const every = within(dialog).getByLabelText('A cada (meses)')
+      await userEvent.clear(every)
+      await userEvent.type(every, '6')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+      // The draft already shows the raise, 6 months after the start
+      expect(cell('Academia em março de 2027')).toHaveValue('100,00')
+      expect(cell('Academia em abril de 2027')).toHaveValue('110,00')
+      expect(cell('Academia em setembro de 2027')).toHaveValue('110,00')
+      await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+      expect(savePlanMock).toHaveBeenCalledWith({
+        createLines: [
+          {
+            ref: -1,
+            categoryId: 3,
+            description: 'Academia',
+            plannedCents: 10000,
+            month: '2026-10',
+            openEnded: true,
+            adjustment: { percentBp: 1000, everyMonths: 6 },
+          },
+        ],
+      })
     })
 
     it('edits and deletes a launch that is not saved yet', async () => {

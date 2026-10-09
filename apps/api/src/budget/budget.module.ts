@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { RecurrenceModule } from '../recurrence/recurrence.module.js';
 import { BudgetController } from './budget.controller.js';
 import { BudgetService } from './budget.service.js';
 import { CategoryController } from './category.controller.js';
@@ -11,7 +12,7 @@ import { TransactionController } from './transaction.controller.js';
 import { TransactionService } from './transaction.service.js';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, RecurrenceModule],
   controllers: [
     BudgetController,
     CategoryController,

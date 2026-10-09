@@ -107,7 +107,7 @@ describe('Group route (/grupos/$groupId)', () => {
       await userEvent.selectOptions(within(dialog).getByLabelText('Regra de rateio'), 'Aluguel 30/70')
       expect(within(dialog).getByLabelText('Divisão')).toHaveTextContent(/Ana R\$\s90,00 · Bruno R\$\s210,00/)
       await userEvent.selectOptions(within(dialog).getByLabelText('Pago por'), 'Bruno')
-      await userEvent.click(within(dialog).getByRole('switch', { name: 'Repetir nos próximos meses' }))
+      await userEvent.selectOptions(within(dialog).getByLabelText('Repetir'), 'Por alguns meses')
       await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -504,7 +504,7 @@ describe('Group route (/grupos/$groupId)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(setGroupTransactionSeriesEnd).toHaveBeenCalledWith(7, 10, '2027-10')
+      expect(setGroupTransactionSeriesEnd).toHaveBeenCalledWith(7, 10, { untilMonth: '2027-10' })
       expect(fetchGroupTransactions).toHaveBeenCalledTimes(2)
     })
 
@@ -521,7 +521,7 @@ describe('Group route (/grupos/$groupId)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('Há lançamentos já pagos depois desse mês')
-      expect(setGroupTransactionSeriesEnd).toHaveBeenCalledWith(7, 10, '2027-08')
+      expect(setGroupTransactionSeriesEnd).toHaveBeenCalledWith(7, 10, { untilMonth: '2027-08' })
     })
 
     it('shows no badge button for single transactions', async () => {

@@ -1,4 +1,5 @@
 import type { EntryKind, Month, SeriesPosition } from '@/features/budget/types'
+import type { AdjustmentInput } from '@/features/transactions/recurrence'
 import type { RecurrenceScope } from '@/features/transactions/types'
 
 export type { RecurrenceScope }
@@ -171,6 +172,10 @@ export interface GroupTransactionInput {
   splitMethodId: number
   paidByMemberId?: number | null
   repeatMonths?: number
+  /** Repeats every month with no end */
+  openEnded?: boolean
+  /** Scheduled adjustment (not with a FIXED rule) */
+  adjustment?: AdjustmentInput
   dueDay?: number | null
   paymentUrl?: string | null
   /** A category of the group with the same kind */

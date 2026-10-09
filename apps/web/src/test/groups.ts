@@ -98,7 +98,7 @@ export const rentTransaction = makeGroupTransaction(10, {
   amountCents: 200000,
   splitMethod: { id: percentRule.id, name: percentRule.name, type: 'PERCENT' },
   paidBy: { memberId: 1, name: 'Ana' },
-  series: { index: 1, count: 12, firstMonth: '2026-10', lastMonth: '2027-09' },
+  series: { index: 1, count: 12, firstMonth: '2026-10', lastMonth: '2027-09', recurrence: null },
   shares: [
     { memberId: 1, name: 'Ana', amountCents: 60000, settled: false },
     { memberId: 2, name: 'Bruno', amountCents: 140000, settled: false },

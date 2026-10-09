@@ -280,6 +280,7 @@ describe('Budget (e2e)', () => {
             count: 2,
             firstMonth: '2026-10',
             lastMonth: '2026-12',
+            recurrence: null,
           },
         }),
       ]);

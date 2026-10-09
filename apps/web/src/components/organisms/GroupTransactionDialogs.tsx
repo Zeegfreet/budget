@@ -17,6 +17,7 @@ import type {
   GroupTransactionPatch,
   SplitMethod,
 } from '@/features/groups/types'
+import { recurrenceRequest, scopeNote } from '@/features/transactions/recurrence'
 
 /** The dialog open for the group's transactions, if any */
 export type GroupTransactionDialog =
@@ -85,7 +86,7 @@ export function GroupTransactionDialogs({
         members={group.members}
         splitMethods={splitMethods}
         categories={group.categories}
-        onSubmit={({ repeatMonths, paidByMemberId, dueDay, paymentUrl, categoryId, ...values }) =>
+        onSubmit={({ repeatMonths, openEnded, adjustment, paidByMemberId, dueDay, paymentUrl, categoryId, ...values }) =>
           actions.create({
             ...values,
             kind: dialog?.type === 'create' ? dialog.kind : 'EXPENSE',
@@ -94,7 +95,7 @@ export function GroupTransactionDialogs({
             ...(dueDay !== null ? { dueDay } : {}),
             ...(paymentUrl !== null ? { paymentUrl } : {}),
             ...(categoryId !== null ? { categoryId } : {}),
-            ...(repeatMonths > 1 ? { repeatMonths } : {}),
+            ...recurrenceRequest({ repeatMonths, openEnded, adjustment }),
           })
         }
         errorMessage={message('Não foi possível lançar.')}
@@ -156,13 +157,22 @@ export function GroupTransactionDialogs({
         title={transaction?.description ?? ''}
         series={transaction?.series ?? null}
         settledLabel="pagos"
-        onSubmit={(untilMonth) => actions.setSeriesEnd(transaction!.id, untilMonth)}
+        onSubmit={(change) => actions.setSeriesEnd(transaction!.id, change)}
         errorMessage={groupSeriesErrorMessage}
       />
       <RecurrenceScopeDialog
         open={dialog?.type === 'update-scope'}
         onOpenChange={close}
         action="update"
+        note={
+          dialog?.type === 'update-scope'
+            ? scopeNote(
+                dialog.transaction.series,
+                'update',
+                dialog.patch.amountCents !== undefined && dialog.patch.amountCents !== dialog.transaction.amountCents,
+              )
+            : undefined
+        }
         onChoose={(scope) =>
           dialog?.type === 'update-scope'
             ? actions.update(dialog.transaction.id, dialog.patch, scope)
@@ -174,6 +184,7 @@ export function GroupTransactionDialogs({
         open={dialog?.type === 'delete-scope'}
         onOpenChange={close}
         action="delete"
+        note={scopeNote(transaction?.series, 'delete')}
         onChoose={(scope) => actions.remove(transaction!.id, scope)}
         errorMessage={message('Não foi possível excluir.')}
       />

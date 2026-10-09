@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../prisma/generated/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import type { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { BudgetService } from './budget.service.js';
 import { DEFAULT_CATEGORIES } from './default-categories.js';
 
@@ -23,7 +24,13 @@ describe('BudgetService', () => {
     },
     groupTransactionShare: { findMany: vi.fn() },
   };
-  const service = new BudgetService(prisma as unknown as PrismaService);
+  const service = new BudgetService(
+    prisma as unknown as PrismaService,
+    {
+      ensureForUser: vi.fn(),
+      ensureForGroup: vi.fn(),
+    } as unknown as RecurrenceService,
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();

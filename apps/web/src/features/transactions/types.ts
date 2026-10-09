@@ -1,5 +1,6 @@
 import type { EntryKind, Month, SeriesPosition } from '@/features/budget/types'
 import type { PaymentMethod } from '@/features/payment-methods/types'
+import type { AdjustmentInput } from './recurrence'
 
 /** Which occurrences of a recurring transaction a change applies to */
 export type RecurrenceScope = 'ONE' | 'FOLLOWING'
@@ -39,6 +40,10 @@ export interface TransactionInput {
   plannedCents: number
   /** Creates one occurrence per month, starting at `month` (1–60) */
   repeatMonths?: number
+  /** Repeats every month with no end (not with `repeatMonths`) */
+  openEnded?: boolean
+  /** Scheduled adjustment of a recurring launch */
+  adjustment?: AdjustmentInput
   /** Day of the month it is due (1–31), in every occurrence */
   dueDay?: number | null
   /** Link to the bill (boleto) or the portal where it is paid (http/https) */
@@ -54,3 +59,9 @@ export type TransactionPatch = Partial<
     'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'paymentUrl' | 'paymentMethodId'
   >
 >
+
+/** Body of `PUT …/series`: the new end (`null` = no end) and, when sent, the adjustment (`null` removes it) */
+export interface SeriesChange {
+  untilMonth: Month | null
+  adjustment?: AdjustmentInput | null
+}

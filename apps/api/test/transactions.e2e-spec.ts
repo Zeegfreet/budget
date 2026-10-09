@@ -167,6 +167,7 @@ describe('Transactions (e2e)', () => {
           count: 12,
           firstMonth: '2026-10',
           lastMonth: '2027-09',
+          recurrence: null,
         })),
       );
 
@@ -665,6 +666,7 @@ describe('Transactions (e2e)', () => {
           count: 14,
           firstMonth: '2026-10',
           lastMonth: '2027-11',
+          recurrence: null,
         },
       });
       expect((await month(ana, '2026-10'))[0].series).toMatchObject({
@@ -689,6 +691,7 @@ describe('Transactions (e2e)', () => {
         count: 3,
         firstMonth: '2026-10',
         lastMonth: '2026-12',
+        recurrence: null,
       });
     });
 

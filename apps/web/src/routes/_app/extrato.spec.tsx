@@ -272,7 +272,7 @@ describe('Statement route (/extrato)', () => {
       await userEvent.selectOptions(select, 'Lazer')
       await userEvent.type(within(dialog).getByLabelText('Descrição (opcional)'), 'Cinema')
       await userEvent.type(within(dialog).getByLabelText('Valor previsto (R$)'), '150')
-      await userEvent.click(within(dialog).getByRole('switch', { name: 'Repetir nos próximos meses' }))
+      await userEvent.selectOptions(within(dialog).getByLabelText('Repetir'), 'Por alguns meses')
       expect(within(dialog).getByLabelText('Quantidade de meses')).toHaveValue('12')
       expect(within(dialog).getByText('De out/26 a set/27, contando este mês.')).toBeInTheDocument()
       await userEvent.click(within(dialog).getByRole('button', { name: 'Lançar' }))
@@ -322,7 +322,7 @@ describe('Statement route (/extrato)', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Nova despesa' }))
       const dialog = await screen.findByRole('dialog', { name: 'Nova despesa' })
-      await userEvent.click(within(dialog).getByRole('switch', { name: 'Repetir nos próximos meses' }))
+      await userEvent.selectOptions(within(dialog).getByLabelText('Repetir'), 'Por alguns meses')
       const times = within(dialog).getByLabelText('Quantidade de meses')
       await userEvent.clear(times)
       await userEvent.type(times, '61')
@@ -621,7 +621,7 @@ describe('Statement route (/extrato)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(setTransactionSeriesEnd).toHaveBeenCalledWith(2, '2027-12')
+      expect(setTransactionSeriesEnd).toHaveBeenCalledWith(2, { untilMonth: '2027-12' })
       // The statement reads it back
       expect(fetchTransactionsMock).toHaveBeenCalledTimes(2)
     })
@@ -642,7 +642,7 @@ describe('Statement route (/extrato)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }))
 
       expect(await within(dialog).findByRole('alert')).toHaveTextContent('Há lançamentos já realizados depois desse mês')
-      expect(setTransactionSeriesEnd).toHaveBeenCalledWith(2, '2027-03')
+      expect(setTransactionSeriesEnd).toHaveBeenCalledWith(2, { untilMonth: '2027-03' })
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
 
