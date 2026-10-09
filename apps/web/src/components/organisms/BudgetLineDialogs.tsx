@@ -7,6 +7,7 @@ import type { CategoryGroup, EntryKind, Month } from '@/features/budget/types'
 import type { PaymentMethod } from '@/features/payment-methods/types'
 import { transactionErrorMessage } from '@/features/transactions/errors'
 import type { TransactionPatch } from '@/features/transactions/types'
+import { recurrenceRequest } from '@/features/transactions/recurrence'
 
 /** The launch dialog open on the dashboard, if any */
 export type LineDialog =
@@ -82,12 +83,12 @@ export function BudgetLineDialogs({ dialog, onClose, month, groups, paymentMetho
         paymentMethods={paymentMethods}
         defaultCategoryId={dialog?.type === 'create-line' ? dialog.categoryId : undefined}
         note={`Lançamento previsto para ${formatMonthLong(month)}. ${PLAN_NOTE}`}
-        onSubmit={({ repeatMonths, dueDay, paymentUrl, paymentMethodId, ...values }) =>
+        onSubmit={({ repeatMonths, openEnded, adjustment, dueDay, paymentUrl, paymentMethodId, ...values }) =>
           actions.create(
             {
               ...values,
               month,
-              ...(repeatMonths > 1 ? { repeatMonths } : {}),
+              ...recurrenceRequest({ repeatMonths, openEnded, adjustment }),
               ...(dueDay !== null ? { dueDay } : {}),
               ...(paymentUrl !== null ? { paymentUrl } : {}),
               ...(paymentMethodId !== null ? { paymentMethodId } : {}),

@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import type { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { TransactionService } from './transaction.service.js';
 
 describe('TransactionService', () => {
@@ -11,6 +12,7 @@ describe('TransactionService', () => {
     $transaction: vi.fn(),
     category: { findMany: vi.fn(), findFirst: vi.fn() },
     paymentMethod: { findFirst: vi.fn() },
+    recurrence: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     transaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -22,7 +24,13 @@ describe('TransactionService', () => {
       deleteMany: vi.fn(),
     },
   };
-  const service = new TransactionService(prisma as unknown as PrismaService);
+  const service = new TransactionService(
+    prisma as unknown as PrismaService,
+    {
+      ensureForUser: vi.fn(),
+      ensureForGroup: vi.fn(),
+    } as unknown as RecurrenceService,
+  );
 
   const group = (extra = {}) => ({
     id: 10,
@@ -150,6 +158,7 @@ describe('TransactionService', () => {
         count: 3,
         firstMonth: '2026-10',
         lastMonth: '2026-12',
+        recurrence: null,
       });
       expect(prisma.transaction.findMany).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -515,7 +524,7 @@ describe('TransactionService', () => {
         { id: 6, month: '2026-11', realizedCents: null },
       ]);
 
-      await service.setSeriesEnd(7, 5, '2027-01');
+      await service.setSeriesEnd(7, 5, { untilMonth: '2027-01' });
 
       expect(prisma.transaction.findMany).toHaveBeenNthCalledWith(
         1,
@@ -542,7 +551,7 @@ describe('TransactionService', () => {
     it('turns a plain launch into a series', async () => {
       prisma.transaction.findFirst.mockResolvedValue(row(5));
 
-      await service.setSeriesEnd(7, 5, '2026-11');
+      await service.setSeriesEnd(7, 5, { untilMonth: '2026-11' });
 
       const [join, , create] = prisma.$transaction.mock.calls[0][0];
       const { seriesId } = join.update.data;
@@ -561,7 +570,7 @@ describe('TransactionService', () => {
         { id: 7, month: '2026-12', realizedCents: null },
       ]);
 
-      await service.setSeriesEnd(7, 5, '2026-10');
+      await service.setSeriesEnd(7, 5, { untilMonth: '2026-10' });
 
       expect(prisma.$transaction.mock.calls[0][0]).toEqual([
         { deleteMany: { where: { userId: 7, id: { in: [6, 7] } } } },
@@ -577,9 +586,9 @@ describe('TransactionService', () => {
         { id: 6, month: '2026-11', realizedCents: 900 },
       ]);
 
-      await expect(service.setSeriesEnd(7, 5, '2026-10')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.setSeriesEnd(7, 5, { untilMonth: '2026-10' }),
+      ).rejects.toThrow(ConflictException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
@@ -590,18 +599,18 @@ describe('TransactionService', () => {
         category: { active: false, group: { active: true } },
       });
 
-      await expect(service.setSeriesEnd(7, 5, '2026-12')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.setSeriesEnd(7, 5, { untilMonth: '2026-12' }),
+      ).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('returns 404 for another user’s transaction', async () => {
       prisma.transaction.findFirst.mockResolvedValue(null);
 
-      await expect(service.setSeriesEnd(7, 5, '2026-12')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.setSeriesEnd(7, 5, { untilMonth: '2026-12' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

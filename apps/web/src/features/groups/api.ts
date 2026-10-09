@@ -1,5 +1,6 @@
 import { api } from '@/lib/api/client'
 import type { Month } from '@/features/budget/types'
+import type { SeriesChange } from '@/features/transactions/types'
 import type {
   FinanceGroup,
   FinanceGroupSummary,
@@ -154,13 +155,17 @@ export async function deleteGroupTransaction(groupId: number, id: number, scope:
   await api.delete(`/groups/${groupId}/transactions/${id}`, { params: { scope } })
 }
 
-/** Moves the series' last month: extends it with unpaid copies of the last occurrence, or drops the unpaid ones after it */
+/**
+ * Moves the series' last month (extends it with unpaid copies of the last
+ * occurrence, or drops the unpaid ones after it); `null` makes it open-ended.
+ * A sent `adjustment` replaces the scheduled one (`null` removes it).
+ */
 export async function setGroupTransactionSeriesEnd(
   groupId: number,
   id: number,
-  untilMonth: Month,
+  change: SeriesChange,
 ): Promise<GroupTransaction[]> {
-  const { data } = await api.put<GroupTransaction[]>(`/groups/${groupId}/transactions/${id}/series`, { untilMonth })
+  const { data } = await api.put<GroupTransaction[]>(`/groups/${groupId}/transactions/${id}/series`, change)
   return data
 }
 

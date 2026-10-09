@@ -78,7 +78,7 @@ export async function resplitPending(
   }
 }
 
-type Rule = {
+export type Rule = {
   type: Parameters<typeof computeShares>[1]['type'];
   active: boolean;
   shares: { memberId: number; value: number }[];
@@ -109,6 +109,25 @@ function divide(
   if (current.every((s) => activeIds.includes(s.memberId))) return null;
   return (
     redistribute(amountCents, current, activeIds) ??
+    computeShares(amountCents, { type: 'EQUAL', shares: [] }, activeIds)
+  );
+}
+
+/**
+ * Shares of a new occurrence of `amountCents` copied from a launch divided as
+ * `template`: the current rule when it can divide it (a FIXED rule sets the
+ * amount to its total), else the template's proportions among the active
+ * members, else equal among them.
+ */
+export function divideCopy(
+  amountCents: number,
+  rule: Rule,
+  template: MemberShare[],
+  activeIds: number[],
+): MemberShare[] {
+  return (
+    divide(amountCents, rule, template, activeIds) ??
+    redistribute(amountCents, template, activeIds) ??
     computeShares(amountCents, { type: 'EQUAL', shares: [] }, activeIds)
   );
 }

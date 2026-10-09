@@ -12,6 +12,7 @@ import type {
   Month,
   PlanRequest,
 } from './types'
+import { projectAmounts, resolveAdjustment } from '@/features/transactions/recurrence'
 
 /**
  * Unsaved changes of the dashboard's planning table: the category tree, goals,
@@ -323,7 +324,11 @@ export function planReducer(plan: Plan, action: PlanAction, base: PlanBase): Pla
 
 /** A launch created by the plan as a grid row: pending cells in the window from its month */
 function createdRow({ ref, input, paymentMethod }: CreatedLine, months: Month[]): BudgetLine {
-  const end = addMonths(input.month, input.repeatMonths ?? 1)
+  // Exclusive end; an open-ended launch fills every month of the window from its start
+  const end = input.openEnded ? null : addMonths(input.month, input.repeatMonths ?? 1)
+  const shown = months.filter((m) => m >= input.month && (end === null || m < end))
+  const adjustment = input.adjustment ? resolveAdjustment(input.adjustment, input.month) : null
+  const amounts = projectAmounts(input.plannedCents, input.month, shown, adjustment)
   return {
     anchorId: ref,
     categoryId: input.categoryId,
@@ -331,9 +336,7 @@ function createdRow({ ref, input, paymentMethod }: CreatedLine, months: Month[])
     dueDay: input.dueDay ?? null,
     paymentUrl: input.paymentUrl ?? null,
     paymentMethod,
-    cells: months
-      .filter((m) => m >= input.month && m < end)
-      .map((month) => ({ month, transactionId: ref, plannedCents: input.plannedCents, realizedCents: null })),
+    cells: shown.map((month, i) => ({ month, transactionId: ref, plannedCents: amounts[i], realizedCents: null })),
   }
 }
 

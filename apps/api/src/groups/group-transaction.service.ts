@@ -6,11 +6,30 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { RecurrenceScope } from '../budget/dto/transaction.dto.js';
+import type {
+  RecurrenceScope,
+  SeriesEndDto,
+} from '../budget/dto/transaction.dto.js';
 import { addMonths } from '../budget/month.js';
-import { planSeriesEnd, seriesPositions } from '../budget/series.js';
+import {
+  assertRecurrenceInput,
+  planSeriesEnd,
+  recurrencesBySeries,
+  reproject,
+  resolveAdjustment,
+  sameAdjustment,
+  seriesPositions,
+} from '../budget/series.js';
 import type { Prisma } from '../prisma/generated/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { generateGroup } from '../recurrence/generate.js';
+import {
+  adjustmentColumns,
+  adjustmentOf,
+  generationTarget,
+  projectAmounts,
+} from '../recurrence/recurrence.js';
+import { RecurrenceService } from '../recurrence/recurrence.service.js';
 import type {
   CreateGroupTransactionDto,
   GroupBalanceDto,
@@ -20,6 +39,7 @@ import type {
 } from './dto/group-transaction.dto.js';
 import { activeMembers, assertMember } from './group-access.js';
 import { assertUsableGroupCategory } from './group-category-access.js';
+import { divideCopy } from './resplit.js';
 import { computeGroupBalance } from './settlement.js';
 import { computeShares, type MemberShare, SplitRuleError } from './split.js';
 
@@ -76,7 +96,10 @@ const byDueDay = (a: DueDayOrdered, b: DueDayOrdered) =>
  */
 @Injectable()
 export class GroupTransactionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recurrences: RecurrenceService,
+  ) {}
 
   async list(
     userId: number,
@@ -84,6 +107,7 @@ export class GroupTransactionService {
     month: string,
   ): Promise<GroupTransactionDto[]> {
     await assertMember(this.prisma, userId, groupId);
+    await this.recurrences.ensureForGroup(groupId, month);
     const rows = await this.prisma.groupTransaction.findMany({
       where: { groupId, month },
       orderBy: { id: 'asc' },
@@ -92,7 +116,11 @@ export class GroupTransactionService {
     return this.present(groupId, rows.sort(byDueDay));
   }
 
-  /** Creates one occurrence per month; several share a new series. */
+  /**
+   * Creates one occurrence per month; several share a new series. With
+   * `openEnded` or a scheduled `adjustment` the series gets a rule
+   * (`GroupRecurrence`) and its later months are created by `generateGroup`.
+   */
   async create(
     userId: number,
     groupId: number,
@@ -104,18 +132,56 @@ export class GroupTransactionService {
       splitMethodId,
       paidByMemberId = null,
       repeatMonths = 1,
+      openEnded = false,
+      adjustment,
       dueDay = null,
       paymentUrl = null,
       categoryId = null,
     }: CreateGroupTransactionDto,
   ): Promise<GroupTransactionDto[]> {
     await assertMember(this.prisma, userId, groupId);
+    assertRecurrenceInput(repeatMonths, openEnded, adjustment !== undefined);
     if (categoryId !== null) {
       await assertUsableGroupCategory(this.prisma, groupId, categoryId, kind);
     }
     const shares = await this.shares(groupId, splitMethodId, amountCents);
     if (paidByMemberId !== null) {
       await this.assertActiveMember(groupId, paidByMemberId);
+    }
+    if (adjustment) await this.assertAdjustable(groupId, splitMethodId);
+    if (openEnded || adjustment) {
+      const seriesId = randomUUID();
+      await this.prisma.$transaction(async (tx) => {
+        await tx.groupTransaction.create({
+          data: {
+            groupId,
+            kind,
+            description,
+            month,
+            amountCents,
+            splitMethodId,
+            paidByMemberId,
+            createdById: userId,
+            seriesId,
+            dueDay,
+            paymentUrl,
+            categoryId,
+            shares: { create: shares },
+          },
+        });
+        const endMonth = openEnded ? null : addMonths(month, repeatMonths - 1);
+        const rule = await tx.groupRecurrence.create({
+          data: {
+            groupId,
+            seriesId,
+            endMonth,
+            generatedUntil: month,
+            ...adjustmentColumns(resolveAdjustment(adjustment, month)),
+          },
+        });
+        await generateGroup(tx, rule.id, endMonth ?? generationTarget(month));
+      });
+      return this.present(groupId, await this.seriesRows(groupId, seriesId));
     }
     const seriesId = repeatMonths > 1 ? randomUUID() : null;
     const rows = await this.prisma.$transaction(
@@ -181,7 +247,15 @@ export class GroupTransactionService {
         current.category?.id ?? null,
       );
     }
+    const following = await this.followingRows(groupId, current, scope);
+    const ids = [id, ...following.map((r) => r.id)];
     let shares: MemberShare[] | undefined;
+    // With a scheduled adjustment, a new amount is the base the later
+    // occurrences are projected from (each with its own amount and shares)
+    const projected = new Map<
+      number,
+      { amountCents: number; shares: MemberShare[] }
+    >();
     if (amountCents !== undefined || splitMethodId !== undefined) {
       const methodId = splitMethodId ?? current.splitMethod?.id;
       if (methodId === undefined) {
@@ -195,29 +269,64 @@ export class GroupTransactionService {
       if (current.shares.some((s) => s.settledAt !== null)) {
         throw settledConflict();
       }
+      if (amountCents !== undefined && following.length > 0) {
+        const adjustment = adjustmentOf(
+          await this.prisma.groupRecurrence.findFirst({
+            where: { groupId, seriesId: current.seriesId! },
+          }),
+        );
+        if (adjustment) {
+          const amounts = projectAmounts(
+            amountCents,
+            current.month,
+            following.map((r) => r.month),
+            adjustment,
+          );
+          for (const [i, row] of following.entries()) {
+            projected.set(row.id, {
+              amountCents: amounts[i],
+              shares: await this.shares(groupId, methodId, amounts[i]),
+            });
+          }
+        }
+      }
     }
 
-    const ids = [id, ...(await this.followingIds(groupId, current, scope))];
     await this.prisma.$transaction(async (tx) => {
       await tx.groupTransaction.updateMany({
         where: { id: { in: ids } },
         data: {
           kind,
           description,
-          amountCents,
+          amountCents: projected.size > 0 ? undefined : amountCents,
           splitMethodId,
           dueDay,
           paymentUrl,
           categoryId,
         },
       });
+      if (projected.size > 0) {
+        await tx.groupTransaction.update({
+          where: { id },
+          data: { amountCents },
+        });
+        for (const [rowId, next] of projected) {
+          await tx.groupTransaction.update({
+            where: { id: rowId },
+            data: { amountCents: next.amountCents },
+          });
+        }
+      }
       if (shares) {
         await tx.groupTransactionShare.deleteMany({
           where: { transactionId: { in: ids } },
         });
         await tx.groupTransactionShare.createMany({
           data: ids.flatMap((transactionId) =>
-            shares.map((s) => ({ ...s, transactionId })),
+            (projected.get(transactionId)?.shares ?? shares).map((s) => ({
+              ...s,
+              transactionId,
+            })),
           ),
         });
       }
@@ -225,7 +334,11 @@ export class GroupTransactionService {
     return (await this.present(groupId, [await this.find(groupId, id)]))[0];
   }
 
-  /** Deletes the transaction and, with `FOLLOWING`, the later pending ones of its series. */
+  /**
+   * Deletes the transaction and, with `FOLLOWING`, the later pending ones of
+   * its series. A series with a rule then ends at the last occurrence left
+   * (or loses the rule when none is left), so no new months come back.
+   */
   async remove(
     userId: number,
     groupId: number,
@@ -234,10 +347,36 @@ export class GroupTransactionService {
   ): Promise<void> {
     await assertMember(this.prisma, userId, groupId);
     const current = await this.find(groupId, id);
-    const ids = [id, ...(await this.followingIds(groupId, current, scope))];
-    await this.prisma.groupTransaction.deleteMany({
-      where: { id: { in: ids } },
-    });
+    const following = await this.followingRows(groupId, current, scope);
+    const ids = [id, ...following.map((r) => r.id)];
+    const rule =
+      scope === 'FOLLOWING' && current.seriesId
+        ? await this.prisma.groupRecurrence.findFirst({
+            where: { groupId, seriesId: current.seriesId },
+          })
+        : null;
+    const left = rule
+      ? await this.prisma.groupTransaction.findFirst({
+          where: { groupId, seriesId: current.seriesId, id: { notIn: ids } },
+          orderBy: [{ month: 'desc' }, { id: 'desc' }],
+          select: { month: true },
+        })
+      : null;
+    await this.prisma.$transaction([
+      this.prisma.groupTransaction.deleteMany({
+        where: { id: { in: ids } },
+      }),
+      ...(rule
+        ? [
+            left
+              ? this.prisma.groupRecurrence.update({
+                  where: { id: rule.id },
+                  data: { endMonth: left.month },
+                })
+              : this.prisma.groupRecurrence.delete({ where: { id: rule.id } }),
+          ]
+        : []),
+    ]);
   }
 
   /**
@@ -249,10 +388,24 @@ export class GroupTransactionService {
     userId: number,
     groupId: number,
     id: number,
-    untilMonth: string,
+    { untilMonth, adjustment }: SeriesEndDto,
   ): Promise<GroupTransactionDto[]> {
     await assertMember(this.prisma, userId, groupId);
     const current = await this.find(groupId, id);
+    const rule = current.seriesId
+      ? await this.prisma.groupRecurrence.findFirst({
+          where: { groupId, seriesId: current.seriesId },
+        })
+      : null;
+    if (rule || untilMonth === null || adjustment) {
+      return this.setRecurrence(
+        groupId,
+        current,
+        rule?.id ?? null,
+        untilMonth,
+        adjustment,
+      );
+    }
     const occurrences = current.seriesId
       ? await this.prisma.groupTransaction.findMany({
           where: { groupId, seriesId: current.seriesId },
@@ -313,6 +466,131 @@ export class GroupTransactionService {
   }
 
   /**
+   * `setSeriesEnd` of a series with a rule (or getting one): the end may be
+   * `null` (no end) and is not bound to `MAX_REPEAT_MONTHS`. Unpaid
+   * occurrences after the end go (409 if a paid one would); a changed
+   * adjustment recalculates the unpaid occurrences after the current month,
+   * dividing them again.
+   */
+  private async setRecurrence(
+    groupId: number,
+    current: GroupTransactionRow,
+    ruleId: number | null,
+    untilMonth: string | null,
+    adjustment: SeriesEndDto['adjustment'],
+  ): Promise<GroupTransactionDto[]> {
+    if (adjustment && current.splitMethod) {
+      await this.assertAdjustable(groupId, current.splitMethod.id);
+    }
+    const seriesId = current.seriesId ?? randomUUID();
+    await this.prisma.$transaction(async (tx) => {
+      if (!current.seriesId) {
+        await tx.groupTransaction.update({
+          where: { id: current.id },
+          data: { seriesId },
+        });
+      }
+      const occurrences = await tx.groupTransaction.findMany({
+        where: { groupId, seriesId },
+        orderBy: [{ month: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          month: true,
+          amountCents: true,
+          paidByMemberId: true,
+          shares: { select: { memberId: true, amountCents: true } },
+          splitMethod: {
+            select: {
+              type: true,
+              active: true,
+              shares: { select: { memberId: true, value: true } },
+            },
+          },
+        },
+      });
+      const first = occurrences[0];
+      if (untilMonth !== null && untilMonth < first.month) {
+        throw new BadRequestException(
+          'untilMonth must not be before the first occurrence',
+        );
+      }
+      const after = occurrences.filter(
+        (o) => untilMonth !== null && o.month > untilMonth,
+      );
+      if (after.some((o) => o.paidByMemberId !== null)) {
+        throw new ConflictException(
+          'An occurrence after untilMonth is already settled',
+        );
+      }
+      await tx.groupTransaction.deleteMany({
+        where: { groupId, id: { in: after.map((o) => o.id) } },
+      });
+      const kept = occurrences.filter((o) => !after.includes(o));
+
+      const stored = ruleId
+        ? adjustmentOf(
+            await tx.groupRecurrence.findUniqueOrThrow({
+              where: { id: ruleId },
+            }),
+          )
+        : null;
+      const next =
+        adjustment === undefined
+          ? stored
+          : resolveAdjustment(adjustment ?? undefined, first.month);
+      if (!sameAdjustment(stored, next)) {
+        const changes = reproject(
+          kept.map((o) => ({
+            id: o.id,
+            month: o.month,
+            amountCents: o.amountCents,
+            settled: o.paidByMemberId !== null,
+          })),
+          next,
+        );
+        const members = await tx.groupMember.findMany({
+          where: { groupId, leftAt: null },
+          select: { id: true },
+        });
+        const activeIds = members.map((m) => m.id);
+        const byId = new Map(kept.map((o) => [o.id, o]));
+        for (const change of changes) {
+          const o = byId.get(change.id)!;
+          const shares = divideCopy(
+            change.amountCents,
+            o.splitMethod,
+            o.shares,
+            activeIds,
+          );
+          await tx.groupTransaction.update({
+            where: { id: o.id },
+            data: {
+              amountCents: shares.reduce((t, s) => t + s.amountCents, 0),
+              shares: { deleteMany: {}, create: shares },
+            },
+          });
+        }
+      }
+      const data = {
+        endMonth: untilMonth,
+        generatedUntil: kept[kept.length - 1].month,
+        ...adjustmentColumns(next),
+      };
+      const saved = ruleId
+        ? await tx.groupRecurrence.update({ where: { id: ruleId }, data })
+        : await tx.groupRecurrence.create({
+            data: { groupId, seriesId, ...data },
+          });
+      await generateGroup(
+        tx,
+        saved.id,
+        generationTarget(untilMonth ?? undefined),
+      );
+    });
+    return this.present(groupId, await this.seriesRows(groupId, seriesId));
+  }
+
+  /**
    * Records who paid (or received) it; `null` makes it pending again. Another
    * payer, or none, needs the confirmed shares undone first (409).
    */
@@ -346,6 +624,7 @@ export class GroupTransactionService {
     month: string,
   ): Promise<GroupBalanceDto> {
     const me = await assertMember(this.prisma, userId, groupId);
+    await this.recurrences.ensureForGroup(groupId, month);
     const transactions = await this.prisma.groupTransaction.findMany({
       where: { groupId, month },
       orderBy: { id: 'asc' },
@@ -472,14 +751,14 @@ export class GroupTransactionService {
     return row;
   }
 
-  /** Later pending occurrences of the series a `FOLLOWING` change also reaches. */
-  private async followingIds(
+  /** Later pending occurrences of the series a `FOLLOWING` change also reaches, by month. */
+  private followingRows(
     groupId: number,
     current: GroupTransactionRow,
     scope: RecurrenceScope,
-  ): Promise<number[]> {
-    if (scope !== 'FOLLOWING' || !current.seriesId) return [];
-    const rows = await this.prisma.groupTransaction.findMany({
+  ): Promise<{ id: number; month: string }[]> {
+    if (scope !== 'FOLLOWING' || !current.seriesId) return Promise.resolve([]);
+    return this.prisma.groupTransaction.findMany({
       where: {
         groupId,
         seriesId: current.seriesId,
@@ -487,9 +766,33 @@ export class GroupTransactionService {
         paidByMemberId: null,
         id: { not: current.id },
       },
-      select: { id: true },
+      orderBy: [{ month: 'asc' }, { id: 'asc' }],
+      select: { id: true, month: true },
     });
-    return rows.map((r) => r.id);
+  }
+
+  private seriesRows(groupId: number, seriesId: string) {
+    return this.prisma.groupTransaction.findMany({
+      where: { groupId, seriesId },
+      orderBy: [{ month: 'asc' }, { id: 'asc' }],
+      select: groupTransactionSelect,
+    });
+  }
+
+  /**
+   * A FIXED rule defines the amount itself, so it can't have a scheduled
+   * adjustment (400).
+   */
+  private async assertAdjustable(groupId: number, splitMethodId: number) {
+    const method = await this.prisma.splitMethod.findFirst({
+      where: { id: splitMethodId, groupId },
+      select: { type: true },
+    });
+    if (method?.type === 'FIXED') {
+      throw new BadRequestException(
+        'A fixed split cannot have a scheduled adjustment',
+      );
+    }
   }
 
   /** Divides the amount with an active rule of the group (400 when it can't). */
@@ -536,14 +839,19 @@ export class GroupTransactionService {
     const seriesIds = [
       ...new Set(rows.flatMap((r) => (r.seriesId ? [r.seriesId] : []))),
     ];
-    const positions = seriesPositions(
+    const [occurrences, rules] =
       seriesIds.length === 0
-        ? []
-        : await this.prisma.groupTransaction.findMany({
-            where: { groupId, seriesId: { in: seriesIds } },
-            select: { id: true, seriesId: true, month: true },
-          }),
-    );
+        ? [[], []]
+        : await Promise.all([
+            this.prisma.groupTransaction.findMany({
+              where: { groupId, seriesId: { in: seriesIds } },
+              select: { id: true, seriesId: true, month: true },
+            }),
+            this.prisma.groupRecurrence.findMany({
+              where: { groupId, seriesId: { in: seriesIds } },
+            }),
+          ]);
+    const positions = seriesPositions(occurrences, recurrencesBySeries(rules));
 
     return rows.map(({ seriesId, paidBy, shares, ...row }) => ({
       ...row,

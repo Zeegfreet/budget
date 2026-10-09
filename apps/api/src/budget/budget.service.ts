@@ -9,6 +9,7 @@ import type { EntryKind, Prisma } from '../prisma/generated/client.js';
 import { type Db, runWrites } from '../prisma/db.js';
 import { isUniqueViolation } from '../prisma/errors.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { type BudgetSummary, computeSummary, sumByKind } from './balance.js';
 import { assertWritableCategories } from './category-access.js';
 import { DEFAULT_CATEGORIES } from './default-categories.js';
@@ -62,7 +63,10 @@ function monthRange(from: string, to: string) {
  */
 @Injectable()
 export class BudgetService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recurrences: RecurrenceService,
+  ) {}
 
   /** The user's category tree (inactive items included), creating the default one on first access. */
   async categories(userId: number): Promise<CategoryGroupDto[]> {
@@ -86,6 +90,7 @@ export class BudgetService {
     to: string,
   ): Promise<MonthlyEntryDto[]> {
     const range = monthRange(from, to);
+    await this.recurrences.ensureForUser(userId, to);
     const [cells, realized, shares] = await Promise.all([
       this.prisma.transaction.groupBy({
         by: ['month', 'categoryId'],
@@ -153,8 +158,10 @@ export class BudgetService {
     from: string,
     to: string,
   ): Promise<BudgetLineDto[]> {
+    const range = monthRange(from, to);
+    await this.recurrences.ensureForUser(userId, to);
     const rows = await this.prisma.transaction.findMany({
-      where: { userId, month: monthRange(from, to) },
+      where: { userId, month: range },
       orderBy: [{ month: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
@@ -338,6 +345,7 @@ export class BudgetService {
 
   /** Balances from the effective amounts plus the user's linked group shares. */
   async summary(userId: number, month: string): Promise<BudgetSummary> {
+    await this.recurrences.ensureForUser(userId, month);
     const [user, categories, previous, current, sharesBefore, sharesNow] =
       await Promise.all([
         this.prisma.user.findUniqueOrThrow({

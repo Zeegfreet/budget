@@ -26,3 +26,17 @@ export async function runWrites(
   for (const write of writes) results.push(await write);
   return results;
 }
+
+/**
+ * Runs `work` inside the caller's interactive transaction (`tx`) or, without
+ * one, in a new interactive transaction of its own.
+ */
+export function inTransaction<T>(
+  prisma: {
+    $transaction<R>(work: (tx: Db) => Promise<R>, options?: object): Promise<R>;
+  },
+  tx: Db | undefined,
+  work: (tx: Db) => Promise<T>,
+): Promise<T> {
+  return tx ? work(tx) : prisma.$transaction(work);
+}

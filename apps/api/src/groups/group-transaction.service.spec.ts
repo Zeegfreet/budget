@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import type { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { GroupTransactionService } from './group-transaction.service.js';
 
 describe('GroupTransactionService', () => {
@@ -20,6 +21,10 @@ describe('GroupTransactionService', () => {
     ),
     groupMember: { findFirst: vi.fn(), findMany: vi.fn() },
     splitMethod: { findFirst: vi.fn() },
+    groupRecurrence: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     groupCategory: { findFirst: vi.fn() },
     groupTransaction: {
       findMany: vi.fn(),
@@ -33,6 +38,10 @@ describe('GroupTransactionService', () => {
   };
   const service = new GroupTransactionService(
     prisma as unknown as PrismaService,
+    {
+      ensureForUser: vi.fn(),
+      ensureForGroup: vi.fn(),
+    } as unknown as RecurrenceService,
   );
   const row = (id: number, extra: Record<string, unknown> = {}) => ({
     id,
@@ -176,7 +185,9 @@ describe('GroupTransactionService', () => {
     prisma.groupTransaction.findFirst.mockResolvedValue(
       row(1, { seriesId: 's' }),
     );
-    prisma.groupTransaction.findMany.mockResolvedValueOnce([{ id: 2 }]);
+    prisma.groupTransaction.findMany.mockResolvedValueOnce([
+      { id: 2, month: '2026-11' },
+    ]);
 
     await service.update(7, 5, 1, { amountCents: 200, scope: 'FOLLOWING' });
 
@@ -188,7 +199,8 @@ describe('GroupTransactionService', () => {
         paidByMemberId: null,
         id: { not: 1 },
       },
-      select: { id: true },
+      orderBy: [{ month: 'asc' }, { id: 'asc' }],
+      select: { id: true, month: true },
     });
     expect(tx.groupTransaction.updateMany).toHaveBeenCalledWith({
       where: { id: { in: [1, 2] } },
@@ -473,7 +485,7 @@ describe('GroupTransactionService', () => {
         { id: 6, month: '2026-11', paidByMemberId: null },
       ]);
 
-      await service.setSeriesEnd(7, 5, 5, '2026-12');
+      await service.setSeriesEnd(7, 5, 5, { untilMonth: '2026-12' });
 
       expect(prisma.groupTransaction.findMany).toHaveBeenNthCalledWith(
         1,
@@ -504,7 +516,7 @@ describe('GroupTransactionService', () => {
         { id: 6, month: '2026-11', paidByMemberId: null },
       ]);
 
-      await service.setSeriesEnd(7, 5, 5, '2026-10');
+      await service.setSeriesEnd(7, 5, 5, { untilMonth: '2026-10' });
 
       expect(prisma.groupTransaction.deleteMany).toHaveBeenCalledWith({
         where: { groupId: 5, id: { in: [6] } },
@@ -521,18 +533,18 @@ describe('GroupTransactionService', () => {
         { id: 6, month: '2026-11', paidByMemberId: 2 },
       ]);
 
-      await expect(service.setSeriesEnd(7, 5, 5, '2026-10')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.setSeriesEnd(7, 5, 5, { untilMonth: '2026-10' }),
+      ).rejects.toThrow(ConflictException);
       expect(prisma.groupTransaction.deleteMany).not.toHaveBeenCalled();
     });
 
     it('returns 404 for a non-member', async () => {
       prisma.groupMember.findFirst.mockResolvedValue(null);
 
-      await expect(service.setSeriesEnd(7, 5, 5, '2026-12')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.setSeriesEnd(7, 5, 5, { untilMonth: '2026-12' }),
+      ).rejects.toThrow(NotFoundException);
       expect(prisma.groupTransaction.findFirst).not.toHaveBeenCalled();
     });
   });

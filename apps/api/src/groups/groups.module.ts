@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ActivationModule } from '../activation/activation.module.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { RecurrenceModule } from '../recurrence/recurrence.module.js';
 import { UserModule } from '../user/user.module.js';
 import { GroupCategoryController } from './group-category.controller.js';
 import { GroupCategoryService } from './group-category.service.js';
@@ -17,7 +18,7 @@ import { SplitMethodController } from './split-method.controller.js';
 import { SplitMethodService } from './split-method.service.js';
 
 @Module({
-  imports: [PrismaModule, UserModule, ActivationModule],
+  imports: [PrismaModule, RecurrenceModule, UserModule, ActivationModule],
   controllers: [
     GroupController,
     GroupInvitationController,

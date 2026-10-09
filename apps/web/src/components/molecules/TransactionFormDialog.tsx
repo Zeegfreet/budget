@@ -10,27 +10,35 @@ import {
 } from '@/components/ui/dialog'
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from '@/components/ui/native-select'
-import { Switch } from '@/components/ui/switch'
-import { addMonths, formatMonthLabel, formatMonthLong } from '@/features/budget/months'
+import { formatMonthLong } from '@/features/budget/months'
 import type { CategoryGroup, EntryKind, Month } from '@/features/budget/types'
 import { selectableMethods } from '@/features/payment-methods/labels'
 import type { PaymentMethod } from '@/features/payment-methods/types'
+import {
+  type AdjustmentInput,
+  EMPTY_RECURRENCE,
+  parseRecurrence,
+  type RecurrenceErrors,
+} from '@/features/transactions/recurrence'
 import { formatAmount, parseMoneyInput } from '@/lib/money'
 import { parseWhole } from '@/lib/numbers'
 import { INVALID_PAYMENT_URL, MAX_PAYMENT_URL_LENGTH, parsePaymentUrl } from '@/lib/payment-url'
 import { FormField } from './FormField'
 import { PaymentMethodSelect } from './PaymentMethodSelect'
+import { RecurrenceFields } from './RecurrenceFields'
 
 export const MAX_TRANSACTION_DESCRIPTION_LENGTH = 120
-export const MAX_REPEAT_MONTHS = 60
-const DEFAULT_REPEAT_MONTHS = 12
 
 export interface TransactionFormValues {
   categoryId: number
   description: string | null
   plannedCents: number
-  /** 1 when not recurring */
+  /** 1 when not recurring (or open-ended) */
   repeatMonths: number
+  /** Repeats every month with no end */
+  openEnded: boolean
+  /** Scheduled adjustment of a recurring launch */
+  adjustment: AdjustmentInput | null
   /** Day of the month it is due (1–31) */
   dueDay: number | null
   /** Link to the bill (boleto) or payment portal */
@@ -50,7 +58,7 @@ interface TransactionFormDialogProps {
   /** The user's payment methods, offered for expenses (none hides the field) */
   paymentMethods?: PaymentMethod[]
   /** Editing: the current values, and no recurrence fields */
-  initial?: Omit<TransactionFormValues, 'repeatMonths'>
+  initial?: Omit<TransactionFormValues, 'repeatMonths' | 'openEnded' | 'adjustment'>
   /** Creating: the category chosen up front */
   defaultCategoryId?: number
   /** Overrides the dialog's description */
@@ -74,9 +82,9 @@ export function TransactionFormDialog({ open, onOpenChange, ...props }: Transact
   )
 }
 
-type Errors = Partial<
-  Record<'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'paymentUrl' | 'repeatMonths', string>
->
+type Errors = Partial<Record<'categoryId' | 'description' | 'plannedCents' | 'dueDay' | 'paymentUrl', string>> & {
+  recurrence?: RecurrenceErrors
+}
 
 function TransactionForm({
   kind,
@@ -101,8 +109,7 @@ function TransactionForm({
   const [amount, setAmount] = useState(initial ? formatAmount(initial.plannedCents) : '')
   const [dueDay, setDueDay] = useState(initial?.dueDay?.toString() ?? '')
   const [link, setLink] = useState(initial?.paymentUrl ?? '')
-  const [repeat, setRepeat] = useState(false)
-  const [repeatMonths, setRepeatMonths] = useState(String(DEFAULT_REPEAT_MONTHS))
+  const [recurrence, setRecurrence] = useState(EMPTY_RECURRENCE)
   const currentMethodId = initial?.paymentMethodId ?? null
   const [paymentMethodId, setPaymentMethodId] = useState(currentMethodId)
   const showMethods = kind === 'EXPENSE' && selectableMethods(paymentMethods, currentMethodId).length > 0
@@ -110,9 +117,6 @@ function TransactionForm({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const id = useId()
-
-  const times = /^\d+$/.test(repeatMonths.trim()) ? Number(repeatMonths) : NaN
-  const validTimes = times >= 2 && times <= MAX_REPEAT_MONTHS
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -128,7 +132,8 @@ function TransactionForm({
     }
     if (day === undefined) next.dueDay = 'Informe um dia entre 1 e 31.'
     if (paymentUrl === undefined) next.paymentUrl = INVALID_PAYMENT_URL
-    if (repeat && !validTimes) next.repeatMonths = `Informe de 2 a ${MAX_REPEAT_MONTHS} meses.`
+    const repeat = parseRecurrence(recurrence, month)
+    if (!editing && !repeat.values) next.recurrence = repeat.errors
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
@@ -139,7 +144,9 @@ function TransactionForm({
         categoryId: Number(categoryId),
         description,
         plannedCents: plannedCents!,
-        repeatMonths: repeat ? times : 1,
+        repeatMonths: repeat.values?.repeatMonths ?? 1,
+        openEnded: repeat.values?.openEnded ?? false,
+        adjustment: repeat.values?.adjustment ?? null,
         dueDay: day!,
         paymentUrl: paymentUrl!,
         paymentMethodId: kind === 'EXPENSE' ? paymentMethodId : null,
@@ -249,27 +256,12 @@ function TransactionForm({
       />
 
       {!editing && (
-        <div className="flex flex-col gap-3 rounded-lg border p-3">
-          <div className="flex items-center gap-3">
-            <Switch id={`${id}-repeat`} checked={repeat} onCheckedChange={setRepeat} />
-            <FieldLabel htmlFor={`${id}-repeat`}>Repetir nos próximos meses</FieldLabel>
-          </div>
-          {repeat && (
-            <FormField
-              label="Quantidade de meses"
-              description={
-                validTimes
-                  ? `De ${formatMonthLabel(month)} a ${formatMonthLabel(addMonths(month, times - 1))}, contando este mês.`
-                  : `De 2 a ${MAX_REPEAT_MONTHS} meses, contando este mês.`
-              }
-              inputMode="numeric"
-              value={repeatMonths}
-              onChange={(e) => setRepeatMonths(e.target.value)}
-              error={errors.repeatMonths}
-              className="w-24"
-            />
-          )}
-        </div>
+        <RecurrenceFields
+          month={month}
+          value={recurrence}
+          onChange={setRecurrence}
+          errors={errors.recurrence ?? {}}
+        />
       )}
 
       {error && <FormAlert>{error}</FormAlert>}

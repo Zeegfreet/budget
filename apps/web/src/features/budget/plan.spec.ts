@@ -168,6 +168,35 @@ describe('planReducer: launches', () => {
     expect(lineOf(long, -1)!.cells).toHaveLength(12)
   })
 
+  it('fills the window with an open-ended launch, raised by its scheduled adjustment', () => {
+    const plan = run({
+      type: 'create-line',
+      input: {
+        categoryId: 1,
+        month: '2026-11',
+        plannedCents: 100000,
+        openEnded: true,
+        adjustment: { percentBp: 500, everyMonths: 6 },
+      },
+      paymentMethod: null,
+    })
+    const cells = lineOf(plan, -1)!.cells
+    expect(cells.map((c) => c.month)).toEqual(months.slice(1))
+    // The first adjustment comes 6 months after the start (May/27)
+    expect(cells.find((c) => c.month === '2027-04')!.plannedCents).toBe(100000)
+    expect(cells.find((c) => c.month === '2027-05')!.plannedCents).toBe(105000)
+    expect(planRequest(plan, []).createLines).toEqual([
+      {
+        ref: -1,
+        categoryId: 1,
+        month: '2026-11',
+        plannedCents: 100000,
+        openEnded: true,
+        adjustment: { percentBp: 500, everyMonths: 6 },
+      },
+    ])
+  })
+
   it('edits a created launch in place; a new amount replaces its typed values', () => {
     const plan = run(
       { type: 'create-line', input: { categoryId: 3, month: '2026-10', plannedCents: 100, repeatMonths: 2 }, paymentMethod: null },

@@ -53,13 +53,27 @@ export const rentTransaction = makeTransaction(2, {
   description: 'Aluguel',
   plannedCents: 180000,
   ownDueDay: 10,
-  series: { index: 1, count: 12, firstMonth: '2026-10', lastMonth: '2027-09' },
+  series: { index: 1, count: 12, firstMonth: '2026-10', lastMonth: '2027-09', recurrence: null },
 })
 /** Realized above the planned amount */
 export const foodTransaction = makeTransaction(3, {
   category: categories.food,
   plannedCents: 70000,
   realizedCents: 75000,
+})
+
+/** First of an open-ended rent (months created so far: 24), raised 5% every March */
+export const openRentTransaction = makeTransaction(2, {
+  category: categories.housing,
+  description: 'Aluguel',
+  plannedCents: 180000,
+  series: {
+    index: 1,
+    count: 24,
+    firstMonth: '2026-10',
+    lastMonth: '2028-09',
+    recurrence: { endMonth: null, adjustment: { percentBp: 500, everyMonths: 12, firstMonth: '2027-03' } },
+  },
 })
 
 export const octoberTransactions = [salaryTransaction, rentTransaction, foodTransaction]

@@ -17,6 +17,8 @@ interface RecurrenceScopeDialogProps {
   onOpenChange: (open: boolean) => void
   /** Changing or deleting the occurrence */
   action: 'update' | 'delete'
+  /** An extra warning (e.g. deleting the following ones ends an open-ended series) */
+  note?: string
   /** Closes the dialog when it resolves; a rejection shows `errorMessage(error)` */
   onChoose: (scope: RecurrenceScope) => Promise<void>
   errorMessage: (error: unknown) => string
@@ -44,6 +46,7 @@ export function RecurrenceScopeDialog({
   open,
   onOpenChange,
   action,
+  note,
   onChoose,
   errorMessage,
 }: RecurrenceScopeDialogProps) {
@@ -77,6 +80,7 @@ export function RecurrenceScopeDialog({
           <AlertDialogTitle>{copy.title}</AlertDialogTitle>
           <AlertDialogDescription>{copy.description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {note && <p className="rounded-md bg-muted px-3 py-2 text-sm">{note}</p>}
         {error && <FormAlert>{error}</FormAlert>}
         {/* Three long labels don't fit side by side: stacked on every screen */}
         <AlertDialogFooter className="sm:flex-col-reverse sm:justify-start">

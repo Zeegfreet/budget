@@ -6,6 +6,7 @@ import {
 import type { TransactionService } from '../budget/transaction.service.js';
 import { Prisma } from '../prisma/generated/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import type { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { PaymentMethodService } from './payment-method.service.js';
 
 describe('PaymentMethodService', () => {
@@ -29,6 +30,10 @@ describe('PaymentMethodService', () => {
   const service = new PaymentMethodService(
     prisma as unknown as PrismaService,
     transactions as unknown as TransactionService,
+    {
+      ensureForUser: vi.fn(),
+      ensureForGroup: vi.fn(),
+    } as unknown as RecurrenceService,
   );
   const card = {
     id: 2,

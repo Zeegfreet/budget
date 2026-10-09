@@ -1,4 +1,5 @@
 import { knownPaymentMethodMessage } from '@/features/payment-methods/errors'
+import { knownRecurrenceMessage } from '@/features/transactions/errors'
 import { ApiError } from '@/lib/api/client'
 
 /** The API's messages for group rules the user can fix, in Portuguese */
@@ -42,7 +43,7 @@ export function needsNickname(error: unknown): boolean {
 
 /** Message for a failed change in a group */
 export function groupErrorMessage(error: unknown, fallback: string): string {
-  const method = knownPaymentMethodMessage(error)
+  const method = knownPaymentMethodMessage(error) ?? knownRecurrenceMessage(error)
   if (method) return method
   if (!(error instanceof ApiError)) return fallback
   const known = error.messages.map((m) => MESSAGES[m]).filter(Boolean)

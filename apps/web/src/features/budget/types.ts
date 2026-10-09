@@ -1,4 +1,5 @@
 import type { GroupCategory } from '@/features/groups/types'
+import type { AdjustmentInput } from '@/features/transactions/recurrence'
 
 export type EntryKind = 'INCOME' | 'EXPENSE'
 
@@ -56,9 +57,20 @@ export interface MonthlyEntry {
 /** Where an occurrence sits in its recurring series (e.g. 3 of 12, Oct/2026 to Sep/2027) */
 export interface SeriesPosition {
   index: number
+  /** Occurrences (created so far, when it has no end) */
   count: number
   firstMonth: Month
   lastMonth: Month
+  /** Rule of a series with no end or a scheduled adjustment; `null` for a plain series */
+  recurrence: SeriesRecurrence | null
+}
+
+/** The rule behind a recurring series */
+export interface SeriesRecurrence {
+  /** Last month; `null` = no end (months are created ahead as they are read) */
+  endMonth: Month | null
+  /** Scheduled adjustment (basis points every N months from a month on) */
+  adjustment: { percentBp: number; everyMonths: number; firstMonth: Month } | null
 }
 
 /** One month of a launch row: the transaction there */
@@ -186,6 +198,9 @@ export interface PlanLineInput {
   description?: string | null
   plannedCents: number
   repeatMonths?: number
+  /** Repeats every month with no end */
+  openEnded?: boolean
+  adjustment?: AdjustmentInput
   dueDay?: number | null
   paymentUrl?: string | null
   paymentMethodId?: number | null
@@ -205,7 +220,7 @@ export interface PlanRequest {
   deleteCategories?: number[]
   createLines?: PlanLineInput[]
   /** From this occurrence on (`FOLLOWING`); `categoryId` may be a ref */
-  updateLines?: ({ transactionId: number } & Partial<Omit<PlanLineInput, 'ref' | 'month' | 'repeatMonths'>>)[]
+  updateLines?: ({ transactionId: number } & Partial<Omit<PlanLineInput, 'ref' | 'month' | 'repeatMonths' | 'openEnded' | 'adjustment'>>)[]
   /** Each with the later pending occurrences of its series */
   deleteLines?: number[]
   /** `anchorId` may be the ref of a launch created by the plan */

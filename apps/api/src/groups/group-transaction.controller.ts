@@ -114,9 +114,9 @@ export class GroupTransactionController {
     @CurrentUser() user: JwtUser,
     @Param('groupId', ParseIntPipe) groupId: number,
     @Param('id', ParseIntPipe) id: number,
-    @Body() { untilMonth }: SeriesEndDto,
+    @Body() body: SeriesEndDto,
   ): Promise<GroupTransactionDto[]> {
-    return this.service.setSeriesEnd(user.id, groupId, id, untilMonth);
+    return this.service.setSeriesEnd(user.id, groupId, id, body);
   }
 
   @Put('transactions/:id/payment')

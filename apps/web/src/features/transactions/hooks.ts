@@ -9,8 +9,8 @@ import {
   unrealizeTransaction,
   updateTransaction,
 } from './api'
-import type { Month } from '@/features/budget/types'
-import type { RecurrenceScope, TransactionInput, TransactionPatch } from './types'
+import { seriesToast } from './recurrence'
+import type { RecurrenceScope, SeriesChange, TransactionInput, TransactionPatch } from './types'
 
 /**
  * Changes to transactions. Each resolves once the data is fresh again (the
@@ -36,10 +36,10 @@ export function useTransactionActions() {
       await refresh()
       toast.success(scope === 'FOLLOWING' ? 'Lançamentos excluídos' : 'Lançamento excluído')
     },
-    async setSeriesEnd(id: number, untilMonth: Month) {
-      const series = await setTransactionSeriesEnd(id, untilMonth)
+    async setSeriesEnd(id: number, change: SeriesChange) {
+      const series = await setTransactionSeriesEnd(id, change)
       await refresh()
-      toast.success(`Recorrência ajustada: ${series.length} ${series.length === 1 ? 'lançamento' : 'lançamentos'}`)
+      toast.success(seriesToast(change, series.length))
     },
     async realize(id: number, amountCents: number) {
       await realizeTransaction(id, amountCents)

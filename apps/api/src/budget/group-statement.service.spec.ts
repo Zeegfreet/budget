@@ -1,4 +1,5 @@
 import type { PrismaService } from '../prisma/prisma.service.js';
+import type { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { GroupStatementController } from './group-statement.controller.js';
 import { GroupStatementService } from './group-statement.service.js';
 
@@ -6,8 +7,15 @@ describe('GroupStatementService', () => {
   const prisma = {
     groupMember: { findMany: vi.fn() },
     groupTransaction: { findMany: vi.fn() },
+    groupRecurrence: { findMany: vi.fn().mockResolvedValue([]) },
   };
-  const service = new GroupStatementService(prisma as unknown as PrismaService);
+  const service = new GroupStatementService(
+    prisma as unknown as PrismaService,
+    {
+      ensureForUser: vi.fn(),
+      ensureForGroup: vi.fn(),
+    } as unknown as RecurrenceService,
+  );
   const moradia = {
     id: 4,
     name: 'Moradia',
@@ -191,6 +199,7 @@ describe('GroupStatementService', () => {
           count: 2,
           firstMonth: '2026-10',
           lastMonth: '2026-11',
+          recurrence: null,
         },
         category: moradia,
       },
