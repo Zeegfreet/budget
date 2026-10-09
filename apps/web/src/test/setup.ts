@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
+
+// findBy*/waitFor wait longer on the slower CI runners (1 s locally)
+configure({ asyncUtilTimeout: import.meta.env.CI ? 5000 : 1000 })
 
 // jsdom doesn't implement scrollTo; the router calls it on navigation
 window.scrollTo = vi.fn() as unknown as typeof window.scrollTo
