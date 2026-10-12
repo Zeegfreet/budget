@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AtivarContaRouteImport } from './routes/ativar-conta'
+import { Route as AutorizarAgenteRouteImport } from './routes/autorizar-agente'
 import { Route as CompletarCadastroRouteImport } from './routes/completar-cadastro'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as LoginRouteImport } from './routes/login'
@@ -23,6 +24,7 @@ import { Route as AppGruposIndexRouteImport } from './routes/_app/grupos/index'
 import { Route as AppGruposGroupIdRouteImport } from './routes/_app/grupos/$groupId'
 import { Route as AppMeiosDePagamentoIndexRouteImport } from './routes/_app/meios-de-pagamento/index'
 import { Route as AppMeiosDePagamentoMethodIdRouteImport } from './routes/_app/meios-de-pagamento/$methodId'
+import { Route as AppSettingsAgentsRouteImport } from './routes/_app/settings/agents'
 import { Route as AppSettingsPasswordRouteImport } from './routes/_app/settings/password'
 import { Route as AppSettingsProfileRouteImport } from './routes/_app/settings/profile'
 
@@ -33,6 +35,11 @@ const AppRoute = AppRouteImport.update({
 const AtivarContaRoute = AtivarContaRouteImport.update({
   id: '/ativar-conta',
   path: '/ativar-conta',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutorizarAgenteRoute = AutorizarAgenteRouteImport.update({
+  id: '/autorizar-agente',
+  path: '/autorizar-agente',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CompletarCadastroRoute = CompletarCadastroRouteImport.update({
@@ -97,6 +104,11 @@ const AppMeiosDePagamentoMethodIdRoute =
     path: '/meios-de-pagamento/$methodId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppSettingsAgentsRoute = AppSettingsAgentsRouteImport.update({
+  id: '/settings/agents',
+  path: '/settings/agents',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsPasswordRoute = AppSettingsPasswordRouteImport.update({
   id: '/settings/password',
   path: '/settings/password',
@@ -111,6 +123,7 @@ const AppSettingsProfileRoute = AppSettingsProfileRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/ativar-conta': typeof AtivarContaRoute
+  '/autorizar-agente': typeof AutorizarAgenteRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
@@ -120,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/extrato': typeof AppExtratoRoute
   '/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
+  '/settings/agents': typeof AppSettingsAgentsRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
   '/grupos/': typeof AppGruposIndexRoute
@@ -127,6 +141,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/ativar-conta': typeof AtivarContaRoute
+  '/autorizar-agente': typeof AutorizarAgenteRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
@@ -137,6 +152,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
+  '/settings/agents': typeof AppSettingsAgentsRoute
   '/settings/password': typeof AppSettingsPasswordRoute
   '/settings/profile': typeof AppSettingsProfileRoute
   '/grupos': typeof AppGruposIndexRoute
@@ -146,6 +162,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/ativar-conta': typeof AtivarContaRoute
+  '/autorizar-agente': typeof AutorizarAgenteRoute
   '/completar-cadastro': typeof CompletarCadastroRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/login': typeof LoginRoute
@@ -156,6 +173,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/grupos/$groupId': typeof AppGruposGroupIdRoute
   '/_app/meios-de-pagamento/$methodId': typeof AppMeiosDePagamentoMethodIdRoute
+  '/_app/settings/agents': typeof AppSettingsAgentsRoute
   '/_app/settings/password': typeof AppSettingsPasswordRoute
   '/_app/settings/profile': typeof AppSettingsProfileRoute
   '/_app/grupos/': typeof AppGruposIndexRoute
@@ -166,6 +184,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/ativar-conta'
+    | '/autorizar-agente'
     | '/completar-cadastro'
     | '/esqueci-senha'
     | '/login'
@@ -175,6 +194,7 @@ export interface FileRouteTypes {
     | '/extrato'
     | '/grupos/$groupId'
     | '/meios-de-pagamento/$methodId'
+    | '/settings/agents'
     | '/settings/password'
     | '/settings/profile'
     | '/grupos/'
@@ -182,6 +202,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/ativar-conta'
+    | '/autorizar-agente'
     | '/completar-cadastro'
     | '/esqueci-senha'
     | '/login'
@@ -192,6 +213,7 @@ export interface FileRouteTypes {
     | '/'
     | '/grupos/$groupId'
     | '/meios-de-pagamento/$methodId'
+    | '/settings/agents'
     | '/settings/password'
     | '/settings/profile'
     | '/grupos'
@@ -200,6 +222,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/ativar-conta'
+    | '/autorizar-agente'
     | '/completar-cadastro'
     | '/esqueci-senha'
     | '/login'
@@ -210,6 +233,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/grupos/$groupId'
     | '/_app/meios-de-pagamento/$methodId'
+    | '/_app/settings/agents'
     | '/_app/settings/password'
     | '/_app/settings/profile'
     | '/_app/grupos/'
@@ -219,6 +243,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AtivarContaRoute: typeof AtivarContaRoute
+  AutorizarAgenteRoute: typeof AutorizarAgenteRoute
   CompletarCadastroRoute: typeof CompletarCadastroRoute
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   LoginRoute: typeof LoginRoute
@@ -241,6 +266,13 @@ declare module '@tanstack/react-router' {
       path: '/ativar-conta'
       fullPath: '/ativar-conta'
       preLoaderRoute: typeof AtivarContaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/autorizar-agente': {
+      id: '/autorizar-agente'
+      path: '/autorizar-agente'
+      fullPath: '/autorizar-agente'
+      preLoaderRoute: typeof AutorizarAgenteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/completar-cadastro': {
@@ -327,6 +359,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMeiosDePagamentoMethodIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/agents': {
+      id: '/_app/settings/agents'
+      path: '/settings/agents'
+      fullPath: '/settings/agents'
+      preLoaderRoute: typeof AppSettingsAgentsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/password': {
       id: '/_app/settings/password'
       path: '/settings/password'
@@ -349,6 +388,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppGruposGroupIdRoute: typeof AppGruposGroupIdRoute
   AppMeiosDePagamentoMethodIdRoute: typeof AppMeiosDePagamentoMethodIdRoute
+  AppSettingsAgentsRoute: typeof AppSettingsAgentsRoute
   AppSettingsPasswordRoute: typeof AppSettingsPasswordRoute
   AppSettingsProfileRoute: typeof AppSettingsProfileRoute
   AppGruposIndexRoute: typeof AppGruposIndexRoute
@@ -360,6 +400,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppGruposGroupIdRoute: AppGruposGroupIdRoute,
   AppMeiosDePagamentoMethodIdRoute: AppMeiosDePagamentoMethodIdRoute,
+  AppSettingsAgentsRoute: AppSettingsAgentsRoute,
   AppSettingsPasswordRoute: AppSettingsPasswordRoute,
   AppSettingsProfileRoute: AppSettingsProfileRoute,
   AppGruposIndexRoute: AppGruposIndexRoute,
@@ -371,6 +412,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AtivarContaRoute: AtivarContaRoute,
+  AutorizarAgenteRoute: AutorizarAgenteRoute,
   CompletarCadastroRoute: CompletarCadastroRoute,
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   LoginRoute: LoginRoute,

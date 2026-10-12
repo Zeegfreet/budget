@@ -1,4 +1,4 @@
-import { validateEnv } from './env.validation.js';
+import { validateEnv, validateMcpEnv } from './env.validation.js';
 
 const valid = {
   DATABASE_URL: 'postgresql://budget:budget@localhost:5432/budget_test',
@@ -29,6 +29,10 @@ describe('validateEnv', () => {
       PASSWORD_RESET_TOKEN_TTL_MINUTES: '30',
       API_PREFIX: 'api',
       WEB_DIST_DIR: '/app/web',
+      MCP_PORT: '3001',
+      MCP_PUBLIC_URL: 'https://mcp.budget.app',
+      MCP_ACCESS_TOKEN_TTL_MINUTES: '60',
+      MCP_REFRESH_TOKEN_TTL_DAYS: '30',
     };
     expect(validateEnv(env)).toEqual(env);
   });
@@ -54,6 +58,9 @@ describe('validateEnv', () => {
   });
 
   it.each([
+    ['MCP_PORT', 'abc'],
+    ['MCP_PUBLIC_URL', 'mcp.budget.app'],
+    ['MCP_ACCESS_TOKEN_TTL_MINUTES', '0'],
     ['JWT_ACCESS_TTL_SECONDS', '15m'],
     ['REFRESH_TOKEN_TTL_DAYS', '0'],
     ['COOKIE_SECURE', 'yes'],
@@ -92,5 +99,21 @@ describe('validateEnv', () => {
     );
     const env = { ...valid, NODE_ENV: 'production', SMTP_HOST: 'smtp' };
     expect(validateEnv(env)).toEqual(env);
+  });
+
+  describe('validateMcpEnv (MCP process)', () => {
+    it('needs only DATABASE_URL, not the session secret', () => {
+      const env = { DATABASE_URL: valid.DATABASE_URL };
+      expect(validateMcpEnv(env)).toEqual(env);
+      expect(() => validateMcpEnv({})).toThrow(/DATABASE_URL is required/);
+    });
+
+    it('does not require SMTP in production', () => {
+      const env = { DATABASE_URL: valid.DATABASE_URL, NODE_ENV: 'production' };
+      expect(validateMcpEnv(env)).toEqual(env);
+      expect(() => validateEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
+        /SMTP_HOST is required/,
+      );
+    });
   });
 });

@@ -13,6 +13,7 @@ import { RecurrenceService } from '../recurrence/recurrence.service.js';
 import { type BudgetSummary, computeSummary, sumByKind } from './balance.js';
 import { assertWritableCategories } from './category-access.js';
 import { DEFAULT_CATEGORIES } from './default-categories.js';
+import { buildGoalsOverview, type GoalsOverview } from './goals.js';
 import { linkedShareCells } from './group-shares.js';
 import type {
   BudgetLineDto,
@@ -318,8 +319,9 @@ export class BudgetService {
           if (!series) {
             series = randomUUID();
             newSeries.set(anchorId, series);
+            // updateMany: the anchor may be cleared by an earlier cell of this save
             joins.push(
-              w.transaction.update({
+              w.transaction.updateMany({
                 where: { id: anchorId },
                 data: { seriesId: series },
               }),
@@ -370,6 +372,23 @@ export class BudgetService {
       sumByKind([...previous, ...sharesBefore], kindOf),
       sumByKind([...current, ...sharesNow], kindOf),
     );
+  }
+
+  /**
+   * How the expense types' goals stand: `from` is the reference month, the
+   * window (up to 24 months) gives the period totals.
+   */
+  async goals(
+    userId: number,
+    from: string,
+    to: string,
+  ): Promise<GoalsOverview> {
+    monthRange(from, to);
+    const [types, entries] = await Promise.all([
+      this.categories(userId),
+      this.entries(userId, from, to),
+    ]);
+    return buildGoalsOverview(types, entries, from, to);
   }
 
   async setInitialBalance(

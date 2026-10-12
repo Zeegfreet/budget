@@ -85,8 +85,14 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          tags: budget:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Check the MCP entrypoints are in the image
+        run: >-
+          docker run --rm --entrypoint node budget:ci -e
+          "for (const f of ['dist/main.js','dist/mcp/main.js','dist/mcp/stdio.js']) require('fs').accessSync(f)"
 
   publish:
     name: Publish image (Docker Hub)

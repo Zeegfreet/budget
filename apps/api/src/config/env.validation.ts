@@ -5,6 +5,9 @@ const positiveIntegers = [
   'SMTP_PORT',
   'ACTIVATION_TOKEN_TTL_HOURS',
   'PASSWORD_RESET_TOKEN_TTL_MINUTES',
+  'MCP_PORT',
+  'MCP_ACCESS_TOKEN_TTL_MINUTES',
+  'MCP_REFRESH_TOKEN_TTL_DAYS',
 ] as const;
 const booleans = ['COOKIE_SECURE', 'SMTP_SECURE'] as const;
 /** Optional credentials that only make sense together */
@@ -13,7 +16,7 @@ const pairs = [
   ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
   ['SMTP_USER', 'SMTP_PASS'],
 ] as const;
-const urls = ['WEB_URL', 'OAUTH_CALLBACK_BASE_URL'] as const;
+const urls = ['WEB_URL', 'OAUTH_CALLBACK_BASE_URL', 'MCP_PUBLIC_URL'] as const;
 
 const isHttpUrl = (value: string) => {
   try {
@@ -23,11 +26,18 @@ const isHttpUrl = (value: string) => {
   }
 };
 
-/** Fails fast on boot when the environment is missing or malformed. */
-export function validateEnv(env: Record<string, unknown>) {
+/**
+ * Fails fast on boot when the environment is missing or malformed. The MCP
+ * process (no sessions, no e-mail) passes `mcp: true`: it only needs the
+ * database.
+ */
+export function validateEnv(
+  env: Record<string, unknown>,
+  { mcp = false }: { mcp?: boolean } = {},
+) {
   const errors: string[] = [];
 
-  for (const key of required) {
+  for (const key of mcp ? (['DATABASE_URL'] as const) : required) {
     if (typeof env[key] !== 'string' || !env[key])
       errors.push(`${key} is required`);
   }
@@ -41,7 +51,7 @@ export function validateEnv(env: Record<string, unknown>) {
     errors.push('DATABASE_URL must be a postgresql:// URL');
   }
   // Without SMTP the activation links only reach the log
-  if (env.NODE_ENV === 'production' && !env.SMTP_HOST) {
+  if (!mcp && env.NODE_ENV === 'production' && !env.SMTP_HOST) {
     errors.push('SMTP_HOST is required in production');
   }
   for (const key of positiveIntegers) {
@@ -90,3 +100,7 @@ export function validateEnv(env: Record<string, unknown>) {
     throw new Error(`Invalid environment: ${errors.join('; ')}`);
   return env;
 }
+
+/** `validateEnv` for the MCP process (`src/mcp/main.ts`, `src/mcp/stdio.ts`). */
+export const validateMcpEnv = (env: Record<string, unknown>) =>
+  validateEnv(env, { mcp: true });

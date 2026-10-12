@@ -9,5 +9,6 @@ import { PaymentMethodService } from './payment-method.service.js';
   imports: [PrismaModule, RecurrenceModule, BudgetModule],
   controllers: [PaymentMethodController],
   providers: [PaymentMethodService],
+  exports: [PaymentMethodService],
 })
 export class PaymentMethodsModule {}

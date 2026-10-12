@@ -27,6 +27,11 @@ export default defineConfig({
         // The API scopes the refresh cookie to Path=/auth; the browser sees /api/auth
         cookiePathRewrite: { '/auth': '/api/auth' },
       },
+      // OAuth discovery for AI agents (the issuer is /api, RFC 8414 path insertion)
+      '/.well-known/oauth-authorization-server': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 })

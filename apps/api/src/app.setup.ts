@@ -1,4 +1,8 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  type INestApplication,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
@@ -22,7 +26,12 @@ export function configureApp(app: INestApplication) {
   // Single Docker image: the API under /<API_PREFIX> and the web build on the
   // rest (validated in env.validation.ts: WEB_DIST_DIR requires API_PREFIX)
   const prefix = config.get<string>('API_PREFIX');
-  if (prefix) app.setGlobalPrefix(prefix);
+  if (prefix) {
+    // OAuth discovery lives at the origin's root (RFC 8414 §3.1, path inserted)
+    app.setGlobalPrefix(prefix, {
+      exclude: [{ path: '.well-known/{*path}', method: RequestMethod.GET }],
+    });
+  }
   const webDir = config.get<string>('WEB_DIST_DIR');
   if (prefix && webDir) {
     serveWebApp(app as NestExpressApplication, webDir, prefix);

@@ -5,6 +5,8 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import request from 'supertest';
 import { MAIL_TRANSPORT } from '../src/mail/mail.transport.js';
+import { McpAppModule } from '../src/mcp/mcp-app.module.js';
+import { configureMcpApp } from '../src/mcp/mcp.setup.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { mailOf, MemoryMailTransport, tokenFrom } from './mail.js';
 
@@ -21,6 +23,20 @@ export async function createTestApp(): Promise<INestApplication<App>> {
     .compile();
   const app = moduleFixture.createNestApplication<INestApplication<App>>();
   configureApp(app);
+  await app.init();
+  return app;
+}
+
+/**
+ * Boots the MCP process (`McpAppModule`) with its production HTTP setup, next
+ * to the API of `createTestApp` (same database).
+ */
+export async function createTestMcpApp(): Promise<INestApplication<App>> {
+  const moduleFixture = await Test.createTestingModule({
+    imports: [McpAppModule],
+  }).compile();
+  const app = moduleFixture.createNestApplication<INestApplication<App>>();
+  configureMcpApp(app);
   await app.init();
   return app;
 }

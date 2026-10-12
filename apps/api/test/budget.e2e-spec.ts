@@ -301,6 +301,23 @@ describe('Budget (e2e)', () => {
       expect(rows[0].cells.map((c) => c.month)).toEqual(['2026-10', '2026-11']);
     });
 
+    it('moves a plain launch to another month in one save', async () => {
+      const ids = await categoryIds(ana);
+      const [id] = await addTransactions(ana, [
+        { categoryId: ids.housing, month: '2026-10', amountCents: 180000 },
+      ]);
+
+      await save(ana, [
+        { anchorId: id, month: '2026-10', amountCents: 0 },
+        { anchorId: id, month: '2026-11', amountCents: 190000 },
+      ]).expect(204);
+
+      const rows = await lines(ana, '2026-10', '2026-11');
+      expect(
+        rows.map((r) => r.cells.map((c) => [c.month, c.plannedCents])),
+      ).toEqual([[['2026-11', 190000]]]);
+    });
+
     it('rejects writing to an inactive category but still clears it', async () => {
       const ids = await categoryIds(ana);
       const [id] = await addTransactions(ana, [

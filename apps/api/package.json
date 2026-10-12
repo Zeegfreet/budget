@@ -14,6 +14,8 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "start:mcp": "nest start --watch --entryFile mcp/main",
+    "start:mcp:prod": "node dist/mcp/main",
     "lint": "oxlint --type-aware src/ test/",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,6 +24,7 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.0.1",
@@ -46,7 +49,8 @@
     "pg": "^8.23.1",
     "prisma": "^7.10.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",

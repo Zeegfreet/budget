@@ -798,7 +798,7 @@ describe('Dashboard route (/)', () => {
       expect(document.querySelector('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'collapsed')
     })
 
-    it('opens the account menu with the profile, password and sign-out options', async () => {
+    it('opens the account menu with the profile, password, agents and sign-out options', async () => {
       await renderRoute('/')
 
       await openUserMenu()
@@ -807,6 +807,7 @@ describe('Dashboard route (/)', () => {
       expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
         'Editar perfil',
         'Alterar senha',
+        'Agentes de IA',
         'Sair',
       ])
     })

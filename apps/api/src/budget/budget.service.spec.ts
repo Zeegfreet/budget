@@ -19,6 +19,7 @@ describe('BudgetService', () => {
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       deleteMany: vi.fn(),
       groupBy: vi.fn(),
     },
@@ -43,6 +44,9 @@ describe('BudgetService', () => {
     prisma.user.update.mockImplementation((args) => ({ update: args }));
     prisma.transaction.create.mockImplementation((args) => ({ create: args }));
     prisma.transaction.update.mockImplementation((args) => ({ update: args }));
+    prisma.transaction.updateMany.mockImplementation((args) => ({
+      updateMany: args,
+    }));
     prisma.transaction.deleteMany.mockImplementation((args) => ({
       deleteMany: args,
     }));
@@ -395,9 +399,9 @@ describe('BudgetService', () => {
       ]);
 
       const [join, first, second] = prisma.$transaction.mock.calls[0][0];
-      const seriesId = join.update.data.seriesId;
+      const seriesId = join.updateMany.data.seriesId;
       expect(join).toEqual({
-        update: { where: { id: 10 }, data: { seriesId } },
+        updateMany: { where: { id: 10 }, data: { seriesId } },
       });
       expect(seriesId).toEqual(expect.any(String));
       expect(first.create.data).toMatchObject({ month: '2026-11', seriesId });
@@ -553,6 +557,78 @@ describe('BudgetService', () => {
       incomeCents: 200,
       expenseCents: 1500,
       closingBalanceCents: -1700,
+    });
+  });
+
+  describe('goals', () => {
+    it('measures the user’s goals with the window’s entries', async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue({ budgetSeeded: true });
+      prisma.categoryGroup.findMany.mockResolvedValue([
+        {
+          id: 1,
+          kind: 'EXPENSE',
+          name: 'Moradia',
+          position: 0,
+          active: true,
+          goalPercent: 50,
+          categories: [{ id: 10, name: 'Aluguel', position: 0, active: true }],
+        },
+        {
+          id: 2,
+          kind: 'INCOME',
+          name: 'Receitas',
+          position: 0,
+          active: true,
+          goalPercent: null,
+          categories: [{ id: 20, name: 'Salário', position: 0, active: true }],
+        },
+      ]);
+      prisma.transaction.groupBy.mockImplementation(({ where }) =>
+        Promise.resolve(
+          where.realizedCents
+            ? []
+            : [
+                {
+                  categoryId: 10,
+                  month: '2026-10',
+                  _sum: { plannedCents: 600 },
+                  _count: { _all: 1 },
+                },
+                {
+                  categoryId: 20,
+                  month: '2026-10',
+                  _sum: { plannedCents: 1000 },
+                  _count: { _all: 1 },
+                },
+              ],
+        ),
+      );
+
+      const overview = await service.goals(7, '2026-10', '2026-12');
+
+      expect(overview.goals).toEqual([
+        expect.objectContaining({
+          typeId: 1,
+          month: expect.objectContaining({
+            spentCents: 600,
+            targetCents: 500,
+            status: 'over',
+          }),
+        }),
+      ]);
+      expect(prisma.categoryGroup.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 7 } }),
+      );
+    });
+
+    it('rejects a reversed or too long range before reading', async () => {
+      await expect(service.goals(7, '2026-10', '2026-09')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.goals(7, '2026-01', '2028-01')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.categoryGroup.findMany).not.toHaveBeenCalled();
     });
   });
 
