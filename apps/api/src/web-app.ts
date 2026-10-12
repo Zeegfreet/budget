@@ -4,13 +4,16 @@ import type { NextFunction, Request, Response } from 'express';
 
 /** Vite puts the content-hashed bundles here, so they never change. */
 const ASSETS_PATH = '/assets/';
+/** OAuth discovery, served by the API outside the prefix */
+const WELL_KNOWN_PATH = '/.well-known/';
 
 /**
  * True for requests the web app answers with `index.html`: page loads (GET or
- * HEAD) outside `/<prefix>`, so the API keeps its own 404s.
+ * HEAD) outside `/<prefix>` and `/.well-known/`, so the API keeps its own 404s.
  */
 export function isWebAppRoute(method: string, path: string, prefix: string) {
   if (method !== 'GET' && method !== 'HEAD') return false;
+  if (path.startsWith(WELL_KNOWN_PATH)) return false;
   return path !== `/${prefix}` && !path.startsWith(`/${prefix}/`);
 }
 

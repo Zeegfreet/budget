@@ -17,6 +17,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - [Grupos](#grupos)
 - [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal)
 - [Meios de pagamento](#meios-de-pagamento)
+- [Agentes de IA (servidor MCP)](#agentes-de-ia-servidor-mcp)
 - [Testes](#testes)
 - [CI/CD](#cicd)
 - [Deploy](#deploy)
@@ -30,6 +31,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 - **Receitas e despesas pessoais**: valores guardados em centavos (inteiros), sem ponto flutuante, para que totais e divisões fiquem exatos.
 - **Grupos de finanças**: um usuário cria um grupo com receitas e despesas próprias (ex.: aluguel). Só os membros enxergam os dados do grupo.
 - **Convites**: um membro convida outro usuário, que só ganha acesso depois de aceitar. Quem ainda não tem conta é **pré-cadastrado** com um apelido e já entra no grupo; ao se cadastrar com o mesmo e-mail, assume o lugar. Quem sai ou é removido do grupo perde o acesso.
+- **Agentes de IA (MCP)**: agentes como o Claude se conectam ao orçamento por um servidor MCP, com autorização OAuth aprovada pelo usuário (só leitura ou leitura e escrita) e revogável a qualquer momento.
 - **Métodos de divisão**: cada grupo define como dividir as receitas e despesas entre os membros (partes iguais, valores fixos, percentuais/pesos). A soma das partes sempre fecha com o total.
 
 ## Status dos recursos
@@ -42,7 +44,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Banco PostgreSQL | ✅ | — | Prisma 7 com `@prisma/adapter-pg`; Postgres local via `docker compose` (bancos `budget` e `budget_test`) e serviço Postgres no CI. Veja [Configurar e subir a API](#2-configurar-e-subir-a-api) |
 | Autenticação por e-mail e senha | ✅ | ✅ | Cadastro com CEP (ViaCEP), login, logout, sessão em cookies httpOnly (JWT de acesso + refresh token com rotação), guard global com Passport. Veja [Autenticação](#autenticação) |
 | Ativação de conta por e-mail (SMTP) | ✅ | ✅ | O cadastro não abre sessão: envia um link de ativação (`/ativar-conta`, 72 h, uso único) e o login fica bloqueado (`403`) até a ativação, com **Reenviar e-mail**. E-mail sem conta adicionado a um grupo recebe o link para concluir o cadastro; quem já tem conta recebe o aviso do convite. Veja [Ativação de conta e e-mails](#ativação-de-conta-e-e-mails) |
-| Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha e Sair |
+| Layout autenticado (menu lateral recolhível, conteúdo fluido) | — | ✅ | O conteúdo ocupa toda a largura disponível. Navegação em `src/lib/navigation.ts`; o menu recolhe para ícones (estado lembrado em cookie, atalho Ctrl/⌘+B) e vira gaveta no celular. No rodapé, avatar com o nome do usuário abre o menu da conta: Editar perfil, Alterar senha, Agentes de IA e Sair |
 | Editar perfil | ✅ | ✅ | Tela `/settings/profile` (menu da conta, card centralizado): nome, data de nascimento e endereço (CEP → cidade/UF pela ViaCEP). O e-mail aparece só para leitura. API `GET/PATCH /users/me`. Veja [Perfil](#perfil) |
 | Alterar senha | ✅ | ✅ | Tela `/settings/password` (menu da conta): senha atual, nova senha e repetição. A API confere a senha atual, grava a nova e encerra as outras sessões. Veja [Alterar senha](#alterar-senha) |
 | Recuperação de senha (Esqueci minha senha) | ✅ | ✅ | Link **Esqueci minha senha** no login → `/esqueci-senha` (e-mail) → link por e-mail para `/redefinir-senha` (60 min, uso único) com nova senha e repetição. Sempre a mesma resposta, exista o e-mail ou não; ao redefinir, as sessões são encerradas, a conta entra logada e recebe um aviso por e-mail. Veja [Recuperação de senha](#recuperação-de-senha) |
@@ -59,6 +61,7 @@ SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhad
 | Métodos de divisão (rateio) | ✅ | ✅ | Regras por grupo: igualitário (todos ou alguns membros), percentual (soma 100%), pesos e valores fixos. As cotas são calculadas em centavos e sempre somam o total. Os lançamentos **ainda não pagos** são recalculados quando alguém entra ou sai (do mês atual em diante) e quando a regra é editada |
 | Grupos no extrato e no dashboard pessoais | ✅ | ✅ | Card **Grupos** no Dashboard e no Extrato com a sua parte, o que você pagou e o acerto de cada grupo. Vinculando o grupo ao orçamento, a sua parte já rateada entra no grid, nos cards e no extrato: numa categoria sua para tudo ou **categoria por categoria** (cada categoria do grupo numa categoria sua; as demais na padrão). Veja [Grupos no orçamento pessoal](#grupos-no-orçamento-pessoal) |
 | Meios de pagamento (cartões e contas) | ✅ | ✅ | Tela `/meios-de-pagamento`: cartões e contas com dia de vencimento, que passa a valer para as despesas lançadas neles. Cada meio tem a fatura do mês (lançamentos pessoais + sua parte nos grupos), **Pagar fatura** de uma vez e histórico de 12 meses. Veja [Meios de pagamento](#meios-de-pagamento) |
+| Servidor MCP para agentes de IA | ✅ | ✅ | Processo próprio (`dist/mcp/main.js`, Streamable HTTP em `/mcp`) e também por **stdio** (`dist/mcp/stdio.js`). 20 ferramentas para orçamento, tipos/categorias, metas, lançamentos e meios de pagamento (só leitura), com escopos `budget:read`/`budget:write`. Autorização **OAuth 2.1** pela API (registro dinâmico de clientes, PKCE, tela de consentimento `/autorizar-agente`) e página **Agentes de IA** (`/settings/agents`) para conectar e desconectar. Funciona com qualquer cliente MCP com OAuth (Claude, ChatGPT, Cursor, VS Code…). Veja [Agentes de IA](#agentes-de-ia-servidor-mcp) |
 | Docker / deploy em containers | ✅ | ✅ | Imagem única [`zeegfreet/budget`](https://hub.docker.com/r/zeegfreet/budget) (amd64 + arm64): a API sob `/api` serve também o build do web e aplica as migrations ao subir. Build com `scripts/docker-build.sh`, publicação no Docker Hub pelo CI a cada merge na `main` (`latest`) e em tags `v*` (versões fixas) e exemplo com Traefik + Let's Encrypt em `docker-compose.prod.yml`. Veja [Deploy](#deploy) |
 
 Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
@@ -75,6 +78,7 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 - **`@nestjs/jwt`** para o token de acesso, **argon2** (argon2id) para hash de senha, **cookie-parser**
 - **`@nestjs/throttler`** para rate limit (`429`)
 - **[Nodemailer](https://nodemailer.com/)** para enviar e-mails por SMTP (ativação de conta e convites)
+- **[MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)** (`@modelcontextprotocol/sdk`) + **zod** para o servidor MCP dos agentes de IA
 - **Vitest** + **Supertest** para testes unitários e e2e
 - **oxlint** (lint type-aware) e **Prettier**
 
@@ -103,7 +107,8 @@ Legenda: ✅ pronto · 🚧 em andamento · ⏳ planejado
 ├── apps/
 │   ├── api/                 # Backend NestJS
 │   │   ├── prisma/          # schema.prisma e migrations
-│   │   ├── src/             # módulos (auth, activation, mail, budget, groups, payment-methods, user, prisma), app.setup.ts
+│   │   ├── src/             # módulos (auth, activation, mail, budget, groups, payment-methods, user, prisma, oauth-server), app.setup.ts
+│   │   │   └── mcp/         # servidor MCP: main.ts (HTTP) e stdio.ts, ferramentas em tools/
 │   │   └── test/            # testes e2e (*.e2e-spec.ts)
 │   └── web/                 # Frontend React
 │       └── src/
@@ -165,7 +170,16 @@ Em desenvolvimento, o Vite encaminha `/api/*` para `http://localhost:3000` (remo
 
 As páginas internas exigem sessão: quem não está autenticado é redirecionado para `http://localhost:5173/login`. Crie uma conta em `/signup` (veja [Autenticação](#autenticação)) e ative-a pelo link do e-mail.
 
-### 4. E-mails em desenvolvimento
+### 4. Servidor MCP (agentes de IA, opcional)
+
+```bash
+cd apps/api
+pnpm start:mcp        # http://localhost:3001/mcp (precisa da API e do web rodando para o login/consentimento)
+```
+
+Veja [Agentes de IA](#agentes-de-ia-servidor-mcp) para conectar o Claude ou usar o stdio.
+
+### 5. E-mails em desenvolvimento
 
 Sem `SMTP_HOST`, a API **não envia** e-mails: ela escreve cada mensagem no log (destinatário, assunto e texto, com o link de ativação), então basta copiar o link do terminal da API. Para ver os e-mails de verdade, suba uma caixa de teste com o [Mailpit](https://mailpit.axllent.org/):
 
@@ -202,6 +216,11 @@ e abra http://localhost:8025.
 | api | `OAUTH_CALLBACK_BASE_URL` | `${WEB_URL}/api` | Endereço da API **como o navegador a vê** (mesmo site do web, para os cookies de sessão chegarem ao web). O callback é `<base>/auth/oauth/<github\|google>/callback` |
 | api | `API_PREFIX` | — (`api` na imagem) | Prefixo global das rotas (ex.: `api` → `/api/auth/login`, Swagger em `/api/docs`). Também muda o path do cookie de refresh para `/<prefixo>/auth`. Sem ele (dev e testes), as rotas ficam na raiz e o proxy do Vite tira o `/api` |
 | api | `WEB_DIST_DIR` | — (`/app/web` na imagem) | Diretório do build do web, servido pela API em todos os caminhos fora do prefixo (SPA com fallback para `index.html`). Exige `API_PREFIX` |
+| api | `MCP_PUBLIC_URL` | `http://localhost:${MCP_PORT}` | Endereço público do processo MCP. O servidor fica em `<MCP_PUBLIC_URL>/mcp` e os tokens dos agentes são vinculados a ele: use **o mesmo valor** na API e no processo MCP |
+| api | `MCP_PORT` | `3001` | Porta HTTP do processo MCP (`dist/mcp/main.js`) |
+| api | `MCP_ACCESS_TOKEN_TTL_MINUTES` | `60` | Validade do token de acesso de um agente |
+| api | `MCP_REFRESH_TOKEN_TTL_DAYS` | `30` | Validade do refresh token de um agente (renovado e trocado a cada uso) |
+| api | `MCP_ACCESS_TOKEN` / `MCP_USER_ID` / `MCP_SCOPES` | — | Só no **stdio** (`dist/mcp/stdio.js`), exatamente uma identidade: o token OAuth de um agente, ou um usuário confiável para uso interno (escopos padrão `budget:read`). Veja [stdio](#stdio) |
 | api | `SKIP_MIGRATIONS` | `false` | Só na imagem Docker: `true` não roda `prisma migrate deploy` ao iniciar o container |
 | web | `VITE_API_URL` | `/api` | URL base da API, embutida no bundle no momento do build |
 
@@ -568,6 +587,75 @@ Tela `/meios-de-pagamento` (menu lateral **Meios de pagamento**), para cartões 
 | `PUT` | `/payment-methods/:id/invoice/payment` | `?month=YYYY-MM` | `200` com a fatura; realiza os pendentes pelo valor previsto |
 | `DELETE` | `/payment-methods/:id/invoice/payment` | `?month=YYYY-MM` | `200` com a fatura; volta os lançamentos para pendente |
 
+## Agentes de IA (servidor MCP)
+
+Agentes de IA compatíveis com o [Model Context Protocol](https://modelcontextprotocol.io/) (Claude, Claude Code, Cursor…) podem consultar e organizar o orçamento do usuário. O servidor MCP roda **num processo à parte** da API (mesma imagem, mesmo código e mesmo banco): pode escalar, ter limite de requisições e reiniciar sem afetar o app. Ele chama diretamente os mesmos services das rotas REST, então valem as mesmas regras de validação, os mesmos `404` e o mesmo isolamento por usuário.
+
+```
+agente ──► processo MCP (dist/mcp/main.js, :3001)          API (dist/main.js)
+            POST /mcp (Bearer) ──► ferramentas ──┐          /oauth/* e /.well-known/oauth-authorization-server
+            /.well-known/oauth-protected-resource │          (registro, autorização, tokens, revogação)
+                                                  └──► PostgreSQL ◄──┘
+navegador ──► web /autorizar-agente (login + Permitir/Negar) ──► API /oauth/requests/:id
+```
+
+### Conectar um agente
+
+Funciona com **qualquer agente** que aceite servidores MCP remotos (HTTP) com autorização OAuth, como Claude, ChatGPT, Cursor e VS Code. Na página **Agentes de IA** (menu da conta → `/settings/agents`) está a URL do servidor (`https://<MCP_DOMAIN>/mcp`; em dev, `http://localhost:3001/mcp`), com o passo a passo e exemplos:
+
+- **Claude (web ou app)**: Configurações → Conectores → adicionar conector personalizado com a URL.
+- **Claude Code**: `claude mcp add --transport http budget https://<MCP_DOMAIN>/mcp`.
+- **Cursor**: um servidor com `"url": "https://<MCP_DOMAIN>/mcp"` no `mcp.json`.
+- **VS Code**: comando `MCP: Add Server` → HTTP.
+- Outros agentes: a opção de adicionar um servidor MCP pela URL.
+
+O agente descobre o servidor de autorização sozinho, abre o navegador em `/autorizar-agente`, o usuário entra (se precisar) e escolhe **Permitir** ou **Negar**. A mesma página lista os agentes conectados (acesso, data de conexão e último uso) com **Desconectar**, que corta o acesso na hora.
+
+### Autorização (OAuth 2.1)
+
+A API é o servidor de autorização, conforme a especificação de autorização do MCP:
+
+- Descoberta: `GET /.well-known/oauth-protected-resource[/mcp]` no processo MCP (RFC 9728) aponta para o emissor (`OAUTH_CALLBACK_BASE_URL`, por padrão `${WEB_URL}/api`); `GET /.well-known/oauth-authorization-server[/api]` na API (RFC 8414; fora do `API_PREFIX`). Sem token, `POST /mcp` responde `401` com `WWW-Authenticate: Bearer resource_metadata="…"`.
+- Registro dinâmico de clientes (RFC 7591), Authorization Code com **PKCE S256 obrigatório**, `resource` (RFC 8707) vinculado à URL do MCP, refresh token trocado a cada uso (reuso fora da janela de 30 s revoga a conexão) e revogação (RFC 7009). Tokens e segredos são guardados só como hash SHA-256.
+- Escopos: `budget:read` (ler) e `budget:write` (alterar). Um token só de leitura nem vê as ferramentas de escrita.
+
+| Método | Rota | Quem | Resposta |
+| --- | --- | --- | --- |
+| `POST` | `/oauth/register` | público (10/min) | `201` com `client_id` (e `client_secret` se `token_endpoint_auth_method` for `client_secret_post`/`client_secret_basic`). `redirect_uris`: https, http em `localhost`/`127.0.0.1` (qualquer porta) ou esquema próprio de app (ex.: `cursor://`) |
+| `GET` | `/oauth/authorize` | público | `302` para `${WEB_URL}/autorizar-agente?request=<id>` (pedido vale 10 min), ou de volta ao cliente com `error=` |
+| `GET` / `POST` | `/oauth/requests/:id` | sessão | Dados do pedido para a tela de consentimento; `POST { approve }` → `{ redirectUrl }` com o `code` (uso único, 10 min) ou `access_denied`. `404` se vencido ou já respondido |
+| `POST` | `/oauth/token` | público (30/min) | `authorization_code` e `refresh_token` (form ou JSON) → `{ access_token, refresh_token, expires_in, scope }`; erros no formato OAuth (`invalid_grant`, `invalid_client`…) |
+| `POST` | `/oauth/revoke` | cliente | `200` sempre |
+| `GET` / `DELETE` | `/oauth/grants[/:id]` | sessão | Agentes conectados do usuário / desconectar (`404` para os de outro usuário) |
+| `GET` | `/oauth/info` | público | `{ mcpUrl, scopes }` para a página Agentes de IA |
+
+### Ferramentas
+
+Valores sempre em **centavos inteiros** e meses `YYYY-MM`. Cada chamada roda só para o dono do token.
+
+| Escopo | Ferramentas |
+| --- | --- |
+| `budget:read` | `get_categories`, `get_budget_summary`, `get_budget_lines` (grade + somas por categoria, até 24 meses), `get_goals` (uso das metas no mês de referência e no período, com a sobra), `list_transactions`, `list_payment_methods` |
+| `budget:write` | `create_category_type`, `update_category_type`, `delete_category_type`, `create_category`, `update_category`, `delete_category`, `create_transaction` (repetição, sem término, reajuste), `update_transaction` / `delete_transaction` (`ONE`/`FOLLOWING`), `set_transaction_realization`, `set_series_end`, `set_budget_cells`, `set_goals` (define/remove várias metas de uma vez, tudo ou nada), `set_initial_balance` |
+
+Os argumentos passam pelos mesmos DTOs das rotas REST; erros voltam como resultado de ferramenta com o status e a mensagem da API (ex.: `404 Category not found`, `400 plannedCents must not be less than 1`).
+
+### stdio
+
+Para clientes locais, o mesmo servidor roda por stdio (sem HTTP; o stdout só carrega JSON-RPC e os logs vão para o stderr). A identidade vem do ambiente, **exatamente uma** destas:
+
+- `MCP_ACCESS_TOKEN`: o token de acesso de um agente conectado. É conferido de novo a cada chamada, então desconectar o agente corta o stdio na hora.
+- `MCP_USER_ID` (+ `MCP_SCOPES`, padrão `budget:read`): identidade **confiável**, para quando a própria aplicação iniciar o processo para um usuário já autenticado. Quem roda já tem a `DATABASE_URL`; nunca exponha esse modo a usuários finais.
+
+```bash
+pnpm --filter api build
+claude mcp add budget-local -e DATABASE_URL=postgresql://… -e MCP_ACCESS_TOKEN=<token> -- node apps/api/dist/mcp/stdio.js
+# ou com a imagem:
+docker run -i --rm -e DATABASE_URL -e MCP_ACCESS_TOKEN -e SKIP_MIGRATIONS=true zeegfreet/budget node dist/mcp/stdio.js
+```
+
+No código, `McpServerFactory.create(principal)` monta o servidor independente do transporte (HTTP por requisição, stdio, ou `InMemoryTransport` para um agente dentro da própria aplicação no futuro).
+
 ## Testes
 
 Todo recurso só é considerado pronto com testes e2e e unitários (veja [CLAUDE.md](CLAUDE.md)).
@@ -584,6 +672,8 @@ pnpm test:e2e                                                  # e2e no budget_t
 # Os e2e usam JWT_ACCESS_SECRET=e2e-test-secret se a variável não estiver definida
 # e credenciais OAuth falsas (vitest.config.e2e.ts); GitHub e Google são simulados com um mock de fetch.
 # Os e-mails vão para uma caixa em memória (test/mail.ts): o helper signUp cadastra e ativa a conta pelo link
+# MCP: createTestMcpApp sobe o processo MCP ao lado da API e connectAgent (test/mcp.ts) faz o OAuth completo.
+# O teste do stdio que inicia dist/mcp/stdio.js só roda depois de `pnpm build` (é pulado sem o dist)
 
 # Web
 cd apps/web
@@ -598,7 +688,7 @@ O workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) roda em todo pus
 
 - **api**: instala dependências → `prisma generate` → lint → build → testes unitários → `prisma migrate deploy` no banco `budget_test` de um serviço PostgreSQL 17 do job → testes e2e (com `JWT_ACCESS_SECRET` de teste definido no workflow)
 - **web**: instala dependências → gera a árvore de rotas → lint → testes → build
-- **docker**: build da imagem (`linux/amd64`, sem push), para o `Dockerfile` não quebrar sem ninguém ver
+- **docker**: build da imagem (`linux/amd64`, sem push), para o `Dockerfile` não quebrar sem ninguém ver, e confere que os entrypoints `dist/main.js`, `dist/mcp/main.js` e `dist/mcp/stdio.js` estão nela
 - **publish**: só depois de `api`, `web` e `docker` passarem, e só em push na `main` (merge de PR) ou de uma tag `v*`. Pull requests e branches de feature nunca publicam. Faz o build multi-arch (`linux/amd64` e `linux/arm64`) e envia para o Docker Hub:
 
 | Evento | Tags publicadas |
@@ -622,10 +712,12 @@ git push origin v1.1.0   # publica zeegfreet/budget:1.1.0 e :1.1
 
 ```
 navegador ──► Traefik (HTTPS, Let's Encrypt)
-               └── tudo → container zeegfreet/budget :3000
-                           ├── /api/*  → API NestJS (prefixo global, Swagger em /api/docs)
-                           └── /*      → build do web (SPA, fallback para index.html)
-                                         └── PostgreSQL
+               ├── $DOMAIN → container zeegfreet/budget :3000 (serviço app)
+               │              ├── /api/*         → API NestJS (prefixo global, Swagger em /api/docs)
+               │              ├── /.well-known/* → descoberta OAuth para os agentes de IA
+               │              └── /*             → build do web (SPA, fallback para index.html)
+agente IA ───► └── $MCP_DOMAIN → mesma imagem :3001 (serviço mcp, node dist/mcp/main.js) → /mcp
+                                         └── PostgreSQL (compartilhado)
 ```
 
 A imagem é **única**: a API roda com `API_PREFIX=api` e serve o build do web (`WEB_DIST_DIR=/app/web`) em todos os outros caminhos. Como web e API ficam na mesma origem e o cookie de refresh já sai com `Path=/api/auth`, o proxy de borda (Traefik) só termina o TLS e encaminha tudo para a porta 3000, sem reescrever caminhos nem cookies. Ao iniciar, o container roda `prisma migrate deploy` (desligue com `SKIP_MIGRATIONS=true`) e depois `node dist/main.js`; o `HEALTHCHECK` consulta `GET /api`.
@@ -667,7 +759,7 @@ cp .env.prod.example .env.prod     # preencha DOMAIN, ACME_EMAIL, senhas, JWT_AC
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
 
-O compose define `TRUST_PROXY=1` e `WEB_URL=https://$DOMAIN`. Para atualizar, troque `BUDGET_TAG` (ou use `latest`) e rode `docker compose -f docker-compose.prod.yml --env-file .env.prod pull app && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`. Se o Traefik já existir no servidor, aproveite só o serviço `app` e as labels `traefik.http.routers.budget.*` (ajustando o nome do entrypoint e do certresolver).
+O compose define `TRUST_PROXY=1`, `WEB_URL=https://$DOMAIN` e `MCP_PUBLIC_URL=https://$MCP_DOMAIN` (nos serviços `app` e `mcp`, que precisam do mesmo valor). O serviço `mcp` usa a mesma imagem com `node dist/mcp/main.js`, porta 3001 e `SKIP_MIGRATIONS=true` (quem migra é o `app`), com healthcheck próprio em `/.well-known/oauth-protected-resource`; o DNS de `MCP_DOMAIN` também precisa apontar para o servidor. Para atualizar, troque `BUDGET_TAG` (ou use `latest`) e rode `docker compose -f docker-compose.prod.yml --env-file .env.prod pull app && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`. Se o Traefik já existir no servidor, aproveite só o serviço `app` e as labels `traefik.http.routers.budget.*` (ajustando o nome do entrypoint e do certresolver).
 
 ### Sem Docker
 
@@ -684,3 +776,4 @@ Também é possível rodar sem a imagem: `prisma generate`, `pnpm build` nos doi
 - [ ] SMTP configurado (`SMTP_HOST`, credenciais, `MAIL_FROM` de um domínio com SPF/DKIM), pois os links dos e-mails usam `WEB_URL`
 - [ ] Secrets `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` cadastrados como **Repository secrets** do GitHub Actions para a publicação no merge da `main` e nas tags `v*`
 - [ ] Avaliar se o Swagger (`/api/docs`) deve ficar exposto em produção
+- [ ] `MCP_DOMAIN` com DNS e o mesmo `MCP_PUBLIC_URL` nos serviços `app` e `mcp` (senão os tokens dos agentes não valem no MCP)

@@ -26,6 +26,6 @@ import { TransactionService } from './transaction.service.js';
     GroupStatementService,
     PlanService,
   ],
-  exports: [TransactionService],
+  exports: [BudgetService, CategoryService, TransactionService, PlanService],
 })
 export class BudgetModule {}

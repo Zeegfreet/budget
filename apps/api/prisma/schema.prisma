@@ -12,48 +12,50 @@ datasource db {
 }
 
 model User {
-  id                  Int                  @id @default(autoincrement())
+  id                    Int                    @id @default(autoincrement())
   /// Always stored trimmed and lowercased
-  email               String               @unique
+  email                 String                 @unique
   /// For a pre-registration, the nickname given by whoever invited them
-  name                String
+  name                  String
   /// Pre-registration created by a group invitation: can't sign in and has no
   /// password or profile until the person signs up with this e-mail
-  pending             Boolean              @default(false)
+  pending               Boolean                @default(false)
   /// `null` while `pending`, and for an account created by GitHub/Google
   /// sign-in (until a password is set)
-  passwordHash        String?
+  passwordHash          String?
   /// Calendar date, stored as midnight UTC; `null` while `pending`, and for an
   /// account created by GitHub/Google sign-in until the profile is completed
-  birthDate           DateTime?
+  birthDate             DateTime?
   /// 8 digits, no mask; `null` like `birthDate`
-  cep                 String?
-  city                String?
+  cep                   String?
+  city                  String?
   /// UF, e.g. `SP`; `null` like `birthDate`
-  state               String?
+  state                 String?
   /// When the person proved they own the e-mail (activation link or a
   /// GitHub/Google sign-in); `null` = not activated, can't sign in with a
   /// password
-  emailVerifiedAt     DateTime?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  emailVerifiedAt       DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
   /// Balance the user had before the first month in the budget (may be negative)
-  initialBalanceCents Int                  @default(0)
+  initialBalanceCents   Int                    @default(0)
   /// Set once the default categories were created, so deleting them all
   /// doesn't bring the defaults back
-  budgetSeeded        Boolean              @default(false)
-  sessions            Session[]
-  categoryGroups      CategoryGroup[]
-  categories          Category[]
-  transactions        Transaction[]
-  recurrences         Recurrence[]
-  groupMemberships    GroupMember[]
-  invitationsSent     GroupInvitation[]    @relation("InvitationInviter")
-  invitationsReceived GroupInvitation[]    @relation("InvitationInvitee")
-  paymentMethods      PaymentMethod[]
-  oauthAccounts       OAuthAccount[]
-  activationTokens    ActivationToken[]
-  passwordResetTokens PasswordResetToken[]
+  budgetSeeded          Boolean                @default(false)
+  sessions              Session[]
+  categoryGroups        CategoryGroup[]
+  categories            Category[]
+  transactions          Transaction[]
+  recurrences           Recurrence[]
+  groupMemberships      GroupMember[]
+  invitationsSent       GroupInvitation[]      @relation("InvitationInviter")
+  invitationsReceived   GroupInvitation[]      @relation("InvitationInvitee")
+  paymentMethods        PaymentMethod[]
+  oauthAccounts         OAuthAccount[]
+  activationTokens      ActivationToken[]
+  passwordResetTokens   PasswordResetToken[]
+  mcpAuthorizationCodes McpAuthorizationCode[]
+  mcpGrants             McpGrant[]
 }
 
 /// A refresh-token session (one per sign-in). Only `/auth/refresh` and
@@ -468,4 +470,85 @@ model GroupRecurrence {
   adjustFirstMonth  String?
 
   @@index([groupId])
+}
+
+/// An MCP client (AI agent app) registered through OAuth Dynamic Client
+/// Registration (RFC 7591). Public clients (PKCE only) have no secret.
+model McpClient {
+  /// The OAuth `client_id`
+  id           String                    @id @default(uuid())
+  name         String
+  redirectUris String[]
+  /// SHA-256 of the `client_secret`; `null` = public client
+  secretHash   String?
+  createdAt    DateTime                  @default(now())
+  requests     McpAuthorizationRequest[]
+  codes        McpAuthorizationCode[]
+  grants       McpGrant[]
+}
+
+/// A pending `/oauth/authorize` request, read and decided by the consent
+/// screen of the signed-in user. Consumed by the decision.
+model McpAuthorizationRequest {
+  id            String    @id @default(uuid())
+  clientId      String
+  client        McpClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  state         String?
+  /// PKCE S256 challenge
+  codeChallenge String
+  scopes        String[]
+  /// RFC 8707 resource (the MCP server URL)
+  resource      String
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+}
+
+/// Authorization code issued to the user who approved a request (single use).
+model McpAuthorizationCode {
+  id            Int       @id @default(autoincrement())
+  /// SHA-256 of the code
+  codeHash      String    @unique
+  clientId      String
+  client        McpClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId        Int
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String
+  scopes        String[]
+  resource      String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  /// Grant issued by the code, revoked if the code is presented again
+  grantId       Int?
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// A user's connection to an MCP client: the current access token and the
+/// rotating refresh token. Revoking it cuts the agent off at once.
+model McpGrant {
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId            String
+  client              McpClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  scopes              String[]
+  resource            String
+  /// SHA-256 of the current access token
+  accessHash          String    @unique
+  accessExpiresAt     DateTime
+  /// SHA-256 of the current refresh token; rotated on every refresh
+  refreshHash         String    @unique
+  /// Hash replaced by the last rotation; presenting it again means the
+  /// refresh token leaked, so the grant is revoked
+  previousRefreshHash String?
+  refreshExpiresAt    DateTime
+  revokedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  lastUsedAt          DateTime  @default(now())
+
+  @@index([userId])
+  @@index([previousRefreshHash])
 }

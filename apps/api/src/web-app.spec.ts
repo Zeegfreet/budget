@@ -9,12 +9,15 @@ describe('isWebAppRoute', () => {
     },
   );
 
-  it.each(['/api', '/api/', '/api/auth/me', '/api/docs'])(
-    'leaves %s to the API',
-    (path) => {
-      expect(isWebAppRoute('GET', path, 'api')).toBe(false);
-    },
-  );
+  it.each([
+    '/api',
+    '/api/',
+    '/api/auth/me',
+    '/api/docs',
+    '/.well-known/oauth-authorization-server/api',
+  ])('leaves %s to the API', (path) => {
+    expect(isWebAppRoute('GET', path, 'api')).toBe(false);
+  });
 
   it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('ignores %s', (method) => {
     expect(isWebAppRoute(method, '/grupos', 'api')).toBe(false);

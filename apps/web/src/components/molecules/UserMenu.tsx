@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronsUpDownIcon, KeyRoundIcon, LogOutIcon, UserIcon } from 'lucide-react'
+import { BotIcon, ChevronsUpDownIcon, KeyRoundIcon, LogOutIcon, UserIcon } from 'lucide-react'
 import { UserAvatar } from '@/components/atoms'
 import {
   DropdownMenu,
@@ -64,6 +64,12 @@ export function UserMenu({ user }: { user: AuthUser }) {
                 <Link to="/settings/password" onClick={closeMobile}>
                   <KeyRoundIcon aria-hidden />
                   Alterar senha
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/settings/agents" onClick={closeMobile}>
+                  <BotIcon aria-hidden />
+                  Agentes de IA
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
