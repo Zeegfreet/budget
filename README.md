@@ -2,6 +2,8 @@
 
 SaaS de **gestão de finanças pessoais** com suporte a **finanças compartilhadas em grupo** (ex.: uma república que divide aluguel e contas).
 
+🔗 **Live preview:** [budget.wesley-arruda.com.br](https://budget.wesley-arruda.com.br)
+
 > Este README acompanha a evolução do projeto: cada recurso entregue atualiza a seção [Status dos recursos](#status-dos-recursos) e, quando necessário, as seções de configuração e deploy.
 
 ## Sumário
